@@ -30,6 +30,7 @@ const SUB_LABEL_SELF = '自己';
 const DEFAULT_ACCOUNT_LABEL = '現金';
 const MENU_ELLIPSIS = '⋯';
 const BOTTOM_LEDGER = '帳本';
+const BOTTOM_STATS = '統計';
 const BOTTOM_ADD_LABEL = '記一筆';
 const BOTTOM_SETTINGS = '設定';
 const BOTTOM_BAR_HEIGHT = 56;
@@ -263,6 +264,18 @@ export default function HomeScreen(): React.JSX.Element {
             color="#6b7280"
           />
           <Text style={styles.bottomBarLabel}>{BOTTOM_LEDGER}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.bottomBarItem}
+          onPress={() => navigation.navigate('Statistics')}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="stats-chart-outline"
+            size={BOTTOM_ICON_SIZE}
+            color="#6b7280"
+          />
+          <Text style={styles.bottomBarLabel}>{BOTTOM_STATS}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.bottomBarItem, styles.bottomBarCenter]}

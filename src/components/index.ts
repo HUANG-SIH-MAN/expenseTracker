@@ -5,3 +5,4 @@
 
 export { default as Calendar } from './Calendar';
 export { default as CalculatorKeypad } from './CalculatorKeypad';
+export { default as PieChart } from './PieChart';

@@ -9,11 +9,22 @@ import PrimaryCurrencyScreen from '../screens/PrimaryCurrencyScreen';
 import CategorySettingsScreen from '../screens/CategorySettingsScreen';
 import RecurringSettingsScreen from '../screens/RecurringSettingsScreen';
 import RecurringEditScreen from '../screens/RecurringEditScreen';
+import StatisticsScreen from '../screens/StatisticsScreen';
+import CategoryExpensesScreen from '../screens/CategoryExpensesScreen';
+import type { TransactionType } from '../types';
 
 export type MainStackParamList = {
   Home: undefined;
   AddTransaction: { selectedDate: string; transactionId?: string };
   LedgerBalance: undefined;
+  Statistics: undefined;
+  CategoryExpenses: {
+    categoryKey: string;
+    transactionType: TransactionType;
+    period: 'month' | 'year';
+    year: number;
+    month?: number;
+  };
   EditAccount: { accountId: string };
   Settings: undefined;
   PrimaryCurrency: undefined;
@@ -45,6 +56,16 @@ export default function MainStack(): React.JSX.Element {
       <Stack.Screen
         name="LedgerBalance"
         component={LedgerBalanceScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="Statistics"
+        component={StatisticsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="CategoryExpenses"
+        component={CategoryExpensesScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen

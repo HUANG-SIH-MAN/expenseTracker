@@ -2,6 +2,7 @@
  * 交易列表狀態與持久化
  */
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import type { Transaction } from '../types';
 import {
   syncRecurringToTransactions,
@@ -28,6 +29,15 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     syncRecurringToTransactions().then(setTransactions);
+  }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'active') {
+        syncRecurringToTransactions().then(setTransactions);
+      }
+    });
+    return () => subscription.remove();
   }, []);
 
   const addTransaction = useCallback(async (t: Transaction) => {
