@@ -26,6 +26,8 @@ export interface CalendarProps {
   month: number;
   selectedDate: string | null;
   onSelectDate: (date: string) => void;
+  /** 有記帳紀錄的日期（YYYY-MM-DD），這些日期會以灰色顯示 */
+  datesWithRecords?: Set<string>;
 }
 
 export default function Calendar({
@@ -33,6 +35,7 @@ export default function Calendar({
   month,
   selectedDate,
   onSelectDate,
+  datesWithRecords,
 }: CalendarProps): React.JSX.Element {
   const daysInMonth = getDaysInMonth(year, month);
   const firstWeekday = getFirstDayWeekday(year, month);
@@ -67,6 +70,7 @@ export default function Calendar({
             }
             const dateKey = toDateKey(year, month, day);
             const isSelected = selectedDate === dateKey;
+            const hasRecords = datesWithRecords?.has(dateKey) ?? false;
             return (
               <TouchableOpacity
                 key={index}
@@ -78,6 +82,7 @@ export default function Calendar({
                   style={[
                     styles.dayText,
                     isSelected && styles.dayTextSelected,
+                    hasRecords && !isSelected && styles.dayTextWithRecords,
                   ]}
                 >
                   {day}
@@ -130,6 +135,9 @@ const styles = StyleSheet.create({
   dayText: {
     fontSize: 15,
     color: '#1f2937',
+  },
+  dayTextWithRecords: {
+    color: '#6b7280',
   },
   dayTextSelected: {
     color: '#fff',

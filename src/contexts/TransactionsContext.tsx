@@ -8,13 +8,16 @@ import {
   saveTransactions,
   addTransaction as addTransactionStorage,
   deleteTransaction as deleteTransactionStorage,
+  updateTransaction as updateTransactionStorage,
 } from '../utils/storage';
 
 interface TransactionsContextValue {
   transactions: Transaction[];
   addTransaction: (t: Transaction) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
+  updateTransaction: (t: Transaction) => Promise<void>;
   getTransactionsByDate: (date: string) => Transaction[];
+  getTransactionById: (id: string) => Transaction | undefined;
 }
 
 const TransactionsContext = createContext<TransactionsContextValue | null>(null);
@@ -36,6 +39,16 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     setTransactions((prev) => prev.filter((x) => x.id !== id));
   }, []);
 
+  const updateTransaction = useCallback(async (t: Transaction) => {
+    await updateTransactionStorage(t);
+    setTransactions((prev) => prev.map((x) => (x.id === t.id ? t : x)));
+  }, []);
+
+  const getTransactionById = useCallback(
+    (id: string) => transactions.find((t) => t.id === id),
+    [transactions]
+  );
+
   const getTransactionsByDate = useCallback(
     (date: string) => transactions.filter((t) => t.date === date),
     [transactions]
@@ -45,6 +58,8 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     transactions,
     addTransaction,
     deleteTransaction,
+    updateTransaction,
+    getTransactionById,
     getTransactionsByDate,
   };
 

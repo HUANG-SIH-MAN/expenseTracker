@@ -32,6 +32,18 @@ export const DEFAULT_INCOME_CATEGORIES: Record<string, string> = {
   other: '其他',
 };
 
+/** 類別對應圖示（用於列表顯示） */
+export const CATEGORY_ICONS: Record<string, string> = {
+  food: '🍽️',
+  transport: '🚗',
+  shopping: '🛒',
+  entertainment: '🎤',
+  other: '📌',
+  salary: '💰',
+  bonus: '🎁',
+  investment: '📈',
+};
+
 /** 支援的貨幣：代碼 -> 顯示名稱 */
 export const CURRENCY_LABELS: Record<string, string> = {
   TWD: '新台幣 (TWD)',

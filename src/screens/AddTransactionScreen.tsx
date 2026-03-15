@@ -1,15 +1,16 @@
 /**
- * 新增單筆收入/支出 — 表單 + 底部計算機鍵盤（類參考介面）
+ * 新增/編輯單筆收入/支出 — 表單 + 底部計算機鍵盤
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
-  useWindowDimensions,
+  ScrollView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { TransactionType } from '../types';
@@ -17,30 +18,62 @@ import { generateId } from '../utils/id';
 import { parseAmountInput } from '../utils/amountExpression';
 import { formatDateWithWeekday } from '../utils/date';
 import { useTransactions } from '../contexts/TransactionsContext';
+import { getStoredAccounts } from '../utils/storage';
 import type { MainStackParamList } from '../navigation/MainStack';
 import {
   DEFAULT_EXPENSE_CATEGORIES,
   DEFAULT_INCOME_CATEGORIES,
 } from '../constants';
 import { CalculatorKeypad } from '../components';
+import type { Account } from '../types';
 
 type RouteProps = NativeStackScreenProps<MainStackParamList, 'AddTransaction'>['route'];
 
 const EXPENSE_KEYS = Object.keys(DEFAULT_EXPENSE_CATEGORIES);
 const INCOME_KEYS = Object.keys(DEFAULT_INCOME_CATEGORIES);
-const HEADER_HEIGHT_PERCENT = 0.08;
-const KEYPAD_HEIGHT_PERCENT = 0.42;
+/** 鍵盤區佔畫面高度比例（0～1），表單區佔其餘，讓「整頁」都在畫面內 */
+const KEYPAD_FLEX_RATIO = 0.32;
+const BODY_FLEX_RATIO = 1 - KEYPAD_FLEX_RATIO;
+const LABEL_ACCOUNT = '帳戶';
+const BACK_LABEL = '返回';
 
 export default function AddTransactionScreen(): React.JSX.Element {
+  const insets = useSafeAreaInsets();
   const route = useRoute<RouteProps>();
   const navigation = useNavigation();
-  const { selectedDate } = route.params;
-  const { addTransaction } = useTransactions();
+  const { selectedDate, transactionId } = route.params;
+  const { addTransaction, updateTransaction, getTransactionById } = useTransactions();
 
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [type, setType] = useState<TransactionType>('expense');
+  const [dateKey, setDateKey] = useState(selectedDate);
   const [amountStr, setAmountStr] = useState('');
   const [category, setCategory] = useState(EXPENSE_KEYS[0]);
   const [note, setNote] = useState('');
+  const [accountId, setAccountId] = useState<string | undefined>(undefined);
+
+  const isEditMode = Boolean(transactionId);
+  const existing = transactionId ? getTransactionById(transactionId) : undefined;
+
+  useEffect(() => {
+    getStoredAccounts().then((list) => {
+      const valid = list.filter((a) => a.name.trim() !== '');
+      setAccounts(valid);
+      if (valid.length > 0 && !transactionId) {
+        setAccountId((prev) => prev ?? valid[0].id);
+      }
+    });
+  }, [transactionId]);
+
+  useEffect(() => {
+    if (!existing) return;
+    setType(existing.type);
+    setDateKey(existing.date);
+    setAmountStr(String(existing.amount));
+    setCategory(existing.category);
+    setNote(existing.note ?? '');
+    setAccountId(existing.accountId);
+  }, [existing?.id]);
 
   const categoryMap = type === 'expense' ? DEFAULT_EXPENSE_CATEGORIES : DEFAULT_INCOME_CATEGORIES;
   const categoryKeys = type === 'expense' ? EXPENSE_KEYS : INCOME_KEYS;
@@ -57,56 +90,78 @@ export default function AddTransactionScreen(): React.JSX.Element {
 
   const handleSubmit = () => {
     if (!parsed.valid || amount <= 0) return;
-    addTransaction({
-      id: generateId(),
-      type,
-      amount,
-      date: selectedDate,
-      category,
-      note: note.trim() || undefined,
-      createdAt: new Date().toISOString(),
-    });
+    if (isEditMode && existing) {
+      updateTransaction({
+        ...existing,
+        type,
+        amount,
+        date: dateKey,
+        category,
+        note: note.trim() || undefined,
+        accountId: accountId || undefined,
+      });
+    } else {
+      addTransaction({
+        id: generateId(),
+        type,
+        amount,
+        date: dateKey,
+        category,
+        note: note.trim() || undefined,
+        accountId: accountId || undefined,
+        createdAt: new Date().toISOString(),
+      });
+    }
     navigation.goBack();
   };
 
   const amountDisplay = amountStr.trim() === '' ? '金額' : amountStr;
-  const { height: windowHeight } = useWindowDimensions();
-  const headerHeight = windowHeight * HEADER_HEIGHT_PERCENT;
-  const keypadHeight = windowHeight * KEYPAD_HEIGHT_PERCENT;
 
   return (
     <View style={styles.container}>
-      <View style={[styles.header, { height: headerHeight }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn} hitSlop={12}>
-          <Text style={styles.headerBtnText}>✕</Text>
-        </TouchableOpacity>
-        <View style={styles.tabs}>
-          <TouchableOpacity
-            style={[styles.tab, type === 'expense' && styles.tabActive]}
-            onPress={() => handleTypeChange('expense')}
-          >
-            <Text style={[styles.tabText, type === 'expense' && styles.tabTextActive]}>支出</Text>
+      <ScrollView
+        style={[styles.bodyScroll, { flex: BODY_FLEX_RATIO }]}
+        contentContainerStyle={[
+          styles.bodyContent,
+          {
+            paddingTop: Math.max(12, insets.top),
+            paddingBottom: Math.max(8, insets.bottom),
+          },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
+        <View style={styles.typeRow}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} hitSlop={12}>
+            <Text style={styles.backBtnText}>{BACK_LABEL}</Text>
           </TouchableOpacity>
+          <View style={styles.tabs}>
+            <TouchableOpacity
+              style={[styles.tab, type === 'expense' && styles.tabActive]}
+              onPress={() => handleTypeChange('expense')}
+            >
+              <Text style={[styles.tabText, type === 'expense' && styles.tabTextActive]}>支出</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tab, type === 'income' && styles.tabActive]}
+              onPress={() => handleTypeChange('income')}
+            >
+              <Text style={[styles.tabText, type === 'income' && styles.tabTextActive]}>收入</Text>
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity
-            style={[styles.tab, type === 'income' && styles.tabActive]}
-            onPress={() => handleTypeChange('income')}
+            onPress={handleSubmit}
+            disabled={!canSubmit}
+            style={styles.saveBtn}
           >
-            <Text style={[styles.tabText, type === 'income' && styles.tabTextActive]}>收入</Text>
+            <Text style={[styles.saveBtnText, !canSubmit && styles.saveBtnTextDisabled]}>儲存</Text>
           </TouchableOpacity>
         </View>
-        <TouchableOpacity
-          style={[styles.headerBtn, styles.saveBtn]}
-          onPress={handleSubmit}
-          disabled={!canSubmit}
-        >
-          <Text style={[styles.headerBtnText, !canSubmit && styles.saveBtnTextDisabled]}>儲存</Text>
-        </TouchableOpacity>
-      </View>
 
-      <View style={styles.body}>
         <View style={styles.fieldRow}>
           <Text style={styles.fieldLabel}>日期</Text>
-          <Text style={styles.fieldValue}>{formatDateWithWeekday(selectedDate)}</Text>
+          <Text style={styles.fieldValue}>{formatDateWithWeekday(dateKey)}</Text>
         </View>
 
         <View style={styles.amountSection}>
@@ -136,6 +191,36 @@ export default function AddTransactionScreen(): React.JSX.Element {
           })}
         </View>
 
+        {accounts.length > 0 ? (
+          <>
+            <View style={styles.fieldRow}>
+              <Text style={styles.fieldLabel}>{LABEL_ACCOUNT}</Text>
+            </View>
+            <View style={styles.accountWrap}>
+              {accounts.map((acc) => {
+                const isSelected = accountId === acc.id;
+                return (
+                  <TouchableOpacity
+                    key={acc.id}
+                    style={[styles.categoryChip, isSelected && styles.categoryChipSelected]}
+                    onPress={() => setAccountId(acc.id)}
+                  >
+                    <Text
+                      style={[
+                        styles.categoryChipText,
+                        isSelected && styles.categoryChipTextSelected,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {acc.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
+        ) : null}
+
         <View style={styles.fieldRow}>
           <Text style={styles.fieldLabel}>備註（選填）</Text>
         </View>
@@ -146,9 +231,9 @@ export default function AddTransactionScreen(): React.JSX.Element {
           value={note}
           onChangeText={setNote}
         />
-      </View>
+      </ScrollView>
 
-      <View style={[styles.keypadWrap, { height: keypadHeight }]}>
+      <View style={[styles.keypadWrap, { flex: KEYPAD_FLEX_RATIO }]}>
         <CalculatorKeypad
           value={amountStr}
           onValueChange={setAmountStr}
@@ -163,26 +248,31 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+    maxHeight: '100%',
   },
-  header: {
+  typeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e5e7eb',
+    marginBottom: '2%',
   },
-  headerBtn: {
+  backBtn: {
+    paddingVertical: 8,
+    paddingRight: 12,
     minWidth: 44,
-    alignItems: 'flex-start',
   },
-  headerBtnText: {
+  backBtnText: {
     fontSize: 17,
     color: '#0a84ff',
   },
   saveBtn: {
-    alignItems: 'flex-end',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  saveBtnText: {
+    fontSize: 17,
+    color: '#0a84ff',
+    fontWeight: '500',
   },
   saveBtnTextDisabled: {
     color: '#9ca3af',
@@ -207,18 +297,18 @@ const styles = StyleSheet.create({
     color: '#1a1a1a',
     fontWeight: '600',
   },
-  body: {
-    flex: 1,
+  bodyScroll: {
+    minHeight: 0,
+  },
+  bodyContent: {
     paddingHorizontal: '5%',
-    paddingTop: '2%',
-    paddingBottom: '4%',
-    justifyContent: 'flex-start',
+    paddingBottom: '1%',
   },
   fieldRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: '1.5%',
+    marginBottom: '1.2%',
   },
   fieldLabel: {
     fontSize: 15,
@@ -229,7 +319,7 @@ const styles = StyleSheet.create({
     color: '#1a1a1a',
   },
   amountSection: {
-    marginBottom: '2%',
+    marginBottom: '1.5%',
   },
   amountDisplay: {
     fontSize: 28,
@@ -248,16 +338,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     marginHorizontal: '-1%',
-    marginBottom: '2%',
-    marginTop: '0.5%',
+    marginBottom: '1.2%',
+    marginTop: '0.3%',
+  },
+  accountWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: '-1%',
+    marginBottom: '1.2%',
   },
   categoryChip: {
-    paddingVertical: '1.2%',
-    paddingHorizontal: '3%',
+    paddingVertical: 6,
+    paddingHorizontal: '2.5%',
     borderRadius: 20,
     backgroundColor: '#f3f4f6',
     marginHorizontal: '1%',
-    marginBottom: '1%',
+    marginBottom: 4,
   },
   categoryChipSelected: {
     backgroundColor: '#0a84ff',
@@ -275,12 +371,15 @@ const styles = StyleSheet.create({
     borderColor: '#e5e7eb',
     borderRadius: 8,
     paddingHorizontal: '2%',
-    paddingVertical: '1%',
+    paddingVertical: 8,
     fontSize: 15,
     color: '#1a1a1a',
-    maxHeight: '12%',
+    minHeight: 36,
+    maxHeight: 56,
   },
   keypadWrap: {
-    marginTop: '3%',
+    minHeight: 0,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#e5e7eb',
   },
 });

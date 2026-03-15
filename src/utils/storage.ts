@@ -73,3 +73,12 @@ export async function deleteTransaction(id: string): Promise<void> {
   const next = list.filter((t) => t.id !== id);
   await saveTransactions(next);
 }
+
+export async function updateTransaction(transaction: Transaction): Promise<void> {
+  const list = await getStoredTransactions();
+  const index = list.findIndex((t) => t.id === transaction.id);
+  if (index < 0) return;
+  const next = [...list];
+  next[index] = transaction;
+  await saveTransactions(next);
+}

@@ -44,5 +44,7 @@ export interface Transaction {
   date: string; // YYYY-MM-DD
   category: string;
   note?: string;
+  /** 帳戶 ID，對應 Onboarding 設定的帳戶；未設定時顯示為「現金」 */
+  accountId?: string;
   createdAt: string; // ISO 8601
 }

@@ -4,7 +4,7 @@ import HomeScreen from '../screens/HomeScreen';
 import AddTransactionScreen from '../screens/AddTransactionScreen';
 export type MainStackParamList = {
   Home: undefined;
-  AddTransaction: { selectedDate: string };
+  AddTransaction: { selectedDate: string; transactionId?: string };
 };
 
 const Stack = createNativeStackNavigator<MainStackParamList>();
@@ -25,10 +25,7 @@ export default function MainStack(): React.JSX.Element {
       <Stack.Screen
         name="AddTransaction"
         component={AddTransactionScreen}
-        options={{
-          title: '',
-          headerBackTitle: '返回',
-        }}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );
