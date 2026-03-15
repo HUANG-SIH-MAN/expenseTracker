@@ -18,8 +18,7 @@ import type { MainStackParamList } from '../navigation/MainStack';
 import type { MonthlyFixedItem } from '../types';
 import { useBudget } from '../contexts/BudgetContext';
 import { useCategories } from '../contexts/CategoriesContext';
-import { MonthlyBudgetTab } from '../components/MonthlyBudgetTab';
-import { AnnualBudgetTab } from '../components/AnnualBudgetTab';
+import { MonthlyBudgetTab, AnnualBudgetTab } from '../components';
 
 const TITLE = '預算規劃';
 const TAB_MONTHLY = '月預算';

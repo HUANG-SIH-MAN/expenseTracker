@@ -24,7 +24,6 @@ import {
   BUDGET_SETTINGS_KEY_PREFIX,
   BUILT_IN_CURRENCY_CODES,
   CURRENCY_LABELS,
-  STORAGE_KEYS,
 } from "../constants";
 
 const DEFAULT_PRIMARY_CURRENCY: CurrencyCode = "TWD";

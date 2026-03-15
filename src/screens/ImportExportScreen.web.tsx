@@ -1,5 +1,5 @@
 /**
- * 資料匯入與匯出：匯出記帳 CSV、匯入對方 APP CSV 格式
+ * 資料匯入與匯出（Web）：僅使用 Blob 匯出與 file input 匯入，不引用 expo-file-system / expo-sharing，避免 Metro 解析錯誤。
  */
 import React, { useCallback, useRef } from 'react';
 import {
@@ -9,7 +9,6 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
-  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -30,9 +29,6 @@ import {
   resolveAccountsForImport,
   exportTransactionsToCsv,
 } from '../utils/csvImportExport';
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
-import * as DocumentPicker from 'expo-document-picker';
 
 const TITLE = '資料匯入與匯出';
 const BACK_ICON_SIZE = 28;
@@ -42,15 +38,11 @@ const BTN_EXPORT = '匯出記帳資料';
 const EXPORT_HINT = '將目前所有記帳匯出為 CSV，可備份或於其他裝置使用。';
 const BTN_IMPORT = '匯入記帳資料';
 const IMPORT_HINT = '從其他記帳 APP 匯出的 CSV（欄位：日期,大類別,類別,金額,帳戶,備註,收支等）可匯入，將加入現有資料。';
-const CONFIRM_IMPORT_TITLE = '確認匯入';
 const CONFIRM_IMPORT_MSG = '將匯入 %d 筆，是否加入現有資料？';
-const BTN_CANCEL = '取消';
-const BTN_OK = '確定';
 const SUCCESS_IMPORT = '已成功匯入 %d 筆。';
 const SUCCESS_EXPORT = '已匯出。';
 const ERROR_IMPORT = '匯入失敗或無有效資料。';
 const ERROR_EXPORT = '匯出失敗。';
-const ERROR_NO_FILE = '未選擇檔案。';
 
 type NavProp = NativeStackNavigationProp<MainStackParamList, 'ImportExport'>;
 
@@ -67,7 +59,7 @@ export default function ImportExportScreen(): React.JSX.Element {
   const navigation = useNavigation<NavProp>();
   const { refreshTransactions } = useTransactions();
   const { getCategoryLabel } = useCategories();
-  const fileInputRef = useRef<{ click: () => void } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleExport = useCallback(async () => {
     try {
@@ -77,25 +69,14 @@ export default function ImportExportScreen(): React.JSX.Element {
       ]);
       const csv = exportTransactionsToCsv(transactions, accounts, getCategoryLabel);
       const filename = `記帳匯出_${getTodayDateString()}.csv`;
-      if (Platform.OS === 'web') {
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(url);
-        Alert.alert('', SUCCESS_EXPORT);
-      } else {
-        const dir = FileSystem.cacheDirectory ?? '';
-        const path = `${dir}${filename}`;
-        await FileSystem.writeAsStringAsync(path, csv, { encoding: FileSystem.EncodingType.UTF8 });
-        const canShare = await Sharing.isAvailableAsync();
-        if (canShare) {
-          await Sharing.shareAsync(path, { mimeType: 'text/csv', dialogTitle: filename });
-        }
-        Alert.alert('', SUCCESS_EXPORT);
-      }
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      Alert.alert('', SUCCESS_EXPORT);
     } catch {
       Alert.alert('', ERROR_EXPORT);
     }
@@ -108,10 +89,8 @@ export default function ImportExportScreen(): React.JSX.Element {
         Alert.alert('', ERROR_IMPORT);
         return;
       }
-      if (Platform.OS === 'web') {
-        const ok = window.confirm(CONFIRM_IMPORT_MSG.replace('%d', String(rows.length)));
-        if (!ok) return;
-      }
+      const ok = window.confirm(CONFIRM_IMPORT_MSG.replace('%d', String(rows.length)));
+      if (!ok) return;
       try {
         const existingAccounts = await getStoredAccounts();
         const accountNames = rows.map((r) => r.accountName);
@@ -147,66 +126,9 @@ export default function ImportExportScreen(): React.JSX.Element {
     [runImport],
   );
 
-  const handleImportNative = useCallback(async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: 'text/csv',
-        copyToCacheDirectory: true,
-      });
-      if (result.canceled) {
-        return;
-      }
-      const uri = result.assets[0]?.uri;
-      if (!uri) {
-        Alert.alert('', ERROR_NO_FILE);
-        return;
-      }
-      const text = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.UTF8 });
-      const rows = parseSourceCsv(text);
-      if (rows.length === 0) {
-        Alert.alert('', ERROR_IMPORT);
-        return;
-      }
-      Alert.alert(
-        CONFIRM_IMPORT_TITLE,
-        CONFIRM_IMPORT_MSG.replace('%d', String(rows.length)),
-        [
-          { text: BTN_CANCEL, style: 'cancel' },
-          {
-            text: BTN_OK,
-            onPress: async () => {
-              try {
-                const existingAccounts = await getStoredAccounts();
-                const accountNames = rows.map((r) => r.accountName);
-                const { accountNameToId, mergedAccounts } = resolveAccountsForImport(
-                  existingAccounts,
-                  accountNames,
-                );
-                const transactions = parsedRowsToTransactions(rows, accountNameToId);
-                const existing = await getStoredTransactions();
-                await updateStoredAccounts(mergedAccounts);
-                await saveTransactions([...existing, ...transactions]);
-                await refreshTransactions();
-                Alert.alert('', SUCCESS_IMPORT.replace('%d', String(transactions.length)));
-              } catch {
-                Alert.alert('', ERROR_IMPORT);
-              }
-            },
-          },
-        ]
-      );
-    } catch {
-      Alert.alert('', ERROR_IMPORT);
-    }
-  }, [refreshTransactions]);
-
   const handleImportPress = useCallback(() => {
-    if (Platform.OS === 'web') {
-      fileInputRef.current?.click();
-    } else {
-      handleImportNative();
-    }
-  }, [handleImportNative]);
+    fileInputRef.current?.click();
+  }, []);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
@@ -221,17 +143,15 @@ export default function ImportExportScreen(): React.JSX.Element {
         <Text style={styles.title}>{TITLE}</Text>
       </View>
 
-      {Platform.OS === 'web' && (
-        <input
-          ref={(el) => {
-            (fileInputRef as React.MutableRefObject<unknown>).current = el;
-          }}
-          type="file"
-          accept=".csv"
-          style={styles.hiddenInput as React.CSSProperties}
-          onChange={handleImportWeb}
-        />
-      )}
+      <input
+        ref={(el) => {
+          fileInputRef.current = el;
+        }}
+        type="file"
+        accept=".csv"
+        style={styles.hiddenInput as React.CSSProperties}
+        onChange={handleImportWeb}
+      />
 
       <ScrollView
         style={styles.scroll}
