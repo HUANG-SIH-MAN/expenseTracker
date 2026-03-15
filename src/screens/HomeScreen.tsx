@@ -34,6 +34,7 @@ const MENU_ELLIPSIS = '⋯';
 const BOTTOM_LEDGER = '帳本';
 const BOTTOM_STATS = '統計';
 const BOTTOM_ADD_LABEL = '記一筆';
+const BOTTOM_BUDGET = '預算';
 const BOTTOM_SETTINGS = '設定';
 const BOTTOM_BAR_HEIGHT = 56;
 const BOTTOM_ICON_SIZE = 24;
@@ -321,6 +322,18 @@ export default function HomeScreen(): React.JSX.Element {
             />
           </View>
           <Text style={styles.bottomBarCenterLabel}>{BOTTOM_ADD_LABEL}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.bottomBarItem}
+          onPress={() => navigation.navigate('BudgetSettings')}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="wallet-outline"
+            size={BOTTOM_ICON_SIZE}
+            color="#6b7280"
+          />
+          <Text style={styles.bottomBarLabel}>{BOTTOM_BUDGET}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.bottomBarItem}

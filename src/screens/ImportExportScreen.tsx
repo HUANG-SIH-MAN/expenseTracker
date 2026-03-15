@@ -1,0 +1,305 @@
+/**
+ * 資料匯入與匯出：匯出記帳 CSV、匯入對方 APP CSV 格式
+ */
+import React, { useCallback, useRef } from 'react';
+import {
+  StyleSheet,
+  Text,
+  View,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+  Platform,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import type { MainStackParamList } from '../navigation/MainStack';
+import { useTransactions } from '../contexts/TransactionsContext';
+import { useCategories } from '../contexts/CategoriesContext';
+import {
+  getStoredTransactions,
+  getStoredAccounts,
+  saveTransactions,
+  updateStoredAccounts,
+} from '../utils/storage';
+import {
+  parseSourceCsv,
+  parsedRowsToTransactions,
+  resolveAccountsForImport,
+  exportTransactionsToCsv,
+} from '../utils/csvImportExport';
+
+const TITLE = '資料匯入與匯出';
+const BACK_ICON_SIZE = 28;
+const SECTION_EXPORT = '匯出';
+const SECTION_IMPORT = '匯入';
+const BTN_EXPORT = '匯出記帳資料';
+const EXPORT_HINT = '將目前所有記帳匯出為 CSV，可備份或於其他裝置使用。';
+const BTN_IMPORT = '匯入記帳資料';
+const IMPORT_HINT = '從其他記帳 APP 匯出的 CSV（欄位：日期,大類別,類別,金額,帳戶,備註,收支等）可匯入，將加入現有資料。';
+const CONFIRM_IMPORT_TITLE = '確認匯入';
+const CONFIRM_IMPORT_MSG = '將匯入 %d 筆，是否加入現有資料？';
+const BTN_CANCEL = '取消';
+const BTN_OK = '確定';
+const SUCCESS_IMPORT = '已成功匯入 %d 筆。';
+const SUCCESS_EXPORT = '已匯出。';
+const ERROR_IMPORT = '匯入失敗或無有效資料。';
+const ERROR_EXPORT = '匯出失敗。';
+const ERROR_NO_FILE = '未選擇檔案。';
+
+type NavProp = NativeStackNavigationProp<MainStackParamList, 'ImportExport'>;
+
+function getTodayDateString(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+export default function ImportExportScreen(): React.JSX.Element {
+  const insets = useSafeAreaInsets();
+  const navigation = useNavigation<NavProp>();
+  const { refreshTransactions } = useTransactions();
+  const { getCategoryLabel } = useCategories();
+  const fileInputRef = useRef<{ click: () => void } | null>(null);
+
+  const handleExport = useCallback(async () => {
+    try {
+      const [transactions, accounts] = await Promise.all([
+        getStoredTransactions(),
+        getStoredAccounts(),
+      ]);
+      const csv = exportTransactionsToCsv(transactions, accounts, getCategoryLabel);
+      const filename = `記帳匯出_${getTodayDateString()}.csv`;
+      if (Platform.OS === 'web') {
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+        Alert.alert('', SUCCESS_EXPORT);
+      } else {
+        const FileSystem = await import('expo-file-system');
+        const Sharing = await import('expo-sharing');
+        const dir = FileSystem.cacheDirectory ?? '';
+        const path = `${dir}${filename}`;
+        await FileSystem.writeAsStringAsync(path, csv, { encoding: FileSystem.EncodingType.UTF8 });
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(path, { mimeType: 'text/csv', dialogTitle: filename });
+        }
+        Alert.alert('', SUCCESS_EXPORT);
+      }
+    } catch {
+      Alert.alert('', ERROR_EXPORT);
+    }
+  }, [getCategoryLabel]);
+
+  const runImport = useCallback(
+    async (csvText: string) => {
+      const rows = parseSourceCsv(csvText);
+      if (rows.length === 0) {
+        Alert.alert('', ERROR_IMPORT);
+        return;
+      }
+      if (Platform.OS === 'web') {
+        const ok = window.confirm(CONFIRM_IMPORT_MSG.replace('%d', String(rows.length)));
+        if (!ok) return;
+      }
+      try {
+        const existingAccounts = await getStoredAccounts();
+        const accountNames = rows.map((r) => r.accountName);
+        const { accountNameToId, mergedAccounts } = resolveAccountsForImport(
+          existingAccounts,
+          accountNames,
+        );
+        const transactions = parsedRowsToTransactions(rows, accountNameToId);
+        const existing = await getStoredTransactions();
+        await updateStoredAccounts(mergedAccounts);
+        await saveTransactions([...existing, ...transactions]);
+        await refreshTransactions();
+        Alert.alert('', SUCCESS_IMPORT.replace('%d', String(transactions.length)));
+      } catch {
+        Alert.alert('', ERROR_IMPORT);
+      }
+    },
+    [refreshTransactions],
+  );
+
+  const handleImportWeb = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const text = typeof reader.result === 'string' ? reader.result : '';
+        runImport(text);
+      };
+      reader.readAsText(file, 'UTF-8');
+    },
+    [runImport],
+  );
+
+  const handleImportNative = useCallback(async () => {
+    try {
+      const DocumentPicker = await import('expo-document-picker');
+      const FileSystem = await import('expo-file-system');
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'text/csv',
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) {
+        return;
+      }
+      const uri = result.assets[0]?.uri;
+      if (!uri) {
+        Alert.alert('', ERROR_NO_FILE);
+        return;
+      }
+      const text = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.UTF8 });
+      const rows = parseSourceCsv(text);
+      if (rows.length === 0) {
+        Alert.alert('', ERROR_IMPORT);
+        return;
+      }
+      Alert.alert(
+        CONFIRM_IMPORT_TITLE,
+        CONFIRM_IMPORT_MSG.replace('%d', String(rows.length)),
+        [
+          { text: BTN_CANCEL, style: 'cancel' },
+          {
+            text: BTN_OK,
+            onPress: async () => {
+              try {
+                const existingAccounts = await getStoredAccounts();
+                const accountNames = rows.map((r) => r.accountName);
+                const { accountNameToId, mergedAccounts } = resolveAccountsForImport(
+                  existingAccounts,
+                  accountNames,
+                );
+                const transactions = parsedRowsToTransactions(rows, accountNameToId);
+                const existing = await getStoredTransactions();
+                await updateStoredAccounts(mergedAccounts);
+                await saveTransactions([...existing, ...transactions]);
+                await refreshTransactions();
+                Alert.alert('', SUCCESS_IMPORT.replace('%d', String(transactions.length)));
+              } catch {
+                Alert.alert('', ERROR_IMPORT);
+              }
+            },
+          },
+        ]
+      );
+    } catch {
+      Alert.alert('', ERROR_IMPORT);
+    }
+  }, [refreshTransactions]);
+
+  const handleImportPress = useCallback(() => {
+    if (Platform.OS === 'web') {
+      fileInputRef.current?.click();
+    } else {
+      handleImportNative();
+    }
+  }, [handleImportNative]);
+
+  return (
+    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => navigation.goBack()}
+          hitSlop={12}
+        >
+          <Ionicons name="chevron-back" size={BACK_ICON_SIZE} color="#2563eb" />
+        </TouchableOpacity>
+        <Text style={styles.title}>{TITLE}</Text>
+      </View>
+
+      {Platform.OS === 'web' && (
+        <input
+          ref={(el) => {
+            (fileInputRef as React.MutableRefObject<unknown>).current = el;
+          }}
+          type="file"
+          accept=".csv"
+          style={styles.hiddenInput as React.CSSProperties}
+          onChange={handleImportWeb}
+        />
+      )}
+
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 24 }]}
+      >
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{SECTION_EXPORT}</Text>
+          <TouchableOpacity style={styles.card} onPress={handleExport} activeOpacity={0.7}>
+            <Ionicons name="download-outline" size={24} color="#2563eb" />
+            <View style={styles.cardText}>
+              <Text style={styles.cardTitle}>{BTN_EXPORT}</Text>
+              <Text style={styles.cardHint}>{EXPORT_HINT}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{SECTION_IMPORT}</Text>
+          <TouchableOpacity style={styles.card} onPress={handleImportPress} activeOpacity={0.7}>
+            <Ionicons name="document-attach-outline" size={24} color="#2563eb" />
+            <View style={styles.cardText}>
+              <Text style={styles.cardTitle}>{BTN_IMPORT}</Text>
+              <Text style={styles.cardHint}>{IMPORT_HINT}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#f9fafb' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    backgroundColor: '#fff',
+  },
+  backBtn: { paddingVertical: 8, paddingRight: 16 },
+  title: { fontSize: 18, fontWeight: '600', color: '#1f2937' },
+  hiddenInput: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    opacity: 0,
+    left: -9999,
+  },
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 20, paddingTop: 20 },
+  section: { marginBottom: 24 },
+  sectionTitle: { fontSize: 14, fontWeight: '600', color: '#6b7280', marginBottom: 8 },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 16,
+  },
+  cardText: { flex: 1, marginLeft: 12, marginRight: 8 },
+  cardTitle: { fontSize: 16, fontWeight: '600', color: '#1f2937' },
+  cardHint: { fontSize: 13, color: '#6b7280', marginTop: 4 },
+});

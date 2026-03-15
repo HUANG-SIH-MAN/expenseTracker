@@ -1,5 +1,5 @@
 /**
- * 年預算 Tab：選年份 → 依 1–12 月顯示年度項目；每筆顯示類別、類型、計劃金額、實際金額；新增/編輯/刪除。
+ * 年預算 Tab：選年份 → 單一列表顯示該年所有年度項目；每筆顯示月份、類別、類型、計劃/實際金額；新增/編輯時可選月份。
  */
 import React, { useState, useCallback, useEffect } from 'react';
 import {
@@ -19,11 +19,19 @@ import { getAnnualBudgetEntries, saveAnnualBudgetEntries } from '../utils/storag
 import { generateId } from '../utils/id';
 
 const MONTHS = 12;
+const YEAR_RANGE_PAST = 10;
+const YEAR_RANGE_FUTURE = 3;
 const LABEL_YEAR = '年份';
-const BTN_ADD_MONTH = '新增該月項目';
-const EMPTY_MONTH = '該月尚無規劃';
+const BTN_ADD_ITEM = '新增項目';
+const EMPTY_LIST = '尚無年度預算項目';
 const LABEL_PLANNED = '計劃';
 const LABEL_ACTUAL = '實際';
+const SUMMARY_PLANNED_INCOME = '計劃收入';
+const SUMMARY_PLANNED_EXPENSE = '計劃支出';
+const SUMMARY_PLANNED_BALANCE = '計劃結餘';
+const SUMMARY_ACTUAL_INCOME = '實際收入';
+const SUMMARY_ACTUAL_EXPENSE = '實際支出';
+const SUMMARY_ACTUAL_BALANCE = '實際結餘';
 const INCOME_LABEL = '收入';
 const EXPENSE_LABEL = '支出';
 const MODAL_TITLE_ADD = '新增年度項目';
@@ -62,6 +70,7 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
   const [formLabel, setFormLabel] = useState('');
   const [formAmountStr, setFormAmountStr] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<AnnualBudgetEntry | null>(null);
+  const [yearPickerVisible, setYearPickerVisible] = useState(false);
 
   const loadEntries = useCallback(async () => {
     setLoading(true);
@@ -152,40 +161,93 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
     setConfirmDelete(null);
   }, [confirmDelete, entries, year]);
 
-  const entriesByMonth = React.useMemo(() => {
-    const map: Record<number, AnnualBudgetEntry[]> = {};
-    for (let m = 1; m <= MONTHS; m++) map[m] = [];
-    for (const e of entries) {
-      if (e.month >= 1 && e.month <= MONTHS) map[e.month].push(e);
-    }
-    for (let m = 1; m <= MONTHS; m++) {
-      map[m].sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
-    }
-    return map;
+  const sortedEntries = React.useMemo(() => {
+    return [...entries]
+      .filter((e) => e.month >= 1 && e.month <= MONTHS)
+      .sort((a, b) => a.month - b.month || a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
   }, [entries]);
+
+  const yearOptions = React.useMemo(() => {
+    const cur = new Date().getFullYear();
+    const list: number[] = [];
+    for (let y = cur - YEAR_RANGE_PAST; y <= cur + YEAR_RANGE_FUTURE; y++) {
+      list.push(y);
+    }
+    return list.reverse();
+  }, []);
+
+  const summary = React.useMemo(() => {
+    let plannedIncome = 0;
+    let plannedExpense = 0;
+    let actualIncome = 0;
+    let actualExpense = 0;
+    for (const e of entries) {
+      if (e.type === 'income') {
+        plannedIncome += e.estimatedAmount;
+        actualIncome += getActualAmount(transactions, e.id);
+      } else {
+        plannedExpense += e.estimatedAmount;
+        actualExpense += getActualAmount(transactions, e.id);
+      }
+    }
+    return {
+      plannedIncome,
+      plannedExpense,
+      plannedBalance: plannedIncome - plannedExpense,
+      actualIncome,
+      actualExpense,
+      actualBalance: actualIncome - actualExpense,
+    };
+  }, [entries, transactions]);
 
   return (
     <View style={styles.container}>
       <View style={styles.yearRow}>
         <Text style={styles.yearLabel}>{LABEL_YEAR}</Text>
-        <View style={styles.yearControls}>
-          <TouchableOpacity
-            style={styles.yearBtn}
-            onPress={() => setYear((y) => y - 1)}
-            hitSlop={12}
-          >
-            <Ionicons name="chevron-back" size={24} color="#2563eb" />
-          </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.yearDropdown}
+          onPress={() => setYearPickerVisible(true)}
+          activeOpacity={0.7}
+        >
           <Text style={styles.yearValue}>{year}</Text>
-          <TouchableOpacity
-            style={styles.yearBtn}
-            onPress={() => setYear((y) => y + 1)}
-            hitSlop={12}
-          >
-            <Ionicons name="chevron-forward" size={24} color="#2563eb" />
-          </TouchableOpacity>
-        </View>
+          <Ionicons name="chevron-down" size={22} color="#2563eb" />
+        </TouchableOpacity>
       </View>
+
+      <Modal
+        visible={yearPickerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setYearPickerVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setYearPickerVisible(false)}
+        >
+          <TouchableOpacity
+            style={styles.yearPickerContent}
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={styles.yearPickerTitle}>{LABEL_YEAR}</Text>
+            <ScrollView style={styles.yearPickerList}>
+              {yearOptions.map((y) => (
+                <TouchableOpacity
+                  key={y}
+                  style={[styles.yearPickerItem, year === y && styles.yearPickerItemActive]}
+                  onPress={() => {
+                    setYear(y);
+                    setYearPickerVisible(false);
+                  }}
+                >
+                  <Text style={[styles.yearPickerItemText, year === y && styles.yearPickerItemTextActive]}>{y}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       {loading ? (
         <Text style={styles.loadingText}>載入中…</Text>
@@ -194,65 +256,90 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
           style={styles.scroll}
           contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 24 }]}
         >
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((month) => {
-            const monthEntries = entriesByMonth[month] ?? [];
-            return (
-              <View key={month} style={styles.monthBlock}>
-                <View style={styles.monthHeader}>
-                  <Text style={styles.monthTitle}>{month} 月</Text>
-                  <TouchableOpacity
-                    style={styles.addMonthBtn}
-                    onPress={() => openAdd(month)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="add-circle-outline" size={20} color="#2563eb" />
-                    <Text style={styles.addMonthBtnText}>{BTN_ADD_MONTH}</Text>
-                  </TouchableOpacity>
-                </View>
-                {monthEntries.length === 0 ? (
-                  <Text style={styles.emptyMonth}>{EMPTY_MONTH}</Text>
-                ) : (
-                  <View style={styles.entryList}>
-                    {monthEntries.map((entry) => {
-                      const actual = getActualAmount(transactions, entry.id);
-                      const categoryLabel = getCategoryLabel(entry.type, entry.categoryKey);
-                      const displayName = entry.label
-                        ? `${entry.label}（${categoryLabel}）`
-                        : categoryLabel;
-                      return (
-                        <View key={entry.id} style={styles.entryRow}>
-                          <TouchableOpacity
-                            style={styles.entryMain}
-                            onPress={() => openEdit(entry)}
-                            activeOpacity={0.7}
-                          >
-                            <Text style={styles.entryLabel} numberOfLines={1}>
-                              {entry.type === 'income' ? INCOME_LABEL : EXPENSE_LABEL} · {displayName}
-                            </Text>
-                            <View style={styles.entryAmounts}>
-                              <Text style={styles.entryPlanned}>
-                                {LABEL_PLANNED} {entry.estimatedAmount}
-                              </Text>
-                              <Text style={styles.entryActual}>
-                                {LABEL_ACTUAL} {actual}
-                              </Text>
-                            </View>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.entryDelete}
-                            onPress={() => askDelete(entry)}
-                            hitSlop={8}
-                          >
-                            <Ionicons name="trash-outline" size={20} color="#dc2626" />
-                          </TouchableOpacity>
-                        </View>
-                      );
-                    })}
+          <View style={styles.listHeader}>
+            <TouchableOpacity
+              style={styles.addItemBtn}
+              onPress={() => openAdd()}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="add-circle-outline" size={20} color="#2563eb" />
+              <Text style={styles.addItemBtnText}>{BTN_ADD_ITEM}</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.summaryCard}>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>{SUMMARY_PLANNED_INCOME}</Text>
+              <Text style={styles.summaryValue}>{summary.plannedIncome}</Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>{SUMMARY_PLANNED_EXPENSE}</Text>
+              <Text style={[styles.summaryValue, styles.summaryExpense]}>{summary.plannedExpense}</Text>
+            </View>
+            <View style={[styles.summaryRow, styles.summaryRowHighlight]}>
+              <Text style={styles.summaryLabel}>{SUMMARY_PLANNED_BALANCE}</Text>
+              <Text style={[styles.summaryValue, summary.plannedBalance >= 0 ? styles.summaryPositive : styles.summaryNegative]}>
+                {summary.plannedBalance}
+              </Text>
+            </View>
+            <View style={styles.summaryDivider} />
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>{SUMMARY_ACTUAL_INCOME}</Text>
+              <Text style={styles.summaryValue}>{summary.actualIncome}</Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>{SUMMARY_ACTUAL_EXPENSE}</Text>
+              <Text style={[styles.summaryValue, styles.summaryExpense]}>{summary.actualExpense}</Text>
+            </View>
+            <View style={[styles.summaryRow, styles.summaryRowHighlight]}>
+              <Text style={styles.summaryLabel}>{SUMMARY_ACTUAL_BALANCE}</Text>
+              <Text style={[styles.summaryValue, summary.actualBalance >= 0 ? styles.summaryPositive : styles.summaryNegative]}>
+                {summary.actualBalance}
+              </Text>
+            </View>
+          </View>
+
+          {sortedEntries.length === 0 ? (
+            <Text style={styles.emptyList}>{EMPTY_LIST}</Text>
+          ) : (
+            <View style={styles.entryList}>
+              {sortedEntries.map((entry) => {
+                const actual = getActualAmount(transactions, entry.id);
+                const categoryLabel = getCategoryLabel(entry.type, entry.categoryKey);
+                const displayName = entry.label
+                  ? `${entry.label}（${categoryLabel}）`
+                  : categoryLabel;
+                return (
+                  <View key={entry.id} style={styles.entryRow}>
+                    <TouchableOpacity
+                      style={styles.entryMain}
+                      onPress={() => openEdit(entry)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.entryLabel} numberOfLines={1}>
+                        {entry.month}月 · {entry.type === 'income' ? INCOME_LABEL : EXPENSE_LABEL} · {displayName}
+                      </Text>
+                      <View style={styles.entryAmounts}>
+                        <Text style={styles.entryPlanned}>
+                          {LABEL_PLANNED} {entry.estimatedAmount}
+                        </Text>
+                        <Text style={styles.entryActual}>
+                          {LABEL_ACTUAL} {actual}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.entryDelete}
+                      onPress={() => askDelete(entry)}
+                      hitSlop={8}
+                    >
+                      <Ionicons name="trash-outline" size={20} color="#dc2626" />
+                    </TouchableOpacity>
                   </View>
-                )}
-              </View>
-            );
-          })}
+                );
+              })}
+            </View>
+          )}
         </ScrollView>
       )}
 
@@ -392,35 +479,71 @@ const styles = StyleSheet.create({
     borderBottomColor: '#e5e7eb',
   },
   yearLabel: { fontSize: 16, fontWeight: '600', color: '#374151' },
-  yearControls: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  yearBtn: { padding: 4 },
+  yearDropdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: '#f3f4f6',
+  },
   yearValue: { fontSize: 18, fontWeight: '700', color: '#1f2937', minWidth: 48, textAlign: 'center' },
+  yearPickerContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    width: '100%',
+    maxWidth: 320,
+    maxHeight: '70%',
+  },
+  yearPickerTitle: { fontSize: 18, fontWeight: '600', color: '#1f2937', marginBottom: 12 },
+  yearPickerList: { maxHeight: 320 },
+  yearPickerItem: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    marginBottom: 4,
+  },
+  yearPickerItemActive: { backgroundColor: '#2563eb' },
+  yearPickerItemText: { fontSize: 16, fontWeight: '500', color: '#374151' },
+  yearPickerItemTextActive: { color: '#fff' },
   loadingText: { padding: 24, textAlign: 'center', color: '#6b7280' },
+  summaryCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 16,
+    marginBottom: 20,
+  },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6 },
+  summaryRowHighlight: { paddingVertical: 8, marginTop: 4 },
+  summaryLabel: { fontSize: 14, color: '#6b7280' },
+  summaryValue: { fontSize: 15, fontWeight: '600', color: '#1f2937' },
+  summaryExpense: { color: '#dc2626' },
+  summaryPositive: { color: '#059669' },
+  summaryNegative: { color: '#dc2626' },
+  summaryDivider: { height: 1, backgroundColor: '#e5e7eb', marginVertical: 8 },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 20, paddingTop: 16 },
-  monthBlock: {
-    marginBottom: 20,
+  listHeader: { marginBottom: 12 },
+  addItemBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+  },
+  addItemBtnText: { fontSize: 14, fontWeight: '600', color: '#2563eb' },
+  emptyList: { padding: 24, fontSize: 14, color: '#6b7280', textAlign: 'center' },
+  entryList: {
     backgroundColor: '#fff',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e5e7eb',
     overflow: 'hidden',
   },
-  monthHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    backgroundColor: '#f9fafb',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-  },
-  monthTitle: { fontSize: 16, fontWeight: '600', color: '#374151' },
-  addMonthBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  addMonthBtnText: { fontSize: 14, fontWeight: '600', color: '#2563eb' },
-  emptyMonth: { padding: 16, fontSize: 14, color: '#6b7280', textAlign: 'center' },
-  entryList: {},
   entryRow: {
     flexDirection: 'row',
     alignItems: 'center',

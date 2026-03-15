@@ -34,18 +34,16 @@ const BTN_CANCEL = '取消';
 const BTN_CONTINUE = '繼續';
 const BTN_CONFIRM_CLEAR = '確定清除';
 
-/** 設定子頁的畫面名稱（僅列出無參數的設定頁） */
+/** 設定子頁的畫面名稱（僅列出無參數的設定頁；預算規劃改由底部導航進入） */
 type SettingScreenName =
   | 'PrimaryCurrency'
   | 'CategorySettings'
-  | 'RecurringSettings'
-  | 'BudgetSettings';
+  | 'RecurringSettings';
 
 const SETTING_ITEMS: { screen: SettingScreenName; title: string; subtitle?: string }[] = [
   { screen: 'PrimaryCurrency', title: '主要貨幣', subtitle: '記帳與餘額顯示使用的貨幣' },
   { screen: 'CategorySettings', title: '類別管理', subtitle: '自訂支出與收入類別、圖示' },
   { screen: 'RecurringSettings', title: '固定收支', subtitle: '週期性固定項目（如月租、薪水）' },
-  { screen: 'BudgetSettings', title: '預算規劃', subtitle: '月固定支出、可支配額與剩餘日預算' },
 ];
 
 type NavProp = NativeStackNavigationProp<MainStackParamList, 'Settings'>;
@@ -139,6 +137,19 @@ export default function SettingsScreen(): React.JSX.Element {
               <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
             </TouchableOpacity>
           ))}
+          <TouchableOpacity
+            style={styles.row}
+            onPress={() => navigation.navigate('ImportExport')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.rowContent}>
+              <Text style={styles.rowTitle}>資料匯入與匯出</Text>
+              <Text style={styles.rowSubtitle} numberOfLines={1}>
+                匯出記帳 CSV、匯入其他 APP 的 CSV
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+          </TouchableOpacity>
         </View>
 
         <TouchableOpacity

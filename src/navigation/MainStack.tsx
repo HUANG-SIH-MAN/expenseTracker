@@ -13,6 +13,7 @@ import StatisticsScreen from '../screens/StatisticsScreen';
 import CategoryExpensesScreen from '../screens/CategoryExpensesScreen';
 import BudgetSettingsScreen from '../screens/BudgetSettingsScreen';
 import BudgetFixedEditScreen from '../screens/BudgetFixedEditScreen';
+import ImportExportScreen from '../screens/ImportExportScreen';
 import type { TransactionType } from '../types';
 
 export type MainStackParamList = {
@@ -35,6 +36,7 @@ export type MainStackParamList = {
   RecurringEdit: { recurringId?: string };
   BudgetSettings: undefined;
   BudgetFixedEdit: { itemId?: string };
+  ImportExport: undefined;
 };
 
 const Stack = createNativeStackNavigator<MainStackParamList>();
@@ -110,6 +112,11 @@ export default function MainStack(): React.JSX.Element {
       <Stack.Screen
         name="BudgetFixedEdit"
         component={BudgetFixedEditScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="ImportExport"
+        component={ImportExportScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>
