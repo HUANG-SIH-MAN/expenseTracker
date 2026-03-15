@@ -1,7 +1,7 @@
 /**
  * 新增單筆收入/支出 Modal — 表單 + 底部計算機鍵盤
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -15,14 +15,9 @@ import type { TransactionType } from '../types';
 import { generateId } from '../utils/id';
 import { formatDateWithWeekday } from '../utils/date';
 import { parseAmountInput } from '../utils/amountExpression';
-import {
-  DEFAULT_EXPENSE_CATEGORIES,
-  DEFAULT_INCOME_CATEGORIES,
-} from '../constants';
-import { CalculatorKeypad } from './CalculatorKeypad';
+import { useCategories } from '../contexts/CategoriesContext';
+import CalculatorKeypad from './CalculatorKeypad';
 
-const EXPENSE_KEYS = Object.keys(DEFAULT_EXPENSE_CATEGORIES);
-const INCOME_KEYS = Object.keys(DEFAULT_INCOME_CATEGORIES);
 const KEYPAD_HEIGHT_PERCENT = 0.42;
 
 export interface AddTransactionModalProps {
@@ -46,18 +41,31 @@ export default function AddTransactionModal({
   onClose,
   onSubmit,
 }: AddTransactionModalProps): React.JSX.Element {
+  const { expenseCategories, incomeCategories } = useCategories();
   const [type, setType] = useState<TransactionType>('expense');
   const [amountStr, setAmountStr] = useState('');
-  const [category, setCategory] = useState(EXPENSE_KEYS[0]);
   const [note, setNote] = useState('');
 
-  const categoryMap = type === 'expense' ? DEFAULT_EXPENSE_CATEGORIES : DEFAULT_INCOME_CATEGORIES;
-  const categoryKeys = type === 'expense' ? EXPENSE_KEYS : INCOME_KEYS;
+  const categoryList = type === 'expense' ? expenseCategories : incomeCategories;
+  const categoryKeys = categoryList.map((c) => c.key);
+  const categoryMap = categoryList.reduce<Record<string, string>>((acc, c) => {
+    acc[c.key] = c.label;
+    return acc;
+  }, {});
+  const [category, setCategory] = useState(categoryKeys[0] ?? '');
 
   const handleTypeChange = (t: TransactionType) => {
     setType(t);
-    setCategory(t === 'expense' ? EXPENSE_KEYS[0] : INCOME_KEYS[0]);
+    const list = t === 'expense' ? expenseCategories : incomeCategories;
+    const first = list[0]?.key;
+    if (first) setCategory(first);
   };
+
+  useEffect(() => {
+    if (categoryKeys.length > 0 && !categoryKeys.includes(category)) {
+      setCategory(categoryKeys[0]);
+    }
+  }, [categoryKeys, category]);
 
   const parsed = parseAmountInput(amountStr);
   const amount = parsed.value;
@@ -77,7 +85,8 @@ export default function AddTransactionModal({
     });
     setAmountStr('');
     setNote('');
-    setCategory(type === 'expense' ? EXPENSE_KEYS[0] : INCOME_KEYS[0]);
+    const list = type === 'expense' ? expenseCategories : incomeCategories;
+    setCategory(list[0]?.key ?? '');
     onClose();
   };
 

@@ -6,6 +6,9 @@ import LedgerBalanceScreen from '../screens/LedgerBalanceScreen';
 import EditAccountScreen from '../screens/EditAccountScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import PrimaryCurrencyScreen from '../screens/PrimaryCurrencyScreen';
+import CategorySettingsScreen from '../screens/CategorySettingsScreen';
+import RecurringSettingsScreen from '../screens/RecurringSettingsScreen';
+import RecurringEditScreen from '../screens/RecurringEditScreen';
 
 export type MainStackParamList = {
   Home: undefined;
@@ -14,6 +17,9 @@ export type MainStackParamList = {
   EditAccount: { accountId: string };
   Settings: undefined;
   PrimaryCurrency: undefined;
+  CategorySettings: undefined;
+  RecurringSettings: undefined;
+  RecurringEdit: { recurringId?: string };
 };
 
 const Stack = createNativeStackNavigator<MainStackParamList>();
@@ -54,6 +60,21 @@ export default function MainStack(): React.JSX.Element {
       <Stack.Screen
         name="PrimaryCurrency"
         component={PrimaryCurrencyScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="CategorySettings"
+        component={CategorySettingsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="RecurringSettings"
+        component={RecurringSettingsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="RecurringEdit"
+        component={RecurringEditScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>

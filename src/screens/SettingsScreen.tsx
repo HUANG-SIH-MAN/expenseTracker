@@ -19,10 +19,12 @@ const TITLE = '設定';
 const BACK_ICON_SIZE = 28;
 
 /** 設定子頁的畫面名稱（僅列出無參數的設定頁） */
-type SettingScreenName = 'PrimaryCurrency';
+type SettingScreenName = 'PrimaryCurrency' | 'CategorySettings' | 'RecurringSettings';
 
 const SETTING_ITEMS: { screen: SettingScreenName; title: string; subtitle?: string }[] = [
   { screen: 'PrimaryCurrency', title: '主要貨幣', subtitle: '記帳與餘額顯示使用的貨幣' },
+  { screen: 'CategorySettings', title: '類別管理', subtitle: '自訂支出與收入類別、圖示' },
+  { screen: 'RecurringSettings', title: '固定收支', subtitle: '週期性固定項目（如月租、薪水）' },
 ];
 
 type NavProp = NativeStackNavigationProp<MainStackParamList, 'Settings'>;

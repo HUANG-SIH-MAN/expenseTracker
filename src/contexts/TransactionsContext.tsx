@@ -4,8 +4,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import type { Transaction } from '../types';
 import {
-  getStoredTransactions,
-  saveTransactions,
+  syncRecurringToTransactions,
   addTransaction as addTransactionStorage,
   deleteTransaction as deleteTransactionStorage,
   updateTransaction as updateTransactionStorage,
@@ -18,6 +17,8 @@ interface TransactionsContextValue {
   updateTransaction: (t: Transaction) => Promise<void>;
   getTransactionsByDate: (date: string) => Transaction[];
   getTransactionById: (id: string) => Transaction | undefined;
+  /** 重新同步固定收支並更新列表（如從設定頁新增固定收支後回首頁） */
+  refreshTransactions: () => Promise<void>;
 }
 
 const TransactionsContext = createContext<TransactionsContextValue | null>(null);
@@ -26,7 +27,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   useEffect(() => {
-    getStoredTransactions().then(setTransactions);
+    syncRecurringToTransactions().then(setTransactions);
   }, []);
 
   const addTransaction = useCallback(async (t: Transaction) => {
@@ -54,6 +55,11 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     [transactions]
   );
 
+  const refreshTransactions = useCallback(async () => {
+    const next = await syncRecurringToTransactions();
+    setTransactions(next);
+  }, []);
+
   const value: TransactionsContextValue = {
     transactions,
     addTransaction,
@@ -61,6 +67,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     updateTransaction,
     getTransactionById,
     getTransactionsByDate,
+    refreshTransactions,
   };
 
   return (

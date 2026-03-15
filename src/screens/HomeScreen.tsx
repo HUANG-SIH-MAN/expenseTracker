@@ -1,7 +1,7 @@
 /**
  * 主畫面：日曆選日期 + 當日收支列表 + 新增記帳（跳轉至獨立畫面）
  */
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -11,20 +11,16 @@ import {
   FlatList,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Transaction, Account } from '../types';
 import { Calendar } from '../components';
 import { useTransactions } from '../contexts/TransactionsContext';
+import { useCategories } from '../contexts/CategoriesContext';
 import { getTodayKey } from '../utils/date';
 import { getStoredAccounts } from '../utils/storage';
 import type { MainStackParamList } from '../navigation/MainStack';
-import {
-  DEFAULT_EXPENSE_CATEGORIES,
-  DEFAULT_INCOME_CATEGORIES,
-  CATEGORY_ICONS,
-} from '../constants';
 
 const MONTH_PREV = '‹';
 const MONTH_NEXT = '›';
@@ -57,7 +53,14 @@ export default function HomeScreen(): React.JSX.Element {
   const today = getTodayKey();
   const [selectedDate, setSelectedDate] = useState<string>(today);
 
-  const { getTransactionsByDate, transactions } = useTransactions();
+  const { getTransactionsByDate, transactions, refreshTransactions, deleteTransaction } = useTransactions();
+  const [confirmDeleteTransaction, setConfirmDeleteTransaction] = useState<Transaction | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      refreshTransactions();
+    }, [refreshTransactions])
+  );
+  const { getCategoryLabel: getCategoryLabelFromContext, getCategoryIcon: getCategoryIconFromContext } = useCategories();
   const { year, month } = useMemo(
     () => getYearMonthFromDateKey(selectedDate),
     [selectedDate]
@@ -114,12 +117,11 @@ export default function HomeScreen(): React.JSX.Element {
   };
 
   const getCategoryLabel = (t: Transaction): string => {
-    const map = t.type === 'expense' ? DEFAULT_EXPENSE_CATEGORIES : DEFAULT_INCOME_CATEGORIES;
-    return map[t.category] ?? t.category;
+    return getCategoryLabelFromContext(t.type, t.category);
   };
 
-  const getCategoryIcon = (category: string): string => {
-    return CATEGORY_ICONS[category] ?? '📌';
+  const getCategoryIcon = (t: Transaction): string => {
+    return getCategoryIconFromContext(t.type, t.category);
   };
 
   const formatAmount = (n: number): string => {
@@ -134,11 +136,26 @@ export default function HomeScreen(): React.JSX.Element {
     });
   };
 
+  const askDeleteTransaction = (item: Transaction) => {
+    setConfirmDeleteTransaction(item);
+  };
+
+  const cancelDeleteTransaction = () => {
+    setConfirmDeleteTransaction(null);
+  };
+
+  const confirmDeleteTransactionAction = useCallback(async () => {
+    const item = confirmDeleteTransaction;
+    if (!item) return;
+    await deleteTransaction(item.id);
+    setConfirmDeleteTransaction(null);
+  }, [confirmDeleteTransaction, deleteTransaction]);
+
   const renderItem = ({ item }: { item: Transaction }) => (
     <View style={styles.recordRow}>
       <View style={styles.recordLeft}>
         <View style={styles.recordIconWrap}>
-          <Text style={styles.recordIcon}>{getCategoryIcon(item.category)}</Text>
+          <Text style={styles.recordIcon}>{getCategoryIcon(item)}</Text>
           <Text style={styles.recordSubLabel}>{SUB_LABEL_SELF}</Text>
         </View>
         <Text style={styles.recordCategoryName} numberOfLines={1}>
@@ -163,6 +180,13 @@ export default function HomeScreen(): React.JSX.Element {
           hitSlop={8}
         >
           <Text style={styles.recordMenuText}>{MENU_ELLIPSIS}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.recordDeleteBtn}
+          onPress={() => askDeleteTransaction(item)}
+          hitSlop={8}
+        >
+          <Ionicons name="trash-outline" size={20} color="#dc2626" />
         </TouchableOpacity>
       </View>
     </View>
@@ -267,6 +291,38 @@ export default function HomeScreen(): React.JSX.Element {
           <Text style={styles.bottomBarLabel}>{BOTTOM_SETTINGS}</Text>
         </TouchableOpacity>
       </View>
+
+      {confirmDeleteTransaction != null ? (
+        <View
+          style={[
+            styles.confirmBar,
+            {
+              paddingBottom: insets.bottom + 12,
+              bottom: bottomBarPadding,
+            },
+          ]}
+        >
+          <Text style={styles.confirmText} numberOfLines={2}>
+            確定要刪除此筆紀錄？「{getCategoryLabel(confirmDeleteTransaction)} {confirmDeleteTransaction.type === 'income' ? '+' : '-'}{formatAmount(confirmDeleteTransaction.amount)}」
+          </Text>
+          <View style={styles.confirmActions}>
+            <TouchableOpacity
+              style={styles.confirmCancelBtn}
+              onPress={cancelDeleteTransaction}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.confirmCancelText}>取消</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.confirmDeleteBtn}
+              onPress={confirmDeleteTransactionAction}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.confirmDeleteText}>刪除</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -421,6 +477,11 @@ const styles = StyleSheet.create({
     minWidth: 28,
     alignItems: 'center',
   },
+  recordDeleteBtn: {
+    padding: 4,
+    minWidth: 28,
+    alignItems: 'center',
+  },
   recordMenuText: {
     fontSize: 18,
     color: '#6b7280',
@@ -444,5 +505,48 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9ca3af',
     marginTop: 2,
+  },
+  confirmBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  confirmText: {
+    fontSize: 15,
+    color: '#374151',
+    marginBottom: 12,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  confirmCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    backgroundColor: '#f3f4f6',
+  },
+  confirmCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  confirmDeleteBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    backgroundColor: '#dc2626',
+  },
+  confirmDeleteText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
 });

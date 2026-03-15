@@ -33,6 +33,19 @@ export interface OnboardingData {
   primaryCurrency: CurrencyCode;
 }
 
+/** 單筆類別項目（key 用於儲存與交易關聯，label 顯示名稱，icon 為 emoji） */
+export interface CategoryItem {
+  key: string;
+  label: string;
+  icon: string;
+}
+
+/** 使用者自訂的支出/收入類別列表（儲存於 AsyncStorage） */
+export interface StoredCategories {
+  expense: CategoryItem[];
+  income: CategoryItem[];
+}
+
 /** 單筆交易類型：收入或支出 */
 export type TransactionType = 'income' | 'expense';
 
@@ -46,5 +59,31 @@ export interface Transaction {
   note?: string;
   /** 帳戶 ID，對應 Onboarding 設定的帳戶；未設定時顯示為「現金」 */
   accountId?: string;
+  /** 若為固定收支自動帶入，存對應 RecurringItem.id；使用者編輯/刪除後會脫離或加入 skip */
+  recurringId?: string;
+  createdAt: string; // ISO 8601
+}
+
+/** 使用者刪除或編輯過的固定收支發生日，不再自動帶入 */
+export interface RecurringSkipItem {
+  recurringId: string;
+  date: string; // YYYY-MM-DD
+}
+
+/** 固定收支週期 */
+export type RecurringRepeat = 'monthly' | 'weekly';
+
+/** 單筆固定收支（週期性範本，供提醒或自動寫入） */
+export interface RecurringItem {
+  id: string;
+  type: TransactionType;
+  amount: number;
+  category: string;
+  note?: string;
+  accountId?: string;
+  /** 每月 / 每週 */
+  repeat: RecurringRepeat;
+  /** 每月時：1–28 日；每週時：0–6（0=週日） */
+  day: number;
   createdAt: string; // ISO 8601
 }

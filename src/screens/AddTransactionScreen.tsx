@@ -18,20 +18,15 @@ import { generateId } from '../utils/id';
 import { parseAmountInput } from '../utils/amountExpression';
 import { formatDateWithWeekday } from '../utils/date';
 import { useTransactions } from '../contexts/TransactionsContext';
-import { getStoredAccounts } from '../utils/storage';
+import { useCategories } from '../contexts/CategoriesContext';
+import { getStoredAccounts, addRecurringSkip } from '../utils/storage';
 import type { MainStackParamList } from '../navigation/MainStack';
-import {
-  DEFAULT_EXPENSE_CATEGORIES,
-  DEFAULT_INCOME_CATEGORIES,
-} from '../constants';
 import { CalculatorKeypad } from '../components';
 import type { Account } from '../types';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 type RouteProps = NativeStackScreenProps<MainStackParamList, 'AddTransaction'>['route'];
 
-const EXPENSE_KEYS = Object.keys(DEFAULT_EXPENSE_CATEGORIES);
-const INCOME_KEYS = Object.keys(DEFAULT_INCOME_CATEGORIES);
 /** 鍵盤區佔畫面高度比例（0～1），表單區佔其餘，讓「整頁」都在畫面內 */
 const KEYPAD_FLEX_RATIO = 0.32;
 const BODY_FLEX_RATIO = 1 - KEYPAD_FLEX_RATIO;
@@ -44,17 +39,32 @@ export default function AddTransactionScreen(): React.JSX.Element {
   const navigation = useNavigation();
   const { selectedDate, transactionId } = route.params;
   const { addTransaction, updateTransaction, getTransactionById } = useTransactions();
+  const { expenseCategories, incomeCategories } = useCategories();
 
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [type, setType] = useState<TransactionType>('expense');
   const [dateKey, setDateKey] = useState(selectedDate);
   const [amountStr, setAmountStr] = useState('');
-  const [category, setCategory] = useState(EXPENSE_KEYS[0]);
+  const categoryList = type === 'expense' ? expenseCategories : incomeCategories;
+  const categoryKeys = categoryList.map((c) => c.key);
+  const categoryMap = categoryList.reduce<Record<string, string>>((acc, c) => {
+    acc[c.key] = c.label;
+    return acc;
+  }, {});
+  const [category, setCategory] = useState(categoryKeys[0] ?? '');
   const [note, setNote] = useState('');
   const [accountId, setAccountId] = useState<string | undefined>(undefined);
 
   const isEditMode = Boolean(transactionId);
   const existing = transactionId ? getTransactionById(transactionId) : undefined;
+
+  useEffect(() => {
+    const keys = type === 'expense'
+      ? expenseCategories.map((c) => c.key)
+      : incomeCategories.map((c) => c.key);
+    const first = keys[0];
+    if (first) setCategory((prev) => (keys.includes(prev) ? prev : first));
+  }, [type, expenseCategories, incomeCategories]);
 
   useEffect(() => {
     getStoredAccounts().then((list) => {
@@ -71,17 +81,18 @@ export default function AddTransactionScreen(): React.JSX.Element {
     setType(existing.type);
     setDateKey(existing.date);
     setAmountStr(String(existing.amount));
-    setCategory(existing.category);
+    const list = existing.type === 'expense' ? expenseCategories : incomeCategories;
+    const keys = list.map((c) => c.key);
+    setCategory(keys.includes(existing.category) ? existing.category : keys[0] ?? existing.category);
     setNote(existing.note ?? '');
     setAccountId(existing.accountId);
   }, [existing?.id]);
 
-  const categoryMap = type === 'expense' ? DEFAULT_EXPENSE_CATEGORIES : DEFAULT_INCOME_CATEGORIES;
-  const categoryKeys = type === 'expense' ? EXPENSE_KEYS : INCOME_KEYS;
-
   const handleTypeChange = (t: TransactionType) => {
     setType(t);
-    setCategory(t === 'expense' ? EXPENSE_KEYS[0] : INCOME_KEYS[0]);
+    const list = t === 'expense' ? expenseCategories : incomeCategories;
+    const first = list[0]?.key;
+    if (first) setCategory(first);
   };
 
   const parsed = parseAmountInput(amountStr);
@@ -89,10 +100,13 @@ export default function AddTransactionScreen(): React.JSX.Element {
   const canSubmit = parsed.valid && amount > 0;
   const amountError = amountStr.trim() !== '' && !parsed.valid ? parsed.error : undefined;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!parsed.valid || amount <= 0) return;
     if (isEditMode && existing) {
-      updateTransaction({
+      if (existing.recurringId) {
+        await addRecurringSkip(existing.recurringId, existing.date);
+      }
+      await updateTransaction({
         ...existing,
         type,
         amount,
@@ -100,6 +114,7 @@ export default function AddTransactionScreen(): React.JSX.Element {
         category,
         note: note.trim() || undefined,
         accountId: accountId || undefined,
+        recurringId: undefined,
       });
     } else {
       addTransaction({

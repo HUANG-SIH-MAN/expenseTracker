@@ -5,3 +5,4 @@
 
 export { OnboardingProvider, useOnboarding } from './OnboardingContext';
 export { TransactionsProvider, useTransactions } from './TransactionsContext';
+export { CategoriesProvider, useCategories } from './CategoriesContext';
