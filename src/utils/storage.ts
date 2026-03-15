@@ -40,9 +40,29 @@ export async function getStoredAccounts(): Promise<Account[]> {
   return data?.accounts ?? [];
 }
 
+/** 更新已儲存的帳戶列表（用於編輯帳本後寫回） */
+export async function updateStoredAccounts(accounts: Account[]): Promise<void> {
+  const data = await getOnboardingData();
+  if (!data?.hasCompletedOnboarding) return;
+  await setOnboardingComplete({
+    accounts,
+    primaryCurrency: data.primaryCurrency,
+  });
+}
+
 export async function getStoredPrimaryCurrency(): Promise<CurrencyCode> {
   const data = await getOnboardingData();
   return data?.primaryCurrency ?? DEFAULT_PRIMARY_CURRENCY;
+}
+
+/** 更新主要貨幣（設定頁編輯用） */
+export async function updateStoredPrimaryCurrency(currency: CurrencyCode): Promise<void> {
+  const data = await getOnboardingData();
+  if (!data?.hasCompletedOnboarding) return;
+  await setOnboardingComplete({
+    accounts: data.accounts,
+    primaryCurrency: currency,
+  });
 }
 
 // --- 交易 ---

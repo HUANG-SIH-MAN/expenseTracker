@@ -26,6 +26,7 @@ import {
 } from '../constants';
 import { CalculatorKeypad } from '../components';
 import type { Account } from '../types';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 type RouteProps = NativeStackScreenProps<MainStackParamList, 'AddTransaction'>['route'];
 
@@ -35,7 +36,7 @@ const INCOME_KEYS = Object.keys(DEFAULT_INCOME_CATEGORIES);
 const KEYPAD_FLEX_RATIO = 0.32;
 const BODY_FLEX_RATIO = 1 - KEYPAD_FLEX_RATIO;
 const LABEL_ACCOUNT = '帳戶';
-const BACK_LABEL = '返回';
+const BACK_ICON_SIZE = 28;
 
 export default function AddTransactionScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
@@ -134,7 +135,7 @@ export default function AddTransactionScreen(): React.JSX.Element {
       >
         <View style={styles.typeRow}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} hitSlop={12}>
-            <Text style={styles.backBtnText}>{BACK_LABEL}</Text>
+            <Ionicons name="chevron-back" size={BACK_ICON_SIZE} color="#2563eb" />
           </TouchableOpacity>
           <View style={styles.tabs}>
             <TouchableOpacity
@@ -260,10 +261,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingRight: 12,
     minWidth: 44,
-  },
-  backBtnText: {
-    fontSize: 17,
-    color: '#0a84ff',
   },
   saveBtn: {
     paddingVertical: 8,

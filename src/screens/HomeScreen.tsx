@@ -13,6 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Transaction, Account } from '../types';
 import { Calendar } from '../components';
 import { useTransactions } from '../contexts/TransactionsContext';
@@ -32,6 +33,12 @@ const BTN_ADD = '新增一筆';
 const SUB_LABEL_SELF = '自己';
 const DEFAULT_ACCOUNT_LABEL = '現金';
 const MENU_ELLIPSIS = '⋯';
+const BOTTOM_LEDGER = '帳本';
+const BOTTOM_ADD_LABEL = '記一筆';
+const BOTTOM_SETTINGS = '設定';
+const BOTTOM_BAR_HEIGHT = 56;
+const BOTTOM_ICON_SIZE = 24;
+const BOTTOM_LABEL_FONT_SIZE = 11;
 
 type NavProp = NativeStackNavigationProp<MainStackParamList, 'Home'>;
 
@@ -161,11 +168,16 @@ export default function HomeScreen(): React.JSX.Element {
     </View>
   );
 
+  const bottomBarPadding = BOTTOM_BAR_HEIGHT + insets.bottom;
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 24 }]}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: bottomBarPadding + 24 },
+        ]}
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.monthRow}>
@@ -208,15 +220,53 @@ export default function HomeScreen(): React.JSX.Element {
             />
           )}
         </View>
+      </ScrollView>
 
+      <View
+        style={[
+          styles.bottomBar,
+          { paddingBottom: insets.bottom, minHeight: bottomBarPadding },
+        ]}
+      >
         <TouchableOpacity
-          style={styles.addBtn}
+          style={styles.bottomBarItem}
+          onPress={() => navigation.navigate('LedgerBalance')}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="book-outline"
+            size={BOTTOM_ICON_SIZE}
+            color="#6b7280"
+          />
+          <Text style={styles.bottomBarLabel}>{BOTTOM_LEDGER}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.bottomBarItem, styles.bottomBarCenter]}
           onPress={() => navigation.navigate('AddTransaction', { selectedDate })}
           activeOpacity={0.8}
         >
-          <Text style={styles.addBtnText}>{BTN_ADD}</Text>
+          <View style={styles.bottomBarCenterIconWrap}>
+            <Ionicons
+              name="add"
+              size={BOTTOM_ICON_SIZE + 4}
+              color="#fff"
+            />
+          </View>
+          <Text style={styles.bottomBarCenterLabel}>{BOTTOM_ADD_LABEL}</Text>
         </TouchableOpacity>
-      </ScrollView>
+        <TouchableOpacity
+          style={styles.bottomBarItem}
+          onPress={() => navigation.navigate('Settings')}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="settings-outline"
+            size={BOTTOM_ICON_SIZE}
+            color="#6b7280"
+          />
+          <Text style={styles.bottomBarLabel}>{BOTTOM_SETTINGS}</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -251,6 +301,48 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#1f2937',
+  },
+  bottomBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: BOTTOM_BAR_HEIGHT,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  bottomBarItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    gap: 4,
+  },
+  bottomBarLabel: {
+    fontSize: BOTTOM_LABEL_FONT_SIZE,
+    color: '#6b7280',
+    fontWeight: '500',
+  },
+  bottomBarCenter: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bottomBarCenterIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#2563eb',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bottomBarCenterLabel: {
+    fontSize: BOTTOM_LABEL_FONT_SIZE,
+    color: '#2563eb',
+    fontWeight: '600',
+    marginTop: 4,
   },
   section: {
     marginTop: 20,
@@ -352,17 +444,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9ca3af',
     marginTop: 2,
-  },
-  addBtn: {
-    marginTop: 20,
-    backgroundColor: '#2563eb',
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  addBtnText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
   },
 });
