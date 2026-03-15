@@ -1,5 +1,5 @@
 /**
- * 使用 AsyncStorage 讀寫導覽、帳戶與交易
+ * Web：使用 AsyncStorage 讀寫導覽、帳戶與交易（expo-sqlite 不支援 web）
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type {
@@ -48,7 +48,6 @@ export async function getStoredAccounts(): Promise<Account[]> {
   return data?.accounts ?? [];
 }
 
-/** 更新已儲存的帳戶列表（用於編輯帳本後寫回） */
 export async function updateStoredAccounts(accounts: Account[]): Promise<void> {
   const data = await getOnboardingData();
   if (!data?.hasCompletedOnboarding) return;
@@ -63,8 +62,9 @@ export async function getStoredPrimaryCurrency(): Promise<CurrencyCode> {
   return data?.primaryCurrency ?? DEFAULT_PRIMARY_CURRENCY;
 }
 
-/** 更新主要貨幣（設定頁編輯用） */
-export async function updateStoredPrimaryCurrency(currency: CurrencyCode): Promise<void> {
+export async function updateStoredPrimaryCurrency(
+  currency: CurrencyCode
+): Promise<void> {
   const data = await getOnboardingData();
   if (!data?.hasCompletedOnboarding) return;
   await setOnboardingComplete({
@@ -87,7 +87,10 @@ export async function getStoredTransactions(): Promise<Transaction[]> {
 }
 
 export async function saveTransactions(transactions: Transaction[]): Promise<void> {
-  await AsyncStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(transactions));
+  await AsyncStorage.setItem(
+    STORAGE_KEYS.TRANSACTIONS,
+    JSON.stringify(transactions)
+  );
 }
 
 export async function addTransaction(transaction: Transaction): Promise<void> {
@@ -157,8 +160,6 @@ export async function saveRecurring(items: RecurringItem[]): Promise<void> {
   await AsyncStorage.setItem(STORAGE_KEYS.RECURRING, JSON.stringify(items));
 }
 
-// --- 固定收支 skip（使用者刪除/編輯過的發生日不再自動帶入）---
-
 export async function getStoredRecurringSkipList(): Promise<RecurringSkipItem[]> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEYS.RECURRING_SKIP);
@@ -170,11 +171,19 @@ export async function getStoredRecurringSkipList(): Promise<RecurringSkipItem[]>
   }
 }
 
-export async function saveRecurringSkipList(items: RecurringSkipItem[]): Promise<void> {
-  await AsyncStorage.setItem(STORAGE_KEYS.RECURRING_SKIP, JSON.stringify(items));
+export async function saveRecurringSkipList(
+  items: RecurringSkipItem[]
+): Promise<void> {
+  await AsyncStorage.setItem(
+    STORAGE_KEYS.RECURRING_SKIP,
+    JSON.stringify(items)
+  );
 }
 
-export async function addRecurringSkip(recurringId: string, date: string): Promise<void> {
+export async function addRecurringSkip(
+  recurringId: string,
+  date: string
+): Promise<void> {
   const list = await getStoredRecurringSkipList();
   if (list.some((x) => x.recurringId === recurringId && x.date === date)) return;
   list.push({ recurringId, date });
@@ -192,8 +201,10 @@ function getApplicableDateKeys(
   const start = new Date(sy, sm - 1, 1);
   const end = new Date(ey, em - 1, 31);
   const keys: string[] = [];
+  const minDay = 1;
+  const maxDayMonth = 28;
   if (item.repeat === 'monthly') {
-    const dayOfMonth = Math.min(Math.max(1, item.day), 28);
+    const dayOfMonth = Math.min(Math.max(minDay, item.day), maxDayMonth);
     for (let y = sy; y <= ey; y++) {
       const monthStart = y === sy ? sm : 1;
       const monthEnd = y === ey ? em : 12;
@@ -218,7 +229,9 @@ function getApplicableDateKeys(
         const y = cursor.getFullYear();
         const m = cursor.getMonth() + 1;
         const d = cursor.getDate();
-        keys.push(`${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+        keys.push(
+          `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+        );
       }
       cursor.setDate(cursor.getDate() + 1);
     }
@@ -226,7 +239,6 @@ function getApplicableDateKeys(
   return keys;
 }
 
-/** 將固定收支從「設定當下之後」的應發生日自動填入帳本（已有或已 skip 的不重複建立） */
 export async function syncRecurringToTransactions(): Promise<Transaction[]> {
   const { generateId } = await import('./id');
   const [transactions, recurringList, skipList] = await Promise.all([
