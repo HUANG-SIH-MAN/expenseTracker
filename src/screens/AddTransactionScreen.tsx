@@ -1,6 +1,5 @@
 /**
- * 新增單筆收入/支出 — 獨立畫面（非彈窗）
- * 類別使用 flexWrap 換行，避免破版
+ * 新增單筆收入/支出 — 表單 + 底部計算機鍵盤（類參考介面）
  */
 import React, { useState } from 'react';
 import {
@@ -9,27 +8,28 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { TransactionType } from '../types';
 import { generateId } from '../utils/id';
+import { parseAmountInput } from '../utils/amountExpression';
+import { formatDateWithWeekday } from '../utils/date';
 import { useTransactions } from '../contexts/TransactionsContext';
 import type { MainStackParamList } from '../navigation/MainStack';
 import {
   DEFAULT_EXPENSE_CATEGORIES,
   DEFAULT_INCOME_CATEGORIES,
 } from '../constants';
+import { CalculatorKeypad } from '../components';
 
 type RouteProps = NativeStackScreenProps<MainStackParamList, 'AddTransaction'>['route'];
 
 const EXPENSE_KEYS = Object.keys(DEFAULT_EXPENSE_CATEGORIES);
 const INCOME_KEYS = Object.keys(DEFAULT_INCOME_CATEGORIES);
-
-const CHIP_GAP = 8;
+const HEADER_HEIGHT_PERCENT = 0.08;
+const KEYPAD_HEIGHT_PERCENT = 0.42;
 
 export default function AddTransactionScreen(): React.JSX.Element {
   const route = useRoute<RouteProps>();
@@ -50,10 +50,14 @@ export default function AddTransactionScreen(): React.JSX.Element {
     setCategory(t === 'expense' ? EXPENSE_KEYS[0] : INCOME_KEYS[0]);
   };
 
+  const parsed = parseAmountInput(amountStr);
+  const amount = parsed.value;
+  const canSubmit = parsed.valid && amount > 0;
+  const amountError = amountStr.trim() !== '' && !parsed.valid ? parsed.error : undefined;
+
   const handleSubmit = () => {
-    const amount = parseFloat(amountStr.replace(/[^0-9.-]/g, '')) || 0;
-    if (amount <= 0) return;
-    const transaction = {
+    if (!parsed.valid || amount <= 0) return;
+    addTransaction({
       id: generateId(),
       type,
       amount,
@@ -61,56 +65,57 @@ export default function AddTransactionScreen(): React.JSX.Element {
       category,
       note: note.trim() || undefined,
       createdAt: new Date().toISOString(),
-    };
-    addTransaction(transaction);
+    });
     navigation.goBack();
   };
 
-  const amount = parseFloat(amountStr.replace(/[^0-9.-]/g, '')) || 0;
-  const canSubmit = amount > 0;
+  const amountDisplay = amountStr.trim() === '' ? '金額' : amountStr;
+  const { height: windowHeight } = useWindowDimensions();
+  const headerHeight = windowHeight * HEADER_HEIGHT_PERCENT;
+  const keypadHeight = windowHeight * KEYPAD_HEIGHT_PERCENT;
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-    >
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.typeRow}>
+    <View style={styles.container}>
+      <View style={[styles.header, { height: headerHeight }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn} hitSlop={12}>
+          <Text style={styles.headerBtnText}>✕</Text>
+        </TouchableOpacity>
+        <View style={styles.tabs}>
           <TouchableOpacity
-            style={[styles.typeBtn, type === 'expense' && styles.typeBtnActive]}
+            style={[styles.tab, type === 'expense' && styles.tabActive]}
             onPress={() => handleTypeChange('expense')}
           >
-            <Text style={[styles.typeBtnText, type === 'expense' && styles.typeBtnTextActive]}>
-              支出
-            </Text>
+            <Text style={[styles.tabText, type === 'expense' && styles.tabTextActive]}>支出</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.typeBtn, type === 'income' && styles.typeBtnActive]}
+            style={[styles.tab, type === 'income' && styles.tabActive]}
             onPress={() => handleTypeChange('income')}
           >
-            <Text style={[styles.typeBtnText, type === 'income' && styles.typeBtnTextActive]}>
-              收入
-            </Text>
+            <Text style={[styles.tabText, type === 'income' && styles.tabTextActive]}>收入</Text>
           </TouchableOpacity>
         </View>
+        <TouchableOpacity
+          style={[styles.headerBtn, styles.saveBtn]}
+          onPress={handleSubmit}
+          disabled={!canSubmit}
+        >
+          <Text style={[styles.headerBtnText, !canSubmit && styles.saveBtnTextDisabled]}>儲存</Text>
+        </TouchableOpacity>
+      </View>
 
-        <Text style={styles.label}>金額</Text>
-        <TextInput
-          style={styles.amountInput}
-          placeholder="0"
-          placeholderTextColor="#9ca3af"
-          keyboardType="decimal-pad"
-          value={amountStr}
-          onChangeText={setAmountStr}
-        />
+      <View style={styles.body}>
+        <View style={styles.fieldRow}>
+          <Text style={styles.fieldLabel}>日期</Text>
+          <Text style={styles.fieldValue}>{formatDateWithWeekday(selectedDate)}</Text>
+        </View>
 
-        <Text style={styles.label}>類別</Text>
+        <View style={styles.amountSection}>
+          <Text style={[styles.amountDisplay, amountError && styles.amountDisplayError]}>
+            {amountDisplay}
+          </Text>
+          {amountError ? <Text style={styles.amountError}>{amountError}</Text> : null}
+        </View>
+
         <View style={styles.categoryWrap}>
           {categoryKeys.map((key) => {
             const isSelected = category === key;
@@ -131,24 +136,26 @@ export default function AddTransactionScreen(): React.JSX.Element {
           })}
         </View>
 
-        <Text style={styles.label}>備註（選填）</Text>
+        <View style={styles.fieldRow}>
+          <Text style={styles.fieldLabel}>備註（選填）</Text>
+        </View>
         <TextInput
           style={styles.noteInput}
-          placeholder="備註"
+          placeholder="可輸入備註"
           placeholderTextColor="#9ca3af"
           value={note}
           onChangeText={setNote}
         />
+      </View>
 
-        <TouchableOpacity
-          style={[styles.submitBtn, !canSubmit && styles.submitBtnDisabled]}
-          onPress={handleSubmit}
-          disabled={!canSubmit}
-        >
-          <Text style={styles.submitBtnText}>儲存</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      <View style={[styles.keypadWrap, { height: keypadHeight }]}>
+        <CalculatorKeypad
+          value={amountStr}
+          onValueChange={setAmountStr}
+          onConfirm={handleSubmit}
+        />
+      </View>
+    </View>
   );
 }
 
@@ -157,70 +164,103 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 32,
-  },
-  typeRow: {
+  header: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 24,
-  },
-  typeBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#e5e7eb',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e5e7eb',
   },
-  typeBtnActive: {
-    borderColor: '#2563eb',
-    backgroundColor: '#eff6ff',
+  headerBtn: {
+    minWidth: 44,
+    alignItems: 'flex-start',
   },
-  typeBtnText: {
+  headerBtnText: {
+    fontSize: 17,
+    color: '#0a84ff',
+  },
+  saveBtn: {
+    alignItems: 'flex-end',
+  },
+  saveBtnTextDisabled: {
+    color: '#9ca3af',
+  },
+  tabs: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  tab: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  tabActive: {
+    borderBottomWidth: 2,
+    borderBottomColor: '#0a84ff',
+  },
+  tabText: {
+    fontSize: 16,
+    color: '#6b7280',
+  },
+  tabTextActive: {
+    color: '#1a1a1a',
+    fontWeight: '600',
+  },
+  body: {
+    flex: 1,
+    paddingHorizontal: '5%',
+    paddingTop: '2%',
+    paddingBottom: '4%',
+    justifyContent: 'flex-start',
+  },
+  fieldRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: '1.5%',
+  },
+  fieldLabel: {
     fontSize: 15,
     color: '#6b7280',
   },
-  typeBtnTextActive: {
-    color: '#2563eb',
-    fontWeight: '600',
-  },
-  label: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 8,
-  },
-  amountInput: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 20,
-    marginBottom: 20,
+  fieldValue: {
+    fontSize: 16,
     color: '#1a1a1a',
+  },
+  amountSection: {
+    marginBottom: '2%',
+  },
+  amountDisplay: {
+    fontSize: 28,
+    fontWeight: '600',
+    color: '#1a1a1a',
+  },
+  amountDisplayError: {
+    color: '#dc2626',
+  },
+  amountError: {
+    fontSize: 12,
+    color: '#dc2626',
+    marginTop: 2,
   },
   categoryWrap: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginHorizontal: -CHIP_GAP / 2,
-    marginBottom: 20,
+    marginHorizontal: '-1%',
+    marginBottom: '2%',
+    marginTop: '0.5%',
   },
   categoryChip: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingVertical: '1.2%',
+    paddingHorizontal: '3%',
     borderRadius: 20,
     backgroundColor: '#f3f4f6',
-    marginHorizontal: CHIP_GAP / 2,
-    marginBottom: CHIP_GAP,
+    marginHorizontal: '1%',
+    marginBottom: '1%',
   },
   categoryChipSelected: {
-    backgroundColor: '#2563eb',
+    backgroundColor: '#0a84ff',
   },
   categoryChipText: {
     fontSize: 14,
@@ -232,27 +272,15 @@ const styles = StyleSheet.create({
   },
   noteInput: {
     borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: '#e5e7eb',
     borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    marginBottom: 28,
+    paddingHorizontal: '2%',
+    paddingVertical: '1%',
+    fontSize: 15,
     color: '#1a1a1a',
-    minHeight: 48,
+    maxHeight: '12%',
   },
-  submitBtn: {
-    backgroundColor: '#2563eb',
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  submitBtnDisabled: {
-    backgroundColor: '#9ca3af',
-  },
-  submitBtnText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+  keypadWrap: {
+    marginTop: '3%',
   },
 });

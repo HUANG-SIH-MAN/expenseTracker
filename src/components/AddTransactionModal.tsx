@@ -1,5 +1,5 @@
 /**
- * 新增單筆收入/支出 Modal
+ * 新增單筆收入/支出 Modal — 表單 + 底部計算機鍵盤
  */
 import React, { useState } from 'react';
 import {
@@ -9,20 +9,21 @@ import {
   TouchableOpacity,
   View,
   Modal,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
+  useWindowDimensions,
 } from 'react-native';
 import type { TransactionType } from '../types';
 import { generateId } from '../utils/id';
-import { formatDateShort } from '../utils/date';
+import { formatDateWithWeekday } from '../utils/date';
+import { parseAmountInput } from '../utils/amountExpression';
 import {
   DEFAULT_EXPENSE_CATEGORIES,
   DEFAULT_INCOME_CATEGORIES,
 } from '../constants';
+import { CalculatorKeypad } from './CalculatorKeypad';
 
 const EXPENSE_KEYS = Object.keys(DEFAULT_EXPENSE_CATEGORIES);
 const INCOME_KEYS = Object.keys(DEFAULT_INCOME_CATEGORIES);
+const KEYPAD_HEIGHT_PERCENT = 0.42;
 
 export interface AddTransactionModalProps {
   visible: boolean;
@@ -58,9 +59,13 @@ export default function AddTransactionModal({
     setCategory(t === 'expense' ? EXPENSE_KEYS[0] : INCOME_KEYS[0]);
   };
 
+  const parsed = parseAmountInput(amountStr);
+  const amount = parsed.value;
+  const canSubmit = parsed.valid && amount > 0;
+  const amountError = amountStr.trim() !== '' && !parsed.valid ? parsed.error : undefined;
+
   const handleSubmit = () => {
-    const amount = parseFloat(amountStr.replace(/[^0-9.-]/g, '')) || 0;
-    if (amount <= 0) return;
+    if (!parsed.valid || amount <= 0) return;
     onSubmit({
       id: generateId(),
       type,
@@ -76,8 +81,9 @@ export default function AddTransactionModal({
     onClose();
   };
 
-  const amount = parseFloat(amountStr.replace(/[^0-9.-]/g, '')) || 0;
-  const canSubmit = amount > 0;
+  const amountDisplay = amountStr.trim() === '' ? '金額' : amountStr;
+  const { height: windowHeight } = useWindowDimensions();
+  const keypadHeight = windowHeight * KEYPAD_HEIGHT_PERCENT;
 
   return (
     <Modal
@@ -86,10 +92,7 @@ export default function AddTransactionModal({
       transparent
       onRequestClose={onClose}
     >
-      <KeyboardAvoidingView
-        style={styles.overlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <View style={styles.overlay}>
         <TouchableOpacity
           style={styles.backdrop}
           activeOpacity={1}
@@ -97,75 +100,89 @@ export default function AddTransactionModal({
         />
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <Text style={styles.title}>新增記帳 — {formatDateShort(selectedDate)}</Text>
-
-          <View style={styles.typeRow}>
-            <TouchableOpacity
-              style={[styles.typeBtn, type === 'expense' && styles.typeBtnActive]}
-              onPress={() => handleTypeChange('expense')}
-            >
-              <Text style={[styles.typeBtnText, type === 'expense' && styles.typeBtnTextActive]}>
-                支出
-              </Text>
+          <View style={styles.header}>
+            <TouchableOpacity onPress={onClose} style={styles.headerBtn} hitSlop={12}>
+              <Text style={styles.headerBtnText}>✕</Text>
             </TouchableOpacity>
+            <View style={styles.tabs}>
+              <TouchableOpacity
+                style={[styles.tab, type === 'expense' && styles.tabActive]}
+                onPress={() => handleTypeChange('expense')}
+              >
+                <Text style={[styles.tabText, type === 'expense' && styles.tabTextActive]}>支出</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tab, type === 'income' && styles.tabActive]}
+                onPress={() => handleTypeChange('income')}
+              >
+                <Text style={[styles.tabText, type === 'income' && styles.tabTextActive]}>收入</Text>
+              </TouchableOpacity>
+            </View>
             <TouchableOpacity
-              style={[styles.typeBtn, type === 'income' && styles.typeBtnActive]}
-              onPress={() => handleTypeChange('income')}
+              style={[styles.headerBtn, styles.saveBtn]}
+              onPress={handleSubmit}
+              disabled={!canSubmit}
             >
-              <Text style={[styles.typeBtnText, type === 'income' && styles.typeBtnTextActive]}>
-                收入
+              <Text style={[styles.headerBtnText, !canSubmit && styles.saveBtnTextDisabled]}>
+                儲存
               </Text>
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.label}>金額</Text>
-          <TextInput
-            style={styles.amountInput}
-            placeholder="0"
-            placeholderTextColor="#9ca3af"
-            keyboardType="decimal-pad"
-            value={amountStr}
-            onChangeText={setAmountStr}
-          />
+          <View style={styles.body}>
+            <View style={styles.fieldRow}>
+              <Text style={styles.fieldLabel}>日期</Text>
+              <Text style={styles.fieldValue}>{formatDateWithWeekday(selectedDate)}</Text>
+            </View>
 
-          <Text style={styles.label}>類別</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categories}>
-            {categoryKeys.map((key) => {
-              const isSelected = category === key;
-              return (
-                <TouchableOpacity
-                  key={key}
-                  style={[styles.categoryChip, isSelected && styles.categoryChipSelected]}
-                  onPress={() => setCategory(key)}
-                >
-                  <Text
-                    style={[styles.categoryChipText, isSelected && styles.categoryChipTextSelected]}
+            <View style={styles.amountSection}>
+              <Text style={[styles.amountDisplay, amountError && styles.amountDisplayError]}>
+                {amountDisplay}
+              </Text>
+              {amountError ? <Text style={styles.amountError}>{amountError}</Text> : null}
+            </View>
+
+            <View style={styles.categoryWrap}>
+              {categoryKeys.map((key) => {
+                const isSelected = category === key;
+                return (
+                  <TouchableOpacity
+                    key={key}
+                    style={[styles.categoryChip, isSelected && styles.categoryChipSelected]}
+                    onPress={() => setCategory(key)}
                   >
-                    {categoryMap[key]}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+                    <Text
+                      style={[styles.categoryChipText, isSelected && styles.categoryChipTextSelected]}
+                      numberOfLines={1}
+                    >
+                      {categoryMap[key]}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
 
-          <Text style={styles.label}>備註（選填）</Text>
-          <TextInput
-            style={styles.noteInput}
-            placeholder="備註"
-            placeholderTextColor="#9ca3af"
-            value={note}
-            onChangeText={setNote}
-          />
+            <View style={styles.fieldRow}>
+              <Text style={styles.fieldLabel}>備註（選填）</Text>
+            </View>
+            <TextInput
+              style={styles.noteInput}
+              placeholder="可輸入備註"
+              placeholderTextColor="#9ca3af"
+              value={note}
+              onChangeText={setNote}
+            />
+          </View>
 
-          <TouchableOpacity
-            style={[styles.submitBtn, !canSubmit && styles.submitBtnDisabled]}
-            onPress={handleSubmit}
-            disabled={!canSubmit}
-          >
-            <Text style={styles.submitBtnText}>儲存</Text>
-          </TouchableOpacity>
+          <View style={[styles.keypadWrap, { height: keypadHeight }]}>
+            <CalculatorKeypad
+              value={amountStr}
+              onValueChange={setAmountStr}
+              onConfirm={handleSubmit}
+            />
+          </View>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
@@ -183,10 +200,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    paddingHorizontal: 24,
-    paddingTop: 12,
-    paddingBottom: 40,
-    maxHeight: '90%',
+    height: '92%',
   },
   handle: {
     width: 40,
@@ -194,66 +208,103 @@ const styles = StyleSheet.create({
     backgroundColor: '#d1d5db',
     borderRadius: 2,
     alignSelf: 'center',
-    marginBottom: 16,
+    marginTop: 8,
+    marginBottom: 12,
   },
-  title: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 16,
-    color: '#1a1a1a',
-  },
-  typeRow: {
+  header: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20,
-  },
-  typeBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#e5e7eb',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
   },
-  typeBtnActive: {
-    borderColor: '#2563eb',
-    backgroundColor: '#eff6ff',
+  headerBtn: {
+    minWidth: 44,
+    alignItems: 'flex-start',
   },
-  typeBtnText: {
+  headerBtnText: {
+    fontSize: 17,
+    color: '#0a84ff',
+  },
+  saveBtn: {
+    alignItems: 'flex-end',
+  },
+  saveBtnTextDisabled: {
+    color: '#9ca3af',
+  },
+  tabs: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  tab: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  tabActive: {
+    borderBottomWidth: 2,
+    borderBottomColor: '#0a84ff',
+  },
+  tabText: {
+    fontSize: 16,
+    color: '#6b7280',
+  },
+  tabTextActive: {
+    color: '#1a1a1a',
+    fontWeight: '600',
+  },
+  body: {
+    flex: 1,
+    paddingHorizontal: '5%',
+    paddingTop: '2%',
+    paddingBottom: '4%',
+  },
+  fieldRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: '1.5%',
+  },
+  fieldLabel: {
     fontSize: 15,
     color: '#6b7280',
   },
-  typeBtnTextActive: {
-    color: '#2563eb',
-    fontWeight: '600',
-  },
-  label: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 6,
-  },
-  amountInput: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 20,
-    marginBottom: 16,
+  fieldValue: {
+    fontSize: 16,
     color: '#1a1a1a',
   },
-  categories: {
-    marginBottom: 16,
+  amountSection: {
+    marginBottom: '2%',
+  },
+  amountDisplay: {
+    fontSize: 28,
+    fontWeight: '600',
+    color: '#1a1a1a',
+  },
+  amountDisplayError: {
+    color: '#dc2626',
+  },
+  amountError: {
+    fontSize: 12,
+    color: '#dc2626',
+    marginTop: 2,
+  },
+  categoryWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: '-1%',
+    marginBottom: '2%',
+    marginTop: '0.5%',
   },
   categoryChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    paddingVertical: '1.2%',
+    paddingHorizontal: '3%',
     borderRadius: 20,
     backgroundColor: '#f3f4f6',
-    marginRight: 8,
+    marginHorizontal: '1%',
+    marginBottom: '1%',
   },
   categoryChipSelected: {
-    backgroundColor: '#2563eb',
+    backgroundColor: '#0a84ff',
   },
   categoryChipText: {
     fontSize: 14,
@@ -265,26 +316,15 @@ const styles = StyleSheet.create({
   },
   noteInput: {
     borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: '#e5e7eb',
     borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    marginBottom: 24,
+    paddingHorizontal: '2%',
+    paddingVertical: '1%',
+    fontSize: 15,
     color: '#1a1a1a',
+    maxHeight: '12%',
   },
-  submitBtn: {
-    backgroundColor: '#2563eb',
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  submitBtnDisabled: {
-    backgroundColor: '#9ca3af',
-  },
-  submitBtnText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+  keypadWrap: {
+    marginTop: '3%',
   },
 });
