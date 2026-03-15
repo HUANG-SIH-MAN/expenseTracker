@@ -7,9 +7,10 @@ import type { Account, Transaction, TransactionType } from '../types';
 import { generateId } from './id';
 
 const UTF8_BOM = '\uFEFF';
-const EXPORT_HEADER = '日期,收支,類別,金額,帳戶,備註,建立時間';
+const EXPORT_HEADER = '日期,收支,類別,金額,帳戶,備註,建立時間,轉入帳戶,轉入金額';
 const INCOME_LABEL = '收入';
 const EXPENSE_LABEL = '支出';
+const TRANSFER_LABEL = '轉帳';
 
 /** 對方 APP 支出類別名稱 → 本 app 類別 key */
 export const SOURCE_EXPENSE_CATEGORY_TO_KEY: Record<string, string> = {
@@ -162,6 +163,7 @@ export function resolveAccountsForImport(
         id: generateId(),
         name: name.trim(),
         initialBalance: 0,
+        currency: "TWD",
       };
       merged.push(newAccount);
       nameToId[name] = newAccount.id;
@@ -192,8 +194,10 @@ export function exportTransactionsToCsv(
     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime() || a.createdAt.localeCompare(b.createdAt),
   );
   for (const t of sorted) {
-    const typeLabel = t.type === 'income' ? INCOME_LABEL : EXPENSE_LABEL;
-    const categoryLabel = getCategoryLabel(t.type, t.category);
+    const typeLabel =
+      t.type === 'income' ? INCOME_LABEL : t.type === 'transfer' ? TRANSFER_LABEL : EXPENSE_LABEL;
+    const categoryLabel =
+      t.type === 'transfer' ? '轉帳' : getCategoryLabel(t.type, t.category);
     lines.push(
       [
         t.date,
@@ -203,6 +207,8 @@ export function exportTransactionsToCsv(
         escape(accountIdToName(t.accountId)),
         escape(t.note ?? ''),
         t.createdAt,
+        t.type === 'transfer' ? escape(accountIdToName(t.toAccountId)) : '',
+        t.type === 'transfer' && t.transferAmount != null ? t.transferAmount : '',
       ].join(','),
     );
   }

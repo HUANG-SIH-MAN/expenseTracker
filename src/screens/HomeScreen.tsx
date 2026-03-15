@@ -100,6 +100,7 @@ export default function HomeScreen(): React.JSX.Element {
     let income = 0;
     let expense = 0;
     for (const t of dayTransactions) {
+      if (t.type === 'transfer') continue;
       if (t.type === 'income') income += t.amount;
       else expense += t.amount;
     }
@@ -128,10 +129,12 @@ export default function HomeScreen(): React.JSX.Element {
   };
 
   const getCategoryLabel = (t: Transaction): string => {
+    if (t.type === 'transfer') return '轉帳';
     return getCategoryLabelFromContext(t.type, t.category);
   };
 
   const getCategoryIcon = (t: Transaction): string => {
+    if (t.type === 'transfer') return '🔄';
     return getCategoryIconFromContext(t.type, t.category);
   };
 
@@ -178,16 +181,32 @@ export default function HomeScreen(): React.JSX.Element {
           <Text
             style={[
               styles.recordAmount,
-              item.type === 'income' ? styles.recordIncome : styles.recordExpense,
+              item.type === 'income'
+                ? styles.recordIncome
+                : item.type === 'transfer'
+                  ? styles.recordTransfer
+                  : styles.recordExpense,
             ]}
           >
-            {item.type === 'income' ? '+' : '-'}{formatAmount(item.amount)}
+            {item.type === 'transfer'
+              ? `→ ${formatAmount(item.amount)} → ${formatAmount(item.transferAmount ?? 0)}`
+              : item.type === 'income'
+                ? `+${formatAmount(item.amount)}`
+                : `-${formatAmount(item.amount)}`}
           </Text>
-          <Text style={styles.recordAccount}>{getAccountName(item.accountId)}</Text>
+          <Text style={styles.recordAccount}>
+            {item.type === 'transfer'
+              ? `${getAccountName(item.accountId)} → ${getAccountName(item.toAccountId)}`
+              : getAccountName(item.accountId)}
+          </Text>
         </View>
         <TouchableOpacity
           style={styles.recordMenuBtn}
-          onPress={() => handleEditTransaction(item)}
+          onPress={() =>
+            item.type === 'transfer'
+              ? navigation.navigate('AddTransfer', { selectedDate: item.date })
+              : handleEditTransaction(item)
+          }
           hitSlop={8}
         >
           <Text style={styles.recordMenuText}>{MENU_ELLIPSIS}</Text>
@@ -360,7 +379,8 @@ export default function HomeScreen(): React.JSX.Element {
           ]}
         >
           <Text style={styles.confirmText} numberOfLines={2}>
-            確定要刪除此筆紀錄？「{getCategoryLabel(confirmDeleteTransaction)} {confirmDeleteTransaction.type === 'income' ? '+' : '-'}{formatAmount(confirmDeleteTransaction.amount)}」
+            確定要刪除此筆紀錄？「{getCategoryLabel(confirmDeleteTransaction)}{confirmDeleteTransaction.type === 'transfer' ? '' : confirmDeleteTransaction.type === 'income' ? ' +' : ' -'}
+            {confirmDeleteTransaction.type === 'transfer' ? `轉出 ${formatAmount(confirmDeleteTransaction.amount)} / 轉入 ${formatAmount(confirmDeleteTransaction.transferAmount ?? 0)}` : formatAmount(confirmDeleteTransaction.amount)}」
           </Text>
           <View style={styles.confirmActions}>
             <TouchableOpacity
@@ -580,6 +600,9 @@ const styles = StyleSheet.create({
   recordAmount: {
     fontSize: 17,
     fontWeight: '600',
+  },
+  recordTransfer: {
+    color: '#6b7280',
   },
   recordIncome: {
     color: '#059669',

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -8,11 +8,13 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Modal,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { Account } from '../../types';
+import type { Account, CurrencyCode, CurrencyOption } from '../../types';
 import { generateId } from '../../utils/id';
+import { getCurrencyOptions } from '../../utils/storage';
 import type { OnboardingStackParamList } from '../../navigation/OnboardingStack';
 
 const LABEL_ACCOUNTS = '設定您的帳戶';
@@ -22,34 +24,49 @@ const PLACEHOLDER_AMOUNT = '0';
 const BUTTON_ADD = '新增帳戶';
 const BUTTON_NEXT = '下一步';
 const HINT_AT_LEAST_ONE = '請至少新增一個帳戶';
+const LABEL_CURRENCY = '幣別';
+
+function getCurrencyLabel(currency: string, options: CurrencyOption[]): string {
+  const o = options.find((x) => x.code === currency);
+  return o?.label ?? currency;
+}
 
 type NavProp = NativeStackNavigationProp<OnboardingStackParamList, 'AccountsSetup'>;
 
 export default function AccountsSetupScreen(): React.JSX.Element {
   const navigation = useNavigation<NavProp>();
   const [accounts, setAccounts] = useState<Account[]>([
-    { id: generateId(), name: '', initialBalance: 0 },
+    { id: generateId(), name: '', initialBalance: 0, currency: 'TWD' },
   ]);
+  const [currencyOptions, setCurrencyOptions] = useState<CurrencyOption[]>([]);
   const [amountInputs, setAmountInputs] = useState<Record<string, string>>({});
+  const [currencyPickerAccountId, setCurrencyPickerAccountId] = useState<string | null>(null);
 
-  const updateAccount = (id: string, field: 'name' | 'initialBalance', value: string | number) => {
+  useEffect(() => {
+    getCurrencyOptions().then(setCurrencyOptions);
+  }, []);
+
+  const updateAccount = (id: string, field: 'name' | 'initialBalance' | 'currency', value: string | number) => {
     setAccounts((prev) =>
       prev.map((a) =>
         a.id === id
           ? field === 'name'
             ? { ...a, name: value as string }
-            : { ...a, initialBalance: Number(value) || 0 }
+            : field === 'initialBalance'
+              ? { ...a, initialBalance: Number(value) || 0 }
+              : { ...a, currency: value as CurrencyCode }
           : a
       )
     );
     if (field === 'initialBalance' && typeof value === 'string') {
       setAmountInputs((prev) => ({ ...prev, [id]: value }));
     }
+    if (field === 'currency') setCurrencyPickerAccountId(null);
   };
 
   const addAccount = () => {
     const id = generateId();
-    setAccounts((prev) => [...prev, { id, name: '', initialBalance: 0 }]);
+    setAccounts((prev) => [...prev, { id, name: '', initialBalance: 0, currency: 'TWD' }]);
     setAmountInputs((prev) => ({ ...prev, [id]: '' }));
   };
 
@@ -69,11 +86,16 @@ export default function AccountsSetupScreen(): React.JSX.Element {
       id: a.id,
       name: a.name.trim(),
       initialBalance: a.initialBalance,
+      currency: a.currency ?? 'TWD',
     }));
     if (valid.length > 0) {
       navigation.navigate('Currency', { accounts: valid });
     }
   };
+
+  const accountForCurrencyPicker = currencyPickerAccountId
+    ? accounts.find((a) => a.id === currencyPickerAccountId)
+    : null;
 
   return (
     <KeyboardAvoidingView
@@ -109,6 +131,16 @@ export default function AccountsSetupScreen(): React.JSX.Element {
                 </TouchableOpacity>
               )}
             </View>
+            <Text style={styles.fieldLabel}>{LABEL_CURRENCY}</Text>
+            <TouchableOpacity
+              style={styles.currencyButton}
+              onPress={() => setCurrencyPickerAccountId(acc.id)}
+            >
+              <Text style={styles.currencyButtonText}>
+                {getCurrencyLabel(acc.currency ?? 'TWD', currencyOptions)}
+              </Text>
+            </TouchableOpacity>
+
             <TextInput
               style={[styles.input, styles.inputAmount]}
               placeholder={PLACEHOLDER_AMOUNT}
@@ -124,6 +156,35 @@ export default function AccountsSetupScreen(): React.JSX.Element {
             <Text style={styles.amountLabel}>目前金額</Text>
           </View>
         ))}
+
+        <Modal
+          visible={accountForCurrencyPicker != null}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setCurrencyPickerAccountId(null)}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setCurrencyPickerAccountId(null)}
+          >
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>{LABEL_CURRENCY}</Text>
+              {currencyOptions.map((opt) => (
+                <TouchableOpacity
+                  key={opt.code}
+                  style={styles.modalRow}
+                  onPress={() => accountForCurrencyPicker && updateAccount(accountForCurrencyPicker.id, 'currency', opt.code)}
+                >
+                  <Text style={styles.modalRowText}>{opt.label}</Text>
+                  {accountForCurrencyPicker?.currency === opt.code && (
+                    <Text style={styles.modalRowCheck}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </TouchableOpacity>
+        </Modal>
 
         <TouchableOpacity style={styles.addButton} onPress={addAccount}>
           <Text style={styles.addButtonText}>{BUTTON_ADD}</Text>
@@ -195,6 +256,24 @@ const styles = StyleSheet.create({
   inputName: {
     flex: 1,
   },
+  fieldLabel: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  currencyButton: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 4,
+  },
+  currencyButtonText: {
+    fontSize: 16,
+    color: '#1a1a1a',
+  },
   inputAmount: {
     marginTop: 10,
     marginBottom: 4,
@@ -244,5 +323,42 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    width: '100%',
+    maxWidth: 320,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 12,
+    color: '#1a1a1a',
+  },
+  modalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  modalRowText: {
+    fontSize: 16,
+    color: '#374151',
+  },
+  modalRowCheck: {
+    fontSize: 16,
+    color: '#2563eb',
   },
 });

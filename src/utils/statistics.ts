@@ -49,6 +49,7 @@ export function getPeriodTotals(
   let totalIncome = 0;
   let totalExpense = 0;
   for (const t of list) {
+    if (t.type === 'transfer') continue;
     if (t.type === 'income') totalIncome += t.amount;
     else totalExpense += t.amount;
   }

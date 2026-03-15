@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS settings (
 CREATE TABLE IF NOT EXISTS accounts (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  initial_balance REAL NOT NULL DEFAULT 0
+  initial_balance REAL NOT NULL DEFAULT 0,
+  currency TEXT NOT NULL DEFAULT 'TWD'
 );
 
 CREATE TABLE IF NOT EXISTS transactions (
@@ -32,7 +33,15 @@ CREATE TABLE IF NOT EXISTS transactions (
   account_id TEXT,
   recurring_id TEXT,
   annual_budget_entry_id TEXT,
+  to_account_id TEXT,
+  transfer_amount REAL,
   created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS exchange_rates (
+  currency_code TEXT PRIMARY KEY,
+  rate_to_primary REAL NOT NULL,
+  updated_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS categories (
@@ -109,6 +118,27 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase> {
   try {
     await db.runAsync(
       "ALTER TABLE annual_budget_entries ADD COLUMN label TEXT"
+    );
+  } catch {
+    // Column already exists on existing DBs
+  }
+  try {
+    await db.runAsync(
+      "ALTER TABLE accounts ADD COLUMN currency TEXT NOT NULL DEFAULT 'TWD'"
+    );
+  } catch {
+    // Column already exists on existing DBs
+  }
+  try {
+    await db.runAsync(
+      "ALTER TABLE transactions ADD COLUMN to_account_id TEXT"
+    );
+  } catch {
+    // Column already exists on existing DBs
+  }
+  try {
+    await db.runAsync(
+      "ALTER TABLE transactions ADD COLUMN transfer_amount REAL"
     );
   } catch {
     // Column already exists on existing DBs

@@ -37,11 +37,15 @@ const BTN_CONFIRM_CLEAR = '確定清除';
 /** 設定子頁的畫面名稱（僅列出無參數的設定頁；預算規劃改由底部導航進入） */
 type SettingScreenName =
   | 'PrimaryCurrency'
+  | 'ExchangeRates'
+  | 'CurrencySettings'
   | 'CategorySettings'
   | 'RecurringSettings';
 
 const SETTING_ITEMS: { screen: SettingScreenName; title: string; subtitle?: string }[] = [
   { screen: 'PrimaryCurrency', title: '主要貨幣', subtitle: '記帳與餘額顯示使用的貨幣' },
+  { screen: 'ExchangeRates', title: '匯率', subtitle: '各幣別對主幣別匯率、立即更新' },
+  { screen: 'CurrencySettings', title: '幣別管理', subtitle: '新增或刪除自訂幣別' },
   { screen: 'CategorySettings', title: '類別管理', subtitle: '自訂支出與收入類別、圖示' },
   { screen: 'RecurringSettings', title: '固定收支', subtitle: '週期性固定項目（如月租、薪水）' },
 ];

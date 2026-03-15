@@ -13,18 +13,20 @@ import {
   Platform,
   ScrollView,
   Alert,
+  Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { Account } from '../types';
-import { getStoredAccounts, updateStoredAccounts } from '../utils/storage';
+import type { Account, CurrencyCode, CurrencyOption } from '../types';
+import { getStoredAccounts, updateStoredAccounts, getCurrencyOptions } from '../utils/storage';
 import { useTransactions } from '../contexts/TransactionsContext';
 import type { MainStackParamList } from '../navigation/MainStack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 const TITLE = '編輯帳本';
 const LABEL_NAME = '帳戶名稱';
+const LABEL_CURRENCY = '幣別';
 const LABEL_CURRENT_AMOUNT = '目前金額';
 const HINT_CURRENT_AMOUNT = '儲存後將自動回推初始金額';
 const PLACEHOLDER_NAME = '例如：現金、銀行、悠遊卡';
@@ -34,15 +36,31 @@ const BACK_ICON_SIZE = 28;
 const ALERT_TITLE = '儲存失敗';
 const ALERT_MSG = '找不到該帳戶或無法更新，請重試。';
 
-/** 該帳戶來自交易的淨額（收入 - 支出），不含初始金額 */
+function getCurrencyLabel(currency: string, options: CurrencyOption[]): string {
+  const o = options.find((x) => x.code === currency);
+  return o?.label ?? currency;
+}
+
+/** 該帳戶來自交易的淨額（收入 - 支出 - 轉出 + 轉入），不含初始金額 */
 function computeNetFromTransactions(
   accountId: string,
-  transactions: { type: string; amount: number; accountId?: string }[]
+  transactions: {
+    type: string;
+    amount: number;
+    accountId?: string;
+    toAccountId?: string;
+    transferAmount?: number;
+  }[],
 ): number {
   let net = 0;
   for (const t of transactions) {
+    if (t.type === "transfer") {
+      if (t.accountId === accountId) net -= t.amount;
+      if (t.toAccountId === accountId) net += t.transferAmount ?? 0;
+      continue;
+    }
     if (t.accountId !== accountId) continue;
-    if (t.type === 'income') net += t.amount;
+    if (t.type === "income") net += t.amount;
     else net -= t.amount;
   }
   return net;
@@ -59,14 +77,22 @@ export default function EditAccountScreen(): React.JSX.Element {
   const { transactions } = useTransactions();
 
   const [name, setName] = useState('');
+  const [currency, setCurrency] = useState<CurrencyCode>('TWD');
+  const [currencyOptions, setCurrencyOptions] = useState<CurrencyOption[]>([]);
   const [currentAmount, setCurrentAmount] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
 
   useEffect(() => {
-    getStoredAccounts().then((accounts) => {
-      const acc = accounts.find((a) => a.id === accountId);
+    getCurrencyOptions().then(setCurrencyOptions);
+  }, []);
+
+  useEffect(() => {
+    getStoredAccounts().then((accounts: Account[]) => {
+      const acc = accounts.find((a: Account) => a.id === accountId);
       if (acc) {
         setName(acc.name);
+        setCurrency(acc.currency ?? 'TWD');
         const net = computeNetFromTransactions(accountId, transactions);
         const current = acc.initialBalance + net;
         setCurrentAmount(current === 0 ? '' : String(current));
@@ -87,7 +113,7 @@ export default function EditAccountScreen(): React.JSX.Element {
     setSaving(true);
     try {
       const accounts = await getStoredAccounts();
-      const index = accounts.findIndex((a) => a.id === accountId);
+      const index = accounts.findIndex((a: Account) => a.id === accountId);
       if (index < 0) {
         Alert.alert(ALERT_TITLE, ALERT_MSG);
         setSaving(false);
@@ -98,6 +124,7 @@ export default function EditAccountScreen(): React.JSX.Element {
         ...next[index],
         name: trimmedName,
         initialBalance: newInitialBalance,
+        currency: currency ?? 'TWD',
       };
       await updateStoredAccounts(next);
       navigation.goBack();
@@ -106,7 +133,7 @@ export default function EditAccountScreen(): React.JSX.Element {
     } finally {
       setSaving(false);
     }
-  }, [accountId, name, currentAmount, transactions, navigation]);
+  }, [accountId, name, currency, currentAmount, transactions, navigation]);
 
   return (
     <KeyboardAvoidingView
@@ -143,6 +170,18 @@ export default function EditAccountScreen(): React.JSX.Element {
         </View>
 
         <View style={styles.field}>
+          <Text style={styles.label}>{LABEL_CURRENCY}</Text>
+          <TouchableOpacity
+            style={styles.input}
+            onPress={() => setShowCurrencyPicker(true)}
+          >
+            <Text style={styles.currencyButtonText}>
+              {getCurrencyLabel(currency, currencyOptions)}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.field}>
           <Text style={styles.label}>{LABEL_CURRENT_AMOUNT}</Text>
           <TextInput
             style={styles.input}
@@ -163,6 +202,38 @@ export default function EditAccountScreen(): React.JSX.Element {
         >
           <Text style={styles.saveBtnText}>{saving ? '儲存中…' : BTN_SAVE}</Text>
         </TouchableOpacity>
+
+        <Modal
+          visible={showCurrencyPicker}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowCurrencyPicker(false)}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowCurrencyPicker(false)}
+          >
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>{LABEL_CURRENCY}</Text>
+              {currencyOptions.map((opt) => (
+                <TouchableOpacity
+                  key={opt.code}
+                  style={styles.modalRow}
+                  onPress={() => {
+                    setCurrency(opt.code);
+                    setShowCurrencyPicker(false);
+                  }}
+                >
+                  <Text style={styles.modalRowText}>{opt.label}</Text>
+                  {currency === opt.code && (
+                    <Text style={styles.modalRowCheck}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </TouchableOpacity>
+        </Modal>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -237,5 +308,46 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  currencyButtonText: {
+    fontSize: 16,
+    color: '#1f2937',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    width: '100%',
+    maxWidth: 320,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 12,
+    color: '#1f2937',
+  },
+  modalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  modalRowText: {
+    fontSize: 16,
+    color: '#374151',
+  },
+  modalRowCheck: {
+    fontSize: 16,
+    color: '#2563eb',
   },
 });

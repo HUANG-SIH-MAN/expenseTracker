@@ -1,13 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View, ScrollView } from 'react-native';
 import { useRoute } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { CurrencyCode } from '../../types';
-import { CURRENCY_LABELS } from '../../constants';
+import type { CurrencyCode, CurrencyOption } from '../../types';
+import { getCurrencyOptions } from '../../utils/storage';
 import { useOnboarding } from '../../contexts/OnboardingContext';
 import type { OnboardingStackParamList } from '../../navigation/OnboardingStack';
 
-const CURRENCY_CODES: CurrencyCode[] = ['TWD', 'USD', 'JPY', 'EUR', 'CNY', 'KRW', 'GBP'];
 const DEFAULT_PRIMARY_CURRENCY: CurrencyCode = 'TWD';
 
 const LABEL_CURRENCY = '選擇主要貨幣';
@@ -21,6 +20,11 @@ export default function CurrencyScreen(): React.JSX.Element {
   const { accounts } = route.params;
   const { completeOnboarding } = useOnboarding();
   const [selected, setSelected] = useState<CurrencyCode>(DEFAULT_PRIMARY_CURRENCY);
+  const [currencyOptions, setCurrencyOptions] = useState<CurrencyOption[]>([]);
+
+  useEffect(() => {
+    getCurrencyOptions().then(setCurrencyOptions);
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -33,17 +37,17 @@ export default function CurrencyScreen(): React.JSX.Element {
         <Text style={styles.desc}>{LABEL_CURRENCY_DESC}</Text>
 
         <View style={styles.list}>
-          {CURRENCY_CODES.map((code) => {
-            const isSelected = selected === code;
+          {currencyOptions.map((opt) => {
+            const isSelected = selected === opt.code;
             return (
               <TouchableOpacity
-                key={code}
+                key={opt.code}
                 style={[styles.option, isSelected && styles.optionSelected]}
-                onPress={() => setSelected(code)}
+                onPress={() => setSelected(opt.code)}
                 activeOpacity={0.7}
               >
                 <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>
-                  {CURRENCY_LABELS[code] ?? code}
+                  {opt.label}
                 </Text>
                 {isSelected && <Text style={styles.check}>✓</Text>}
               </TouchableOpacity>

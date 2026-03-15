@@ -14,24 +14,13 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { MainStackParamList } from '../navigation/MainStack';
-import type { CurrencyCode } from '../types';
-import { getStoredPrimaryCurrency, updateStoredPrimaryCurrency } from '../utils/storage';
-import { CURRENCY_LABELS } from '../constants';
+import type { CurrencyCode, CurrencyOption } from '../types';
+import { getStoredPrimaryCurrency, updateStoredPrimaryCurrency, getCurrencyOptions } from '../utils/storage';
 
 const TITLE = '主要貨幣';
 const BTN_SAVE = '儲存';
 const BACK_ICON_SIZE = 28;
 const SECTION_DESC = '記帳與餘額顯示使用的貨幣';
-
-const SUPPORTED_CURRENCY_CODES: CurrencyCode[] = [
-  'TWD',
-  'USD',
-  'JPY',
-  'EUR',
-  'CNY',
-  'KRW',
-  'GBP',
-];
 
 type NavProp = NativeStackNavigationProp<MainStackParamList, 'PrimaryCurrency'>;
 
@@ -39,10 +28,16 @@ export default function PrimaryCurrencyScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavProp>();
   const [primaryCurrency, setPrimaryCurrency] = useState<CurrencyCode>('TWD');
+  const [currencyOptions, setCurrencyOptions] = useState<CurrencyOption[]>([]);
 
   useFocusEffect(
     useCallback(() => {
-      getStoredPrimaryCurrency().then(setPrimaryCurrency);
+      Promise.all([getStoredPrimaryCurrency(), getCurrencyOptions()]).then(
+        ([currency, options]) => {
+          setPrimaryCurrency(currency);
+          setCurrencyOptions(options);
+        }
+      );
     }, [])
   );
 
@@ -70,17 +65,17 @@ export default function PrimaryCurrencyScreen(): React.JSX.Element {
       >
         <Text style={styles.sectionDesc}>{SECTION_DESC}</Text>
         <View style={styles.currencyList}>
-          {SUPPORTED_CURRENCY_CODES.map((code) => {
-            const isSelected = primaryCurrency === code;
+          {currencyOptions.map((opt) => {
+            const isSelected = primaryCurrency === opt.code;
             return (
               <TouchableOpacity
-                key={code}
+                key={opt.code}
                 style={[styles.currencyRow, isSelected && styles.currencyRowSelected]}
-                onPress={() => handleSelectCurrency(code)}
+                onPress={() => handleSelectCurrency(opt.code)}
                 activeOpacity={0.7}
               >
                 <Text style={[styles.currencyLabel, isSelected && styles.currencyLabelSelected]}>
-                  {CURRENCY_LABELS[code] ?? code}
+                  {opt.label}
                 </Text>
                 {isSelected && (
                   <Ionicons name="checkmark-circle" size={22} color="#2563eb" />

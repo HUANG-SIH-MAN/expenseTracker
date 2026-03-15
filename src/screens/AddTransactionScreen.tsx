@@ -13,15 +13,15 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { Account, AnnualBudgetEntry, TransactionType } from '../types';
+import type { NativeStackScreenProps, NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { Account, AnnualBudgetEntry, TransactionType, CurrencyOption } from '../types';
+import type { MainStackParamList } from '../navigation/MainStack';
 import { generateId } from '../utils/id';
 import { parseAmountInput } from '../utils/amountExpression';
 import { formatDateWithWeekday } from '../utils/date';
 import { useTransactions } from '../contexts/TransactionsContext';
 import { useCategories } from '../contexts/CategoriesContext';
-import { getStoredAccounts, addRecurringSkip, getAnnualBudgetEntries } from '../utils/storage';
-import type { MainStackParamList } from '../navigation/MainStack';
+import { getStoredAccounts, addRecurringSkip, getAnnualBudgetEntries, getCurrencyOptions } from '../utils/storage';
 import { CalculatorKeypad } from '../components';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
@@ -40,12 +40,13 @@ const BACK_ICON_SIZE = 28;
 export default function AddTransactionScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const route = useRoute<RouteProps>();
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const { selectedDate, transactionId } = route.params;
   const { addTransaction, updateTransaction, getTransactionById } = useTransactions();
   const { expenseCategories, incomeCategories, getCategoryLabel } = useCategories();
 
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [currencyOptions, setCurrencyOptions] = useState<CurrencyOption[]>([]);
   const [type, setType] = useState<TransactionType>('expense');
   const [dateKey, setDateKey] = useState(selectedDate);
   const [amountStr, setAmountStr] = useState('');
@@ -74,6 +75,10 @@ export default function AddTransactionScreen(): React.JSX.Element {
     const first = keys[0];
     if (first) setCategory((prev) => (keys.includes(prev) ? prev : first));
   }, [type, expenseCategories, incomeCategories]);
+
+  useEffect(() => {
+    getCurrencyOptions().then(setCurrencyOptions);
+  }, []);
 
   useEffect(() => {
     getStoredAccounts().then((list: Account[]) => {
@@ -173,6 +178,10 @@ export default function AddTransactionScreen(): React.JSX.Element {
     navigation.goBack();
   };
 
+  const selectedAccount = accounts.find((a) => a.id === accountId);
+  const accountCurrency = selectedAccount?.currency ?? 'TWD';
+  const accountCurrencyLabel =
+    currencyOptions.find((o) => o.code === accountCurrency)?.label ?? accountCurrency;
   const amountDisplay = amountStr.trim() === '' ? '金額' : amountStr;
 
   return (
@@ -207,6 +216,12 @@ export default function AddTransactionScreen(): React.JSX.Element {
             >
               <Text style={[styles.tabText, type === 'income' && styles.tabTextActive]}>收入</Text>
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.tab}
+              onPress={() => navigation.navigate('AddTransfer', { selectedDate: dateKey })}
+            >
+              <Text style={styles.tabText}>轉帳</Text>
+            </TouchableOpacity>
           </View>
           <TouchableOpacity
             onPress={handleSubmit}
@@ -223,6 +238,7 @@ export default function AddTransactionScreen(): React.JSX.Element {
         </View>
 
         <View style={styles.amountSection}>
+          <Text style={styles.amountCurrencyLabel}>金額 ({accountCurrencyLabel})</Text>
           <Text style={[styles.amountDisplay, amountError && styles.amountDisplayError]}>
             {amountDisplay}
           </Text>
@@ -474,6 +490,11 @@ const styles = StyleSheet.create({
   },
   amountSection: {
     marginBottom: '1.5%',
+  },
+  amountCurrencyLabel: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginBottom: 4,
   },
   amountDisplay: {
     fontSize: 28,

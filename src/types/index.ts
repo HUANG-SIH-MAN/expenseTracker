@@ -26,17 +26,19 @@ export interface Account {
   id: string;
   name: string;
   initialBalance: number;
+  /** 帳戶幣別，預設 TWD */
+  currency: CurrencyCode;
 }
 
-/** 支援的貨幣代碼（可擴充） */
-export type CurrencyCode =
-  | "TWD"
-  | "USD"
-  | "JPY"
-  | "EUR"
-  | "CNY"
-  | "KRW"
-  | "GBP";
+/** 貨幣代碼（內建 + 使用者自訂，皆為字串如 TWD、AUD） */
+export type CurrencyCode = string;
+
+/** 單一幣別選項（供選單與顯示） */
+export interface CurrencyOption {
+  code: string;
+  label: string;
+  isBuiltIn: boolean;
+}
 
 /** 導覽完成後儲存的設定 */
 export interface OnboardingData {
@@ -58,10 +60,10 @@ export interface StoredCategories {
   income: CategoryItem[];
 }
 
-/** 單筆交易類型：收入或支出 */
-export type TransactionType = "income" | "expense";
+/** 單筆交易類型：收入、支出或轉帳 */
+export type TransactionType = "income" | "expense" | "transfer";
 
-/** 單筆交易（收入/支出） */
+/** 單筆交易（收入/支出/轉帳） */
 export interface Transaction {
   id: string;
   type: TransactionType;
@@ -69,12 +71,16 @@ export interface Transaction {
   date: string; // YYYY-MM-DD
   category: string;
   note?: string;
-  /** 帳戶 ID，對應 Onboarding 設定的帳戶；未設定時顯示為「現金」 */
+  /** 帳戶 ID，對應 Onboarding 設定的帳戶；未設定時顯示為「現金」；轉帳時為轉出帳戶 */
   accountId?: string;
   /** 若為固定收支自動帶入，存對應 RecurringItem.id；使用者編輯/刪除後會脫離或加入 skip */
   recurringId?: string;
   /** 對應年度預算項目 id；有值時不計入「日常已花」，僅在年預算頁顯示實際 */
   annualBudgetEntryId?: string;
+  /** 僅轉帳：轉入帳戶 ID */
+  toAccountId?: string;
+  /** 僅轉帳：轉入端金額（轉入帳戶幣別） */
+  transferAmount?: number;
   createdAt: string; // ISO 8601
 }
 

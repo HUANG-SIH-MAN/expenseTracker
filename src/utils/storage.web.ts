@@ -7,6 +7,7 @@ import type {
   AnnualBudgetEntry,
   BudgetSettings,
   CurrencyCode,
+  CurrencyOption,
   MonthlyFixedItem,
   OnboardingData,
   RecurringItem,
@@ -17,8 +18,15 @@ import type {
 import {
   BUDGET_DEFAULT_WEEKDAY_WEIGHT,
   BUDGET_DEFAULT_WEEKEND_WEIGHT,
+  BUILT_IN_CURRENCY_CODES,
+  CURRENCY_LABELS,
   STORAGE_KEYS,
 } from "../constants";
+
+export interface ExchangeRatesData {
+  rates: Record<string, number>;
+  updatedAt: string;
+}
 
 const DEFAULT_PRIMARY_CURRENCY: CurrencyCode = "TWD";
 
@@ -27,6 +35,12 @@ export async function getOnboardingData(): Promise<OnboardingData | null> {
     const raw = await AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as OnboardingData;
+    if (parsed?.accounts != null) {
+      parsed.accounts = parsed.accounts.map((a) => ({
+        ...a,
+        currency: a.currency ?? "TWD",
+      }));
+    }
     return parsed;
   } catch {
     return null;
@@ -78,6 +92,83 @@ export async function updateStoredPrimaryCurrency(
     accounts: data.accounts,
     primaryCurrency: currency,
   });
+}
+
+// --- 自訂幣別 ---
+
+export interface CustomCurrencyItem {
+  code: string;
+  label: string;
+}
+
+export async function getCustomCurrencies(): Promise<CustomCurrencyItem[]> {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.CUSTOM_CURRENCIES);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as CustomCurrencyItem[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveCustomCurrencies(
+  items: CustomCurrencyItem[],
+): Promise<void> {
+  await AsyncStorage.setItem(
+    STORAGE_KEYS.CUSTOM_CURRENCIES,
+    JSON.stringify(items),
+  );
+}
+
+const BUILT_IN_SET = new Set(BUILT_IN_CURRENCY_CODES);
+
+export async function getCurrencyOptions(): Promise<CurrencyOption[]> {
+  const builtIn: CurrencyOption[] = BUILT_IN_CURRENCY_CODES.map((code) => ({
+    code,
+    label: CURRENCY_LABELS[code] ?? code,
+    isBuiltIn: true,
+  }));
+  const custom = await getCustomCurrencies();
+  for (const { code, label } of custom) {
+    const c = code.trim().toUpperCase();
+    if (!c || BUILT_IN_SET.has(c)) continue;
+    builtIn.push({
+      code: c,
+      label: label.trim() || c,
+      isBuiltIn: false,
+    });
+  }
+  return builtIn;
+}
+
+// --- 匯率（總資產換算用）---
+
+export async function getExchangeRates(): Promise<ExchangeRatesData> {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.EXCHANGE_RATES);
+    if (!raw) return { rates: {}, updatedAt: "" };
+    const parsed = JSON.parse(raw) as ExchangeRatesData;
+    return {
+      rates: parsed?.rates ?? {},
+      updatedAt: parsed?.updatedAt ?? "",
+    };
+  } catch {
+    return { rates: {}, updatedAt: "" };
+  }
+}
+
+export async function saveExchangeRates(
+  rates: Record<string, number>,
+): Promise<void> {
+  const data: ExchangeRatesData = {
+    rates,
+    updatedAt: new Date().toISOString(),
+  };
+  await AsyncStorage.setItem(
+    STORAGE_KEYS.EXCHANGE_RATES,
+    JSON.stringify(data),
+  );
 }
 
 // --- 交易 ---
@@ -317,6 +408,7 @@ export async function clearAllData(): Promise<void> {
   });
   await AsyncStorage.removeItem(STORAGE_KEYS.ONBOARDING);
   await AsyncStorage.removeItem(STORAGE_KEYS.CATEGORIES);
+  await AsyncStorage.removeItem(STORAGE_KEYS.CUSTOM_CURRENCIES);
 }
 
 /** 取得某固定收支在 [startDateKey, endDateKey] 內所有應發生的日期（YYYY-MM-DD） */

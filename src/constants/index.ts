@@ -19,6 +19,8 @@ export const STORAGE_KEYS = {
   BUDGET_SETTINGS: "@expense_tracker/budget_settings",
   MONTHLY_FIXED_ITEMS: "@expense_tracker/monthly_fixed_items",
   ANNUAL_BUDGET_ENTRIES: "@expense_tracker/annual_budget_entries",
+  EXCHANGE_RATES: "@expense_tracker/exchange_rates",
+  CUSTOM_CURRENCIES: "@expense_tracker/custom_currencies",
 } as const;
 
 /** 預設支出類別（之後可改為使用者自訂） */
@@ -115,7 +117,18 @@ export const BUDGET_DEFAULT_WEEKEND_WEIGHT = 1.5;
 /** 預算設定在 settings 表的 key 前綴 */
 export const BUDGET_SETTINGS_KEY_PREFIX = "budget/";
 
-/** 支援的貨幣：代碼 -> 顯示名稱 */
+/** 內建貨幣代碼（依序顯示於選單） */
+export const BUILT_IN_CURRENCY_CODES = [
+  "TWD",
+  "USD",
+  "JPY",
+  "EUR",
+  "CNY",
+  "KRW",
+  "GBP",
+] as const;
+
+/** 內建貨幣：代碼 -> 顯示名稱 */
 export const CURRENCY_LABELS: Record<string, string> = {
   TWD: "新台幣 (TWD)",
   USD: "美元 (USD)",

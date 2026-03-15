@@ -10,6 +10,7 @@ import type {
   BudgetSettings,
   CategoryItem,
   CurrencyCode,
+  CurrencyOption,
   MonthlyFixedItem,
   OnboardingData,
   RecurringItem,
@@ -21,6 +22,9 @@ import {
   BUDGET_DEFAULT_WEEKDAY_WEIGHT,
   BUDGET_DEFAULT_WEEKEND_WEIGHT,
   BUDGET_SETTINGS_KEY_PREFIX,
+  BUILT_IN_CURRENCY_CODES,
+  CURRENCY_LABELS,
+  STORAGE_KEYS,
 } from "../constants";
 
 const DEFAULT_PRIMARY_CURRENCY: CurrencyCode = "TWD";
@@ -74,11 +78,13 @@ async function runMigrationFromAsyncStorageIfNeeded(): Promise<void> {
         const db = await getDb();
         await db.runAsync("DELETE FROM accounts");
         for (const a of data.accounts ?? []) {
+          const currency = (a as Account).currency ?? "TWD";
           await db.runAsync(
-            "INSERT INTO accounts (id, name, initial_balance) VALUES (?, ?, ?)",
+            "INSERT INTO accounts (id, name, initial_balance, currency) VALUES (?, ?, ?, ?)",
             a.id,
             a.name,
             a.initialBalance,
+            currency,
           );
         }
       }
@@ -94,7 +100,7 @@ async function runMigrationFromAsyncStorageIfNeeded(): Promise<void> {
         const db = await getDb();
         for (const t of list) {
           await db.runAsync(
-            "INSERT OR REPLACE INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, to_account_id, transfer_amount, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             t.id,
             t.type,
             t.amount,
@@ -104,6 +110,8 @@ async function runMigrationFromAsyncStorageIfNeeded(): Promise<void> {
             t.accountId ?? null,
             t.recurringId ?? null,
             (t as Transaction).annualBudgetEntryId ?? null,
+            (t as Transaction).toAccountId ?? null,
+            (t as Transaction).transferAmount ?? null,
             t.createdAt,
           );
         }
@@ -228,11 +236,13 @@ export async function getOnboardingData(): Promise<OnboardingData | null> {
     id: string;
     name: string;
     initial_balance: number;
-  }>("SELECT id, name, initial_balance FROM accounts ORDER BY id");
+    currency: string;
+  }>("SELECT id, name, initial_balance, currency FROM accounts ORDER BY id");
   const accounts: Account[] = rows.map((r) => ({
     id: r.id,
     name: r.name,
     initialBalance: r.initial_balance,
+    currency: (r.currency as CurrencyCode) || "TWD",
   }));
   return {
     hasCompletedOnboarding: true,
@@ -251,10 +261,11 @@ export async function setOnboardingComplete(data: {
   await db.runAsync("DELETE FROM accounts");
   for (const a of data.accounts) {
     await db.runAsync(
-      "INSERT INTO accounts (id, name, initial_balance) VALUES (?, ?, ?)",
+      "INSERT INTO accounts (id, name, initial_balance, currency) VALUES (?, ?, ?, ?)",
       a.id,
       a.name,
       a.initialBalance,
+      a.currency ?? "TWD",
     );
   }
 }
@@ -294,6 +305,51 @@ export async function updateStoredPrimaryCurrency(
   });
 }
 
+// --- 自訂幣別 ---
+
+export interface CustomCurrencyItem {
+  code: string;
+  label: string;
+}
+
+export async function getCustomCurrencies(): Promise<CustomCurrencyItem[]> {
+  const raw = await getSetting(STORAGE_KEYS.CUSTOM_CURRENCIES);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as CustomCurrencyItem[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveCustomCurrencies(
+  items: CustomCurrencyItem[],
+): Promise<void> {
+  await setSetting(STORAGE_KEYS.CUSTOM_CURRENCIES, JSON.stringify(items));
+}
+
+const BUILT_IN_SET = new Set(BUILT_IN_CURRENCY_CODES);
+
+export async function getCurrencyOptions(): Promise<CurrencyOption[]> {
+  const builtIn: CurrencyOption[] = BUILT_IN_CURRENCY_CODES.map((code) => ({
+    code,
+    label: CURRENCY_LABELS[code] ?? code,
+    isBuiltIn: true,
+  }));
+  const custom = await getCustomCurrencies();
+  for (const { code, label } of custom) {
+    const c = code.trim().toUpperCase();
+    if (!c || BUILT_IN_SET.has(c)) continue;
+    builtIn.push({
+      code: c,
+      label: label.trim() || c,
+      isBuiltIn: false,
+    });
+  }
+  return builtIn;
+}
+
 // --- 交易 ---
 
 interface TransactionRow {
@@ -306,6 +362,8 @@ interface TransactionRow {
   account_id: string | null;
   recurring_id: string | null;
   annual_budget_entry_id: string | null;
+  to_account_id: string | null;
+  transfer_amount: number | null;
   created_at: string;
 }
 
@@ -320,6 +378,8 @@ function rowToTransaction(r: TransactionRow): Transaction {
     accountId: r.account_id ?? undefined,
     recurringId: r.recurring_id ?? undefined,
     annualBudgetEntryId: r.annual_budget_entry_id ?? undefined,
+    toAccountId: r.to_account_id ?? undefined,
+    transferAmount: r.transfer_amount ?? undefined,
     createdAt: r.created_at,
   };
 }
@@ -328,7 +388,7 @@ export async function getStoredTransactions(): Promise<Transaction[]> {
   await ensureMigrationDone();
   const db = await getDb();
   const rows = await db.getAllAsync<TransactionRow>(
-    "SELECT id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, created_at FROM transactions ORDER BY date, created_at",
+    "SELECT id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, to_account_id, transfer_amount, created_at FROM transactions ORDER BY date, created_at",
   );
   return rows.map(rowToTransaction);
 }
@@ -340,7 +400,7 @@ export async function saveTransactions(
   await db.runAsync("DELETE FROM transactions");
   for (const t of transactions) {
     await db.runAsync(
-      "INSERT INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, to_account_id, transfer_amount, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       t.id,
       t.type,
       t.amount,
@@ -350,6 +410,8 @@ export async function saveTransactions(
       t.accountId ?? null,
       t.recurringId ?? null,
       t.annualBudgetEntryId ?? null,
+      t.toAccountId ?? null,
+      t.transferAmount ?? null,
       t.createdAt,
     );
   }
@@ -358,7 +420,7 @@ export async function saveTransactions(
 export async function addTransaction(transaction: Transaction): Promise<void> {
   const db = await getDb();
   await db.runAsync(
-    "INSERT INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, to_account_id, transfer_amount, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     transaction.id,
     transaction.type,
     transaction.amount,
@@ -368,6 +430,8 @@ export async function addTransaction(transaction: Transaction): Promise<void> {
     transaction.accountId ?? null,
     transaction.recurringId ?? null,
     transaction.annualBudgetEntryId ?? null,
+    transaction.toAccountId ?? null,
+    transaction.transferAmount ?? null,
     transaction.createdAt,
   );
 }
@@ -389,7 +453,7 @@ export async function updateTransaction(
 ): Promise<void> {
   const db = await getDb();
   await db.runAsync(
-    "UPDATE transactions SET type = ?, amount = ?, date = ?, category = ?, note = ?, account_id = ?, recurring_id = ?, annual_budget_entry_id = ?, created_at = ? WHERE id = ?",
+    "UPDATE transactions SET type = ?, amount = ?, date = ?, category = ?, note = ?, account_id = ?, recurring_id = ?, annual_budget_entry_id = ?, to_account_id = ?, transfer_amount = ?, created_at = ? WHERE id = ?",
     transaction.type,
     transaction.amount,
     transaction.date,
@@ -398,6 +462,8 @@ export async function updateTransaction(
     transaction.accountId ?? null,
     transaction.recurringId ?? null,
     transaction.annualBudgetEntryId ?? null,
+    transaction.toAccountId ?? null,
+    transaction.transferAmount ?? null,
     transaction.createdAt,
     transaction.id,
   );
@@ -650,6 +716,46 @@ export async function saveBudgetSettings(
   await setSetting(BUDGET_SETTINGS_KEY, JSON.stringify(settings));
 }
 
+// --- 匯率（總資產換算用）---
+
+export interface ExchangeRatesData {
+  rates: Record<string, number>;
+  updatedAt: string;
+}
+
+export async function getExchangeRates(): Promise<ExchangeRatesData> {
+  await ensureMigrationDone();
+  const db = await getDb();
+  const rows = await db.getAllAsync<{
+    currency_code: string;
+    rate_to_primary: number;
+    updated_at: string;
+  }>("SELECT currency_code, rate_to_primary, updated_at FROM exchange_rates");
+  const rates: Record<string, number> = {};
+  let updatedAt = "";
+  for (const r of rows) {
+    rates[r.currency_code] = r.rate_to_primary;
+    if (r.updated_at > updatedAt) updatedAt = r.updated_at;
+  }
+  return { rates, updatedAt };
+}
+
+export async function saveExchangeRates(
+  rates: Record<string, number>,
+): Promise<void> {
+  const db = await getDb();
+  await db.runAsync("DELETE FROM exchange_rates");
+  const now = new Date().toISOString();
+  for (const [code, rate] of Object.entries(rates)) {
+    await db.runAsync(
+      "INSERT INTO exchange_rates (currency_code, rate_to_primary, updated_at) VALUES (?, ?, ?)",
+      code,
+      rate,
+      now,
+    );
+  }
+}
+
 // --- 年度預算項目 ---
 
 interface AnnualBudgetEntryRow {
@@ -720,9 +826,11 @@ export async function clearAllData(): Promise<void> {
   await db.runAsync("DELETE FROM recurring");
   await db.runAsync("DELETE FROM monthly_fixed_items");
   await db.runAsync("DELETE FROM annual_budget_entries");
+  await db.runAsync("DELETE FROM exchange_rates");
   await db.runAsync("DELETE FROM categories");
   await db.runAsync("DELETE FROM accounts");
   await setSetting(SETTINGS_KEY_ONBOARDING, "false");
+  await setSetting(STORAGE_KEYS.CUSTOM_CURRENCIES, "[]");
   await saveBudgetSettings({
     defaultMonthlyIncome: 0,
     weekdayWeight: BUDGET_DEFAULT_WEEKDAY_WEIGHT,

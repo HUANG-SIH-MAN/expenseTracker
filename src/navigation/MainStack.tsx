@@ -14,13 +14,21 @@ import CategoryExpensesScreen from '../screens/CategoryExpensesScreen';
 import BudgetSettingsScreen from '../screens/BudgetSettingsScreen';
 import BudgetFixedEditScreen from '../screens/BudgetFixedEditScreen';
 import ImportExportScreen from '../screens/ImportExportScreen';
+import AddTransferScreen from '../screens/AddTransferScreen';
+import ExchangeRatesScreen from '../screens/ExchangeRatesScreen';
+import AddAccountScreen from '../screens/AddAccountScreen';
+import CurrencySettingsScreen from '../screens/CurrencySettingsScreen';
 import type { TransactionType } from '../types';
 
 export type MainStackParamList = {
   Home: undefined;
   AddTransaction: { selectedDate: string; transactionId?: string };
+  AddTransfer: { selectedDate?: string };
   LedgerBalance: undefined;
+  AddAccount: undefined;
   Statistics: undefined;
+  ExchangeRates: undefined;
+  CurrencySettings: undefined;
   CategoryExpenses: {
     categoryKey: string;
     transactionType: TransactionType;
@@ -60,8 +68,28 @@ export default function MainStack(): React.JSX.Element {
         options={{ headerShown: false }}
       />
       <Stack.Screen
+        name="AddTransfer"
+        component={AddTransferScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
         name="LedgerBalance"
         component={LedgerBalanceScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="AddAccount"
+        component={AddAccountScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="ExchangeRates"
+        component={ExchangeRatesScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="CurrencySettings"
+        component={CurrencySettingsScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen
