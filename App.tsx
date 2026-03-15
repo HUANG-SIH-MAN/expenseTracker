@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { OnboardingProvider, useOnboarding } from './src/contexts/OnboardingContext';
 import { TransactionsProvider } from './src/contexts/TransactionsContext';
 import { CategoriesProvider } from './src/contexts/CategoriesContext';
+import { BudgetProvider } from './src/contexts/BudgetContext';
 import OnboardingStack from './src/navigation/OnboardingStack';
 import MainStack from './src/navigation/MainStack';
 
@@ -28,7 +29,9 @@ function RootNavigator(): React.JSX.Element {
   return (
     <TransactionsProvider>
       <CategoriesProvider>
-        <MainStack />
+        <BudgetProvider>
+          <MainStack />
+        </BudgetProvider>
       </CategoriesProvider>
     </TransactionsProvider>
   );

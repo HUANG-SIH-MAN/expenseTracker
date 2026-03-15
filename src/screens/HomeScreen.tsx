@@ -18,8 +18,10 @@ import type { Transaction, Account } from '../types';
 import { Calendar } from '../components';
 import { useTransactions } from '../contexts/TransactionsContext';
 import { useCategories } from '../contexts/CategoriesContext';
+import { useBudget } from '../contexts/BudgetContext';
 import { getTodayKey } from '../utils/date';
 import { getStoredAccounts } from '../utils/storage';
+import { getBudgetSummary } from '../utils/budget';
 import type { MainStackParamList } from '../navigation/MainStack';
 
 const MONTH_PREV = '‹';
@@ -36,6 +38,9 @@ const BOTTOM_SETTINGS = '設定';
 const BOTTOM_BAR_HEIGHT = 56;
 const BOTTOM_ICON_SIZE = 24;
 const BOTTOM_LABEL_FONT_SIZE = 11;
+const BUDGET_CARD_TITLE = '本月預算';
+const BUDGET_REMAINING = '剩餘可支配';
+const BUDGET_TODAY_SUGGESTED = '今日建議';
 
 type NavProp = NativeStackNavigationProp<MainStackParamList, 'Home'>;
 
@@ -62,6 +67,10 @@ export default function HomeScreen(): React.JSX.Element {
     }, [refreshTransactions])
   );
   const { getCategoryLabel: getCategoryLabelFromContext, getCategoryIcon: getCategoryIconFromContext } = useCategories();
+  const { monthlyFixedItems, budgetSettings } = useBudget();
+  const budgetSummary = useMemo(() => {
+    return getBudgetSummary(today, transactions, monthlyFixedItems, budgetSettings);
+  }, [today, transactions, monthlyFixedItems, budgetSettings]);
   const { year, month } = useMemo(
     () => getYearMonthFromDateKey(selectedDate),
     [selectedDate]
@@ -214,6 +223,28 @@ export default function HomeScreen(): React.JSX.Element {
             <Text style={styles.monthBtnText}>{MONTH_NEXT}</Text>
           </TouchableOpacity>
         </View>
+
+        {budgetSummary != null && (
+          <TouchableOpacity
+            style={styles.budgetCard}
+            onPress={() => navigation.navigate('BudgetSettings')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.budgetCardTitle}>{BUDGET_CARD_TITLE}</Text>
+            <View style={styles.budgetCardRow}>
+              <Text style={styles.budgetCardLabel}>{BUDGET_REMAINING}</Text>
+              <Text style={styles.budgetCardAmount}>
+                {Math.round(budgetSummary.remainingDisposable)}
+              </Text>
+            </View>
+            <View style={styles.budgetCardRow}>
+              <Text style={styles.budgetCardLabel}>{BUDGET_TODAY_SUGGESTED}</Text>
+              <Text style={styles.budgetCardAmount}>
+                {Math.round(budgetSummary.todaySuggestedBudget)}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
 
         <Calendar
           year={year}
@@ -370,6 +401,35 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#1f2937',
+  },
+  budgetCard: {
+    backgroundColor: '#eff6ff',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  budgetCardTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1e40af',
+    marginBottom: 8,
+  },
+  budgetCardRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  budgetCardLabel: {
+    fontSize: 13,
+    color: '#374151',
+  },
+  budgetCardAmount: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1e40af',
   },
   bottomBar: {
     flexDirection: 'row',

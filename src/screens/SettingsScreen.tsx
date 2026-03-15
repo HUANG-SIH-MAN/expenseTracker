@@ -1,30 +1,51 @@
 /**
  * 設定頁：設定項目列表，點選進入個別設定頁
  */
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   TouchableOpacity,
   ScrollView,
+  Alert,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { MainStackParamList } from '../navigation/MainStack';
+import { useTransactions } from '../contexts/TransactionsContext';
+import { useBudget } from '../contexts/BudgetContext';
+import { useOnboarding } from '../contexts/OnboardingContext';
+import { clearAllData } from '../utils/storage';
 
 const TITLE = '設定';
 const BACK_ICON_SIZE = 28;
+const CLEAR_DATA_TITLE = '清除所有資料';
+const CLEAR_DATA_SUBTITLE = '含所有用戶設定與資料，將回到一開始的導覽畫面，無法復原';
+const CONFIRM_FIRST_TITLE = '確定要清除所有資料嗎？';
+const CONFIRM_FIRST_MSG = '此操作無法復原。';
+const CONFIRM_SECOND_TITLE = '再次確認';
+const CONFIRM_SECOND_MSG =
+  '將刪除所有記帳、類別、固定收支、預算與帳本等用戶設定，並回到一開始的導覽畫面。確定要執行？';
+const BTN_CANCEL = '取消';
+const BTN_CONTINUE = '繼續';
+const BTN_CONFIRM_CLEAR = '確定清除';
 
 /** 設定子頁的畫面名稱（僅列出無參數的設定頁） */
-type SettingScreenName = 'PrimaryCurrency' | 'CategorySettings' | 'RecurringSettings';
+type SettingScreenName =
+  | 'PrimaryCurrency'
+  | 'CategorySettings'
+  | 'RecurringSettings'
+  | 'BudgetSettings';
 
 const SETTING_ITEMS: { screen: SettingScreenName; title: string; subtitle?: string }[] = [
   { screen: 'PrimaryCurrency', title: '主要貨幣', subtitle: '記帳與餘額顯示使用的貨幣' },
   { screen: 'CategorySettings', title: '類別管理', subtitle: '自訂支出與收入類別、圖示' },
   { screen: 'RecurringSettings', title: '固定收支', subtitle: '週期性固定項目（如月租、薪水）' },
+  { screen: 'BudgetSettings', title: '預算規劃', subtitle: '月固定支出、可支配額與剩餘日預算' },
 ];
 
 type NavProp = NativeStackNavigationProp<MainStackParamList, 'Settings'>;
@@ -32,6 +53,55 @@ type NavProp = NativeStackNavigationProp<MainStackParamList, 'Settings'>;
 export default function SettingsScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavProp>();
+  const { refreshTransactions } = useTransactions();
+  const { refreshBudget } = useBudget();
+  const { refreshOnboardingState } = useOnboarding();
+
+  const performClear = useCallback(async () => {
+    await clearAllData();
+    await refreshTransactions();
+    await refreshBudget();
+    await refreshOnboardingState();
+  }, [refreshTransactions, refreshBudget, refreshOnboardingState]);
+
+  const handleClearDataPress = useCallback(() => {
+    if (Platform.OS === 'web') {
+      const first = window.confirm(
+        `${CONFIRM_FIRST_TITLE}\n\n${CONFIRM_FIRST_MSG}`
+      );
+      if (!first) return;
+      const second = window.confirm(
+        `${CONFIRM_SECOND_TITLE}\n\n${CONFIRM_SECOND_MSG}`
+      );
+      if (second) performClear();
+      return;
+    }
+    Alert.alert(
+      CONFIRM_FIRST_TITLE,
+      CONFIRM_FIRST_MSG,
+      [
+        { text: BTN_CANCEL, style: 'cancel' },
+        {
+          text: BTN_CONTINUE,
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              CONFIRM_SECOND_TITLE,
+              CONFIRM_SECOND_MSG,
+              [
+                { text: BTN_CANCEL, style: 'cancel' },
+                {
+                  text: BTN_CONFIRM_CLEAR,
+                  style: 'destructive',
+                  onPress: performClear,
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  }, [performClear]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
@@ -70,6 +140,20 @@ export default function SettingsScreen(): React.JSX.Element {
             </TouchableOpacity>
           ))}
         </View>
+
+        <TouchableOpacity
+          style={styles.clearDataRow}
+          onPress={handleClearDataPress}
+          activeOpacity={0.7}
+        >
+          <View style={styles.clearDataContent}>
+            <Text style={styles.clearDataTitle}>{CLEAR_DATA_TITLE}</Text>
+            <Text style={styles.clearDataSubtitle} numberOfLines={1}>
+              {CLEAR_DATA_SUBTITLE}
+            </Text>
+          </View>
+          <Ionicons name="trash-outline" size={20} color="#dc2626" />
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -104,6 +188,32 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 20,
+  },
+  clearDataRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginTop: 24,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+  },
+  clearDataContent: {
+    flex: 1,
+    marginRight: 8,
+  },
+  clearDataTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#dc2626',
+  },
+  clearDataSubtitle: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 2,
   },
   list: {
     backgroundColor: '#fff',

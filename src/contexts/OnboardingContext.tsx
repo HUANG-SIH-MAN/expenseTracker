@@ -9,6 +9,8 @@ interface OnboardingContextValue {
   isLoading: boolean;
   hasCompletedOnboarding: boolean;
   completeOnboarding: (accounts: Account[], primaryCurrency: CurrencyCode) => Promise<void>;
+  /** 重新讀取導覽狀態（清除資料後呼叫以回到導覽畫面） */
+  refreshOnboardingState: () => Promise<void>;
 }
 
 const OnboardingContext = createContext<OnboardingContextValue | null>(null);
@@ -38,10 +40,16 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }):
     []
   );
 
+  const refreshOnboardingState = useCallback(async () => {
+    const data = await getOnboardingData();
+    setHasCompletedOnboarding(data?.hasCompletedOnboarding === true);
+  }, []);
+
   const value: OnboardingContextValue = {
     isLoading,
     hasCompletedOnboarding,
     completeOnboarding,
+    refreshOnboardingState,
   };
 
   return (

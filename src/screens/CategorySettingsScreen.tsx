@@ -64,6 +64,12 @@ function DraggableCategoryRow({
   const [isDragging, setIsDragging] = useState(false);
   const rowTranslateY = useRef(new Animated.Value(0)).current;
   const lastSwappedTargetRef = useRef<number | null>(null);
+  const indexRef = useRef(index);
+  const totalItemsRef = useRef(totalItems);
+  const onSwapRef = useRef(onSwap);
+  indexRef.current = index;
+  totalItemsRef.current = totalItems;
+  onSwapRef.current = onSwap;
 
   const panResponder = useRef(
     PanResponder.create({
@@ -78,14 +84,16 @@ function DraggableCategoryRow({
         const threshold = ROW_HEIGHT * SWAP_THRESHOLD_RATIO;
         if (Math.abs(moveDist) > threshold) {
           const swapDir = moveDist > 0 ? 1 : -1;
-          const targetIndex = index + swapDir;
+          const currentIndex = indexRef.current;
+          const currentTotal = totalItemsRef.current;
+          const targetIndex = currentIndex + swapDir;
           if (
             targetIndex >= 0 &&
-            targetIndex < totalItems &&
+            targetIndex < currentTotal &&
             targetIndex !== lastSwappedTargetRef.current
           ) {
             lastSwappedTargetRef.current = targetIndex;
-            onSwap(index, targetIndex);
+            onSwapRef.current(currentIndex, targetIndex);
           }
         }
       },
@@ -157,6 +165,14 @@ export default function CategorySettingsScreen(): React.JSX.Element {
   const [editIcon, setEditIcon] = useState('📌');
 
   const list = activeTab === 'expense' ? expenseCategories : incomeCategories;
+  const listRef = useRef(list);
+  const expenseRef = useRef(expenseCategories);
+  const incomeRef = useRef(incomeCategories);
+  const activeTabRef = useRef(activeTab);
+  listRef.current = list;
+  expenseRef.current = expenseCategories;
+  incomeRef.current = incomeCategories;
+  activeTabRef.current = activeTab;
 
   useFocusEffect(
     useCallback(() => {
@@ -231,19 +247,18 @@ export default function CategorySettingsScreen(): React.JSX.Element {
     setEditingItem(null);
   };
 
-  const swapCategories = useCallback(
-    (index1: number, index2: number) => {
-      if (index2 < 0 || index2 >= list.length) return;
-      const nextList = [...list];
-      [nextList[index1], nextList[index2]] = [nextList[index2], nextList[index1]];
-      const next: StoredCategories = {
-        expense: activeTab === 'expense' ? nextList : expenseCategories,
-        income: activeTab === 'income' ? nextList : incomeCategories,
-      };
-      updateCategories(next);
-    },
-    [list, activeTab, expenseCategories, incomeCategories, updateCategories]
-  );
+  const swapCategories = useCallback((index1: number, index2: number) => {
+    const currentList = listRef.current;
+    if (index2 < 0 || index2 >= currentList.length) return;
+    const nextList = [...currentList];
+    [nextList[index1], nextList[index2]] = [nextList[index2], nextList[index1]];
+    const tab = activeTabRef.current;
+    const next: StoredCategories = {
+      expense: tab === 'expense' ? nextList : expenseRef.current,
+      income: tab === 'income' ? nextList : incomeRef.current,
+    };
+    updateCategories(next);
+  }, [updateCategories]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>

@@ -52,10 +52,12 @@ export function CategoriesProvider({ children }: { children: React.ReactNode }):
   }, [refreshCategories]);
 
   const updateCategories = useCallback(async (data: StoredCategories) => {
-    await saveCategories(data);
     setExpenseCategories(data.expense);
     setIncomeCategories(data.income);
-  }, []);
+    saveCategories(data).catch(() => {
+      refreshCategories();
+    });
+  }, [refreshCategories]);
 
   const getCategoryLabel = useCallback(
     (type: TransactionType, key: string): string => {

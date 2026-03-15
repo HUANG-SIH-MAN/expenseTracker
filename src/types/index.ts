@@ -3,7 +3,12 @@
  * 詳細欄位可於後續需求確定後擴充
  */
 
-export type ExpenseCategory = 'food' | 'transport' | 'shopping' | 'entertainment' | 'other';
+export type ExpenseCategory =
+  | "food"
+  | "transport"
+  | "shopping"
+  | "entertainment"
+  | "other";
 
 export interface Expense {
   id: string;
@@ -14,7 +19,7 @@ export interface Expense {
   createdAt: string;
 }
 
-export type ExpenseFormData = Omit<Expense, 'id' | 'createdAt'>;
+export type ExpenseFormData = Omit<Expense, "id" | "createdAt">;
 
 /** 帳戶：用於記錄各存款/帳戶餘額 */
 export interface Account {
@@ -24,7 +29,14 @@ export interface Account {
 }
 
 /** 支援的貨幣代碼（可擴充） */
-export type CurrencyCode = 'TWD' | 'USD' | 'JPY' | 'EUR' | 'CNY' | 'KRW' | 'GBP';
+export type CurrencyCode =
+  | "TWD"
+  | "USD"
+  | "JPY"
+  | "EUR"
+  | "CNY"
+  | "KRW"
+  | "GBP";
 
 /** 導覽完成後儲存的設定 */
 export interface OnboardingData {
@@ -47,7 +59,7 @@ export interface StoredCategories {
 }
 
 /** 單筆交易類型：收入或支出 */
-export type TransactionType = 'income' | 'expense';
+export type TransactionType = "income" | "expense";
 
 /** 單筆交易（收入/支出） */
 export interface Transaction {
@@ -61,6 +73,8 @@ export interface Transaction {
   accountId?: string;
   /** 若為固定收支自動帶入，存對應 RecurringItem.id；使用者編輯/刪除後會脫離或加入 skip */
   recurringId?: string;
+  /** 對應年度預算項目 id；有值時不計入「日常已花」，僅在年預算頁顯示實際 */
+  annualBudgetEntryId?: string;
   createdAt: string; // ISO 8601
 }
 
@@ -71,7 +85,7 @@ export interface RecurringSkipItem {
 }
 
 /** 固定收支週期 */
-export type RecurringRepeat = 'monthly' | 'weekly';
+export type RecurringRepeat = "monthly" | "weekly";
 
 /** 單筆固定收支（週期性範本，供提醒或自動寫入） */
 export interface RecurringItem {
@@ -86,4 +100,40 @@ export interface RecurringItem {
   /** 每月時：1–28 日；每週時：0–6（0=週日） */
   day: number;
   createdAt: string; // ISO 8601
+}
+
+/** 每月固定/預估支出項目（投資、家用等；金額為當月預估） */
+export interface MonthlyFixedItem {
+  id: string;
+  label: string;
+  /** 選填，綁定支出類別以計算「預估 vs 當月已發生」 */
+  categoryKey?: string;
+  /** 當月預估金額 */
+  estimatedAmount: number;
+  sortOrder: number;
+}
+
+/** 年度預算項目：某年某月、類型、類別、預計金額；可選項目名稱（如汽車保養）以區分同類別不同用途 */
+export interface AnnualBudgetEntry {
+  id: string;
+  year: number;
+  month: number; // 1-12
+  type: TransactionType;
+  categoryKey: string;
+  /** 選填，區分同類別不同項目，如「汽車保養」「年終獎金」 */
+  label?: string;
+  estimatedAmount: number;
+  sortOrder: number;
+}
+
+/** 預算設定：月收入預設、平日/假日權重、視為固定支出的類別（日常=排除這些） */
+export interface BudgetSettings {
+  /** 未記帳時使用的預設月收入 */
+  defaultMonthlyIncome: number;
+  /** 平日權重（用於剩餘日預算分配） */
+  weekdayWeight: number;
+  /** 假日權重（週六日等） */
+  weekendWeight: number;
+  /** 視為「固定/投資」的支出類別 key，這些不計入「日常已花」 */
+  fixedExpenseCategoryKeys: string[];
 }

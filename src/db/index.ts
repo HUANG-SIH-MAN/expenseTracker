@@ -1,9 +1,9 @@
 /**
  * SQLite 資料庫：開庫、建表、匯出查詢介面
  */
-import * as SQLite from 'expo-sqlite';
+import * as SQLite from "expo-sqlite";
 
-const DB_NAME = 'expense_tracker.db';
+const DB_NAME = "expense_tracker.db";
 
 let dbInstance: SQLite.SQLiteDatabase | null = null;
 
@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   note TEXT,
   account_id TEXT,
   recurring_id TEXT,
+  annual_budget_entry_id TEXT,
   created_at TEXT NOT NULL
 );
 
@@ -62,7 +63,28 @@ CREATE TABLE IF NOT EXISTS recurring_skip (
   PRIMARY KEY (recurring_id, date)
 );
 
+CREATE TABLE IF NOT EXISTS monthly_fixed_items (
+  id TEXT PRIMARY KEY,
+  label TEXT NOT NULL,
+  category_key TEXT,
+  estimated_amount REAL NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS annual_budget_entries (
+  id TEXT PRIMARY KEY,
+  year INTEGER NOT NULL,
+  month INTEGER NOT NULL,
+  type TEXT NOT NULL,
+  category_key TEXT NOT NULL,
+  label TEXT,
+  estimated_amount REAL NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_annual_budget_entries_year ON annual_budget_entries(year);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
+CREATE INDEX IF NOT EXISTS idx_transactions_annual_entry ON transactions(annual_budget_entry_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_recurring_id ON transactions(recurring_id);
 CREATE INDEX IF NOT EXISTS idx_recurring_skip_lookup ON recurring_skip(recurring_id, date);
 `.trim();
@@ -77,6 +99,20 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase> {
   }
   const db = await SQLite.openDatabaseAsync(DB_NAME);
   await db.execAsync(getSchemaSql());
+  try {
+    await db.runAsync(
+      "ALTER TABLE transactions ADD COLUMN annual_budget_entry_id TEXT"
+    );
+  } catch {
+    // Column already exists on existing DBs
+  }
+  try {
+    await db.runAsync(
+      "ALTER TABLE annual_budget_entries ADD COLUMN label TEXT"
+    );
+  } catch {
+    // Column already exists on existing DBs
+  }
   dbInstance = db;
   return db;
 }

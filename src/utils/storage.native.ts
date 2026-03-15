@@ -1,24 +1,32 @@
 /**
  * Native (iOS/Android)：使用 SQLite 讀寫導覽、帳戶與交易
  */
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getDb } from '../db';
-import { STORAGE_KEYS } from '../constants';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getDb } from "../db";
+import { STORAGE_KEYS } from "../constants";
 import type {
   Account,
+  AnnualBudgetEntry,
+  BudgetSettings,
   CategoryItem,
   CurrencyCode,
+  MonthlyFixedItem,
   OnboardingData,
   RecurringItem,
   RecurringSkipItem,
   StoredCategories,
   Transaction,
-} from '../types';
+} from "../types";
+import {
+  BUDGET_DEFAULT_WEEKDAY_WEIGHT,
+  BUDGET_DEFAULT_WEEKEND_WEIGHT,
+  BUDGET_SETTINGS_KEY_PREFIX,
+} from "../constants";
 
-const DEFAULT_PRIMARY_CURRENCY: CurrencyCode = 'TWD';
-const SETTINGS_KEY_ONBOARDING = 'hasCompletedOnboarding';
-const SETTINGS_KEY_PRIMARY_CURRENCY = 'primaryCurrency';
-const SETTINGS_KEY_MIGRATED = 'migratedFromAsyncStorage';
+const DEFAULT_PRIMARY_CURRENCY: CurrencyCode = "TWD";
+const SETTINGS_KEY_ONBOARDING = "hasCompletedOnboarding";
+const SETTINGS_KEY_PRIMARY_CURRENCY = "primaryCurrency";
+const SETTINGS_KEY_MIGRATED = "migratedFromAsyncStorage";
 
 let migrationPromise: Promise<void> | null = null;
 
@@ -26,16 +34,21 @@ let migrationPromise: Promise<void> | null = null;
 async function runMigrationFromAsyncStorageIfNeeded(): Promise<void> {
   await getDb();
   const migrated = await getSetting(SETTINGS_KEY_MIGRATED);
-  if (migrated === 'true') return;
+  if (migrated === "true") return;
 
-  const [onboardingRaw, transactionsRaw, categoriesRaw, recurringRaw, recurringSkipRaw] =
-    await Promise.all([
-      AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING),
-      AsyncStorage.getItem(STORAGE_KEYS.TRANSACTIONS),
-      AsyncStorage.getItem(STORAGE_KEYS.CATEGORIES),
-      AsyncStorage.getItem(STORAGE_KEYS.RECURRING),
-      AsyncStorage.getItem(STORAGE_KEYS.RECURRING_SKIP),
-    ]);
+  const [
+    onboardingRaw,
+    transactionsRaw,
+    categoriesRaw,
+    recurringRaw,
+    recurringSkipRaw,
+  ] = await Promise.all([
+    AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING),
+    AsyncStorage.getItem(STORAGE_KEYS.TRANSACTIONS),
+    AsyncStorage.getItem(STORAGE_KEYS.CATEGORIES),
+    AsyncStorage.getItem(STORAGE_KEYS.RECURRING),
+    AsyncStorage.getItem(STORAGE_KEYS.RECURRING_SKIP),
+  ]);
 
   const hasAny =
     onboardingRaw != null ||
@@ -45,7 +58,7 @@ async function runMigrationFromAsyncStorageIfNeeded(): Promise<void> {
     (recurringSkipRaw != null && recurringSkipRaw.length > 0);
 
   if (!hasAny) {
-    await setSetting(SETTINGS_KEY_MIGRATED, 'true');
+    await setSetting(SETTINGS_KEY_MIGRATED, "true");
     return;
   }
 
@@ -53,19 +66,19 @@ async function runMigrationFromAsyncStorageIfNeeded(): Promise<void> {
     try {
       const data = JSON.parse(onboardingRaw) as OnboardingData;
       if (data?.hasCompletedOnboarding === true) {
-        await setSetting(SETTINGS_KEY_ONBOARDING, 'true');
+        await setSetting(SETTINGS_KEY_ONBOARDING, "true");
         await setSetting(
           SETTINGS_KEY_PRIMARY_CURRENCY,
-          data.primaryCurrency ?? DEFAULT_PRIMARY_CURRENCY
+          data.primaryCurrency ?? DEFAULT_PRIMARY_CURRENCY,
         );
         const db = await getDb();
-        await db.runAsync('DELETE FROM accounts');
+        await db.runAsync("DELETE FROM accounts");
         for (const a of data.accounts ?? []) {
           await db.runAsync(
-            'INSERT INTO accounts (id, name, initial_balance) VALUES (?, ?, ?)',
+            "INSERT INTO accounts (id, name, initial_balance) VALUES (?, ?, ?)",
             a.id,
             a.name,
-            a.initialBalance
+            a.initialBalance,
           );
         }
       }
@@ -81,7 +94,7 @@ async function runMigrationFromAsyncStorageIfNeeded(): Promise<void> {
         const db = await getDb();
         for (const t of list) {
           await db.runAsync(
-            'INSERT OR REPLACE INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            "INSERT OR REPLACE INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             t.id,
             t.type,
             t.amount,
@@ -90,7 +103,8 @@ async function runMigrationFromAsyncStorageIfNeeded(): Promise<void> {
             t.note ?? null,
             t.accountId ?? null,
             t.recurringId ?? null,
-            t.createdAt
+            (t as Transaction).annualBudgetEntryId ?? null,
+            t.createdAt,
           );
         }
       }
@@ -122,10 +136,10 @@ async function runMigrationFromAsyncStorageIfNeeded(): Promise<void> {
       const list = JSON.parse(recurringRaw) as RecurringItem[];
       if (Array.isArray(list) && list.length > 0) {
         const db = await getDb();
-        await db.runAsync('DELETE FROM recurring');
+        await db.runAsync("DELETE FROM recurring");
         for (const r of list) {
           await db.runAsync(
-            'INSERT INTO recurring (id, type, amount, category, note, account_id, repeat, day, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            "INSERT INTO recurring (id, type, amount, category, note, account_id, repeat, day, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             r.id,
             r.type,
             r.amount,
@@ -134,7 +148,7 @@ async function runMigrationFromAsyncStorageIfNeeded(): Promise<void> {
             r.accountId ?? null,
             r.repeat,
             r.day,
-            r.createdAt
+            r.createdAt,
           );
         }
       }
@@ -150,9 +164,9 @@ async function runMigrationFromAsyncStorageIfNeeded(): Promise<void> {
         const db = await getDb();
         for (const x of list) {
           await db.runAsync(
-            'INSERT OR IGNORE INTO recurring_skip (recurring_id, date) VALUES (?, ?)',
+            "INSERT OR IGNORE INTO recurring_skip (recurring_id, date) VALUES (?, ?)",
             x.recurringId,
-            x.date
+            x.date,
           );
         }
       }
@@ -161,7 +175,7 @@ async function runMigrationFromAsyncStorageIfNeeded(): Promise<void> {
     }
   }
 
-  await setSetting(SETTINGS_KEY_MIGRATED, 'true');
+  await setSetting(SETTINGS_KEY_MIGRATED, "true");
   await AsyncStorage.multiRemove([
     STORAGE_KEYS.ONBOARDING,
     STORAGE_KEYS.TRANSACTIONS,
@@ -183,8 +197,8 @@ async function ensureMigrationDone(): Promise<void> {
 async function getSetting(key: string): Promise<string | null> {
   const db = await getDb();
   const row = await db.getFirstAsync<{ value: string }>(
-    'SELECT value FROM settings WHERE key = ?',
-    key
+    "SELECT value FROM settings WHERE key = ?",
+    key,
   );
   return row?.value ?? null;
 }
@@ -192,9 +206,9 @@ async function getSetting(key: string): Promise<string | null> {
 async function setSetting(key: string, value: string): Promise<void> {
   const db = await getDb();
   await db.runAsync(
-    'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
     key,
-    value
+    value,
   );
 }
 
@@ -203,15 +217,18 @@ async function setSetting(key: string, value: string): Promise<void> {
 export async function getOnboardingData(): Promise<OnboardingData | null> {
   await ensureMigrationDone();
   const hasCompleted = await getSetting(SETTINGS_KEY_ONBOARDING);
-  if (hasCompleted !== 'true') {
+  if (hasCompleted !== "true") {
     return null;
   }
-  const primaryCurrency =
-    (await getSetting(SETTINGS_KEY_PRIMARY_CURRENCY)) as CurrencyCode | null;
+  const primaryCurrency = (await getSetting(
+    SETTINGS_KEY_PRIMARY_CURRENCY,
+  )) as CurrencyCode | null;
   const db = await getDb();
-  const rows = await db.getAllAsync<{ id: string; name: string; initial_balance: number }>(
-    'SELECT id, name, initial_balance FROM accounts ORDER BY id'
-  );
+  const rows = await db.getAllAsync<{
+    id: string;
+    name: string;
+    initial_balance: number;
+  }>("SELECT id, name, initial_balance FROM accounts ORDER BY id");
   const accounts: Account[] = rows.map((r) => ({
     id: r.id,
     name: r.name,
@@ -228,16 +245,16 @@ export async function setOnboardingComplete(data: {
   accounts: Account[];
   primaryCurrency: CurrencyCode;
 }): Promise<void> {
-  await setSetting(SETTINGS_KEY_ONBOARDING, 'true');
+  await setSetting(SETTINGS_KEY_ONBOARDING, "true");
   await setSetting(SETTINGS_KEY_PRIMARY_CURRENCY, data.primaryCurrency);
   const db = await getDb();
-  await db.runAsync('DELETE FROM accounts');
+  await db.runAsync("DELETE FROM accounts");
   for (const a of data.accounts) {
     await db.runAsync(
-      'INSERT INTO accounts (id, name, initial_balance) VALUES (?, ?, ?)',
+      "INSERT INTO accounts (id, name, initial_balance) VALUES (?, ?, ?)",
       a.id,
       a.name,
-      a.initialBalance
+      a.initialBalance,
     );
   }
 }
@@ -267,7 +284,7 @@ export async function getStoredPrimaryCurrency(): Promise<CurrencyCode> {
 }
 
 export async function updateStoredPrimaryCurrency(
-  currency: CurrencyCode
+  currency: CurrencyCode,
 ): Promise<void> {
   const data = await getOnboardingData();
   if (!data?.hasCompletedOnboarding) return;
@@ -288,19 +305,21 @@ interface TransactionRow {
   note: string | null;
   account_id: string | null;
   recurring_id: string | null;
+  annual_budget_entry_id: string | null;
   created_at: string;
 }
 
 function rowToTransaction(r: TransactionRow): Transaction {
   return {
     id: r.id,
-    type: r.type as Transaction['type'],
+    type: r.type as Transaction["type"],
     amount: r.amount,
     date: r.date,
     category: r.category,
     note: r.note ?? undefined,
     accountId: r.account_id ?? undefined,
     recurringId: r.recurring_id ?? undefined,
+    annualBudgetEntryId: r.annual_budget_entry_id ?? undefined,
     createdAt: r.created_at,
   };
 }
@@ -309,17 +328,19 @@ export async function getStoredTransactions(): Promise<Transaction[]> {
   await ensureMigrationDone();
   const db = await getDb();
   const rows = await db.getAllAsync<TransactionRow>(
-    'SELECT id, type, amount, date, category, note, account_id, recurring_id, created_at FROM transactions ORDER BY date, created_at'
+    "SELECT id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, created_at FROM transactions ORDER BY date, created_at",
   );
   return rows.map(rowToTransaction);
 }
 
-export async function saveTransactions(transactions: Transaction[]): Promise<void> {
+export async function saveTransactions(
+  transactions: Transaction[],
+): Promise<void> {
   const db = await getDb();
-  await db.runAsync('DELETE FROM transactions');
+  await db.runAsync("DELETE FROM transactions");
   for (const t of transactions) {
     await db.runAsync(
-      'INSERT INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      "INSERT INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       t.id,
       t.type,
       t.amount,
@@ -328,7 +349,8 @@ export async function saveTransactions(transactions: Transaction[]): Promise<voi
       t.note ?? null,
       t.accountId ?? null,
       t.recurringId ?? null,
-      t.createdAt
+      t.annualBudgetEntryId ?? null,
+      t.createdAt,
     );
   }
 }
@@ -336,7 +358,7 @@ export async function saveTransactions(transactions: Transaction[]): Promise<voi
 export async function addTransaction(transaction: Transaction): Promise<void> {
   const db = await getDb();
   await db.runAsync(
-    'INSERT INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    "INSERT INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     transaction.id,
     transaction.type,
     transaction.amount,
@@ -345,26 +367,29 @@ export async function addTransaction(transaction: Transaction): Promise<void> {
     transaction.note ?? null,
     transaction.accountId ?? null,
     transaction.recurringId ?? null,
-    transaction.createdAt
+    transaction.annualBudgetEntryId ?? null,
+    transaction.createdAt,
   );
 }
 
 export async function deleteTransaction(id: string): Promise<void> {
   const db = await getDb();
-  const row = await db.getFirstAsync<{ recurring_id: string | null; date: string }>(
-    'SELECT recurring_id, date FROM transactions WHERE id = ?',
-    id
-  );
+  const row = await db.getFirstAsync<{
+    recurring_id: string | null;
+    date: string;
+  }>("SELECT recurring_id, date FROM transactions WHERE id = ?", id);
   if (row?.recurring_id != null) {
     await addRecurringSkip(row.recurring_id, row.date);
   }
-  await db.runAsync('DELETE FROM transactions WHERE id = ?', id);
+  await db.runAsync("DELETE FROM transactions WHERE id = ?", id);
 }
 
-export async function updateTransaction(transaction: Transaction): Promise<void> {
+export async function updateTransaction(
+  transaction: Transaction,
+): Promise<void> {
   const db = await getDb();
   await db.runAsync(
-    'UPDATE transactions SET type = ?, amount = ?, date = ?, category = ?, note = ?, account_id = ?, recurring_id = ?, created_at = ? WHERE id = ?',
+    "UPDATE transactions SET type = ?, amount = ?, date = ?, category = ?, note = ?, account_id = ?, recurring_id = ?, annual_budget_entry_id = ?, created_at = ? WHERE id = ?",
     transaction.type,
     transaction.amount,
     transaction.date,
@@ -372,8 +397,9 @@ export async function updateTransaction(transaction: Transaction): Promise<void>
     transaction.note ?? null,
     transaction.accountId ?? null,
     transaction.recurringId ?? null,
+    transaction.annualBudgetEntryId ?? null,
     transaction.createdAt,
-    transaction.id
+    transaction.id,
   );
 }
 
@@ -395,10 +421,12 @@ export async function getStoredCategories(): Promise<StoredCategories | null> {
   await ensureMigrationDone();
   const db = await getDb();
   const rows = await db.getAllAsync<CategoryRow>(
-    'SELECT kind, key, label, icon, sort_order FROM categories ORDER BY kind, sort_order, id'
+    "SELECT kind, key, label, icon, sort_order FROM categories ORDER BY kind, sort_order, id",
   );
-  const expense = rows.filter((r) => r.kind === 'expense').map(rowToCategoryItem);
-  const income = rows.filter((r) => r.kind === 'income').map(rowToCategoryItem);
+  const expense = rows
+    .filter((r) => r.kind === "expense")
+    .map(rowToCategoryItem);
+  const income = rows.filter((r) => r.kind === "income").map(rowToCategoryItem);
   if (expense.length === 0 || income.length === 0) {
     return null;
   }
@@ -407,27 +435,27 @@ export async function getStoredCategories(): Promise<StoredCategories | null> {
 
 export async function saveCategories(data: StoredCategories): Promise<void> {
   const db = await getDb();
-  await db.runAsync('DELETE FROM categories');
+  await db.runAsync("DELETE FROM categories");
   let sortOrder = 0;
   for (const c of data.expense) {
     await db.runAsync(
-      'INSERT INTO categories (kind, key, label, icon, sort_order) VALUES (?, ?, ?, ?, ?)',
-      'expense',
+      "INSERT INTO categories (kind, key, label, icon, sort_order) VALUES (?, ?, ?, ?, ?)",
+      "expense",
       c.key,
       c.label,
       c.icon,
-      sortOrder++
+      sortOrder++,
     );
   }
   sortOrder = 0;
   for (const c of data.income) {
     await db.runAsync(
-      'INSERT INTO categories (kind, key, label, icon, sort_order) VALUES (?, ?, ?, ?, ?)',
-      'income',
+      "INSERT INTO categories (kind, key, label, icon, sort_order) VALUES (?, ?, ?, ?, ?)",
+      "income",
       c.key,
       c.label,
       c.icon,
-      sortOrder++
+      sortOrder++,
     );
   }
 }
@@ -449,12 +477,12 @@ interface RecurringRow {
 function rowToRecurringItem(r: RecurringRow): RecurringItem {
   return {
     id: r.id,
-    type: r.type as RecurringItem['type'],
+    type: r.type as RecurringItem["type"],
     amount: r.amount,
     category: r.category,
     note: r.note ?? undefined,
     accountId: r.account_id ?? undefined,
-    repeat: r.repeat as RecurringItem['repeat'],
+    repeat: r.repeat as RecurringItem["repeat"],
     day: r.day,
     createdAt: r.created_at,
   };
@@ -464,17 +492,17 @@ export async function getStoredRecurring(): Promise<RecurringItem[]> {
   await ensureMigrationDone();
   const db = await getDb();
   const rows = await db.getAllAsync<RecurringRow>(
-    'SELECT id, type, amount, category, note, account_id, repeat, day, created_at FROM recurring ORDER BY created_at'
+    "SELECT id, type, amount, category, note, account_id, repeat, day, created_at FROM recurring ORDER BY created_at",
   );
   return rows.map(rowToRecurringItem);
 }
 
 export async function saveRecurring(items: RecurringItem[]): Promise<void> {
   const db = await getDb();
-  await db.runAsync('DELETE FROM recurring');
+  await db.runAsync("DELETE FROM recurring");
   for (const r of items) {
     await db.runAsync(
-      'INSERT INTO recurring (id, type, amount, category, note, account_id, repeat, day, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      "INSERT INTO recurring (id, type, amount, category, note, account_id, repeat, day, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
       r.id,
       r.type,
       r.amount,
@@ -483,68 +511,240 @@ export async function saveRecurring(items: RecurringItem[]): Promise<void> {
       r.accountId ?? null,
       r.repeat,
       r.day,
-      r.createdAt
+      r.createdAt,
     );
   }
 }
 
 // --- 固定收支 skip ---
 
-export async function getStoredRecurringSkipList(): Promise<RecurringSkipItem[]> {
+export async function getStoredRecurringSkipList(): Promise<
+  RecurringSkipItem[]
+> {
   await ensureMigrationDone();
   const db = await getDb();
   const rows = await db.getAllAsync<{ recurring_id: string; date: string }>(
-    'SELECT recurring_id, date FROM recurring_skip'
+    "SELECT recurring_id, date FROM recurring_skip",
   );
   return rows.map((r) => ({ recurringId: r.recurring_id, date: r.date }));
 }
 
 export async function saveRecurringSkipList(
-  items: RecurringSkipItem[]
+  items: RecurringSkipItem[],
 ): Promise<void> {
   const db = await getDb();
-  await db.runAsync('DELETE FROM recurring_skip');
+  await db.runAsync("DELETE FROM recurring_skip");
   for (const x of items) {
     await db.runAsync(
-      'INSERT INTO recurring_skip (recurring_id, date) VALUES (?, ?)',
+      "INSERT INTO recurring_skip (recurring_id, date) VALUES (?, ?)",
       x.recurringId,
-      x.date
+      x.date,
     );
   }
 }
 
 export async function addRecurringSkip(
   recurringId: string,
-  date: string
+  date: string,
 ): Promise<void> {
   const db = await getDb();
   const existing = await db.getFirstAsync(
-    'SELECT 1 FROM recurring_skip WHERE recurring_id = ? AND date = ?',
+    "SELECT 1 FROM recurring_skip WHERE recurring_id = ? AND date = ?",
     recurringId,
-    date
+    date,
   );
   if (existing != null) return;
   await db.runAsync(
-    'INSERT INTO recurring_skip (recurring_id, date) VALUES (?, ?)',
+    "INSERT INTO recurring_skip (recurring_id, date) VALUES (?, ?)",
     recurringId,
-    date
+    date,
   );
+}
+
+// --- 預算：月固定/預估支出 ---
+
+const BUDGET_SETTINGS_KEY = `${BUDGET_SETTINGS_KEY_PREFIX}settings`;
+
+interface MonthlyFixedRow {
+  id: string;
+  label: string;
+  category_key: string | null;
+  estimated_amount: number;
+  sort_order: number;
+}
+
+function rowToMonthlyFixedItem(r: MonthlyFixedRow): MonthlyFixedItem {
+  return {
+    id: r.id,
+    label: r.label,
+    categoryKey: r.category_key ?? undefined,
+    estimatedAmount: r.estimated_amount,
+    sortOrder: r.sort_order,
+  };
+}
+
+export async function getMonthlyFixedItems(): Promise<MonthlyFixedItem[]> {
+  await ensureMigrationDone();
+  const db = await getDb();
+  const rows = await db.getAllAsync<MonthlyFixedRow>(
+    "SELECT id, label, category_key, estimated_amount, sort_order FROM monthly_fixed_items ORDER BY sort_order, id",
+  );
+  return rows.map(rowToMonthlyFixedItem);
+}
+
+export async function saveMonthlyFixedItems(
+  items: MonthlyFixedItem[],
+): Promise<void> {
+  const db = await getDb();
+  await db.runAsync("DELETE FROM monthly_fixed_items");
+  for (const item of items) {
+    await db.runAsync(
+      "INSERT INTO monthly_fixed_items (id, label, category_key, estimated_amount, sort_order) VALUES (?, ?, ?, ?, ?)",
+      item.id,
+      item.label,
+      item.categoryKey ?? null,
+      item.estimatedAmount,
+      item.sortOrder,
+    );
+  }
+}
+
+// --- 預算設定 ---
+
+export async function getBudgetSettings(): Promise<BudgetSettings> {
+  await ensureMigrationDone();
+  const raw = await getSetting(BUDGET_SETTINGS_KEY);
+  if (raw == null || raw === "") {
+    return {
+      defaultMonthlyIncome: 0,
+      weekdayWeight: BUDGET_DEFAULT_WEEKDAY_WEIGHT,
+      weekendWeight: BUDGET_DEFAULT_WEEKEND_WEIGHT,
+      fixedExpenseCategoryKeys: [],
+    };
+  }
+  try {
+    const parsed = JSON.parse(raw) as BudgetSettings;
+    return {
+      defaultMonthlyIncome: Number(parsed.defaultMonthlyIncome) || 0,
+      weekdayWeight:
+        Number(parsed.weekdayWeight) || BUDGET_DEFAULT_WEEKDAY_WEIGHT,
+      weekendWeight:
+        Number(parsed.weekendWeight) || BUDGET_DEFAULT_WEEKEND_WEIGHT,
+      fixedExpenseCategoryKeys: Array.isArray(parsed.fixedExpenseCategoryKeys)
+        ? parsed.fixedExpenseCategoryKeys
+        : [],
+    };
+  } catch {
+    return {
+      defaultMonthlyIncome: 0,
+      weekdayWeight: BUDGET_DEFAULT_WEEKDAY_WEIGHT,
+      weekendWeight: BUDGET_DEFAULT_WEEKEND_WEIGHT,
+      fixedExpenseCategoryKeys: [],
+    };
+  }
+}
+
+export async function saveBudgetSettings(
+  settings: BudgetSettings,
+): Promise<void> {
+  await setSetting(BUDGET_SETTINGS_KEY, JSON.stringify(settings));
+}
+
+// --- 年度預算項目 ---
+
+interface AnnualBudgetEntryRow {
+  id: string;
+  year: number;
+  month: number;
+  type: string;
+  category_key: string;
+  label: string | null;
+  estimated_amount: number;
+  sort_order: number;
+}
+
+function rowToAnnualBudgetEntry(r: AnnualBudgetEntryRow): AnnualBudgetEntry {
+  return {
+    id: r.id,
+    year: r.year,
+    month: r.month,
+    type: r.type as AnnualBudgetEntry["type"],
+    categoryKey: r.category_key,
+    label: r.label ?? undefined,
+    estimatedAmount: r.estimated_amount,
+    sortOrder: r.sort_order,
+  };
+}
+
+export async function getAnnualBudgetEntries(
+  year: number,
+): Promise<AnnualBudgetEntry[]> {
+  await ensureMigrationDone();
+  const db = await getDb();
+  const rows = await db.getAllAsync<AnnualBudgetEntryRow>(
+    "SELECT id, year, month, type, category_key, label, estimated_amount, sort_order FROM annual_budget_entries WHERE year = ? ORDER BY month, sort_order, id",
+    year,
+  );
+  return rows.map(rowToAnnualBudgetEntry);
+}
+
+export async function saveAnnualBudgetEntries(
+  year: number,
+  items: AnnualBudgetEntry[],
+): Promise<void> {
+  const db = await getDb();
+  await db.runAsync("DELETE FROM annual_budget_entries WHERE year = ?", year);
+  for (const item of items) {
+    await db.runAsync(
+      "INSERT INTO annual_budget_entries (id, year, month, type, category_key, label, estimated_amount, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      item.id,
+      item.year,
+      item.month,
+      item.type,
+      item.categoryKey,
+      item.label ?? null,
+      item.estimatedAmount,
+      item.sortOrder,
+    );
+  }
+}
+
+/**
+ * 清除所有用戶輸入的設定與資料（交易、類別、固定收支、預算、年度預算、帳本／導覽），回到未完成導覽狀態。此操作無法復原。
+ */
+export async function clearAllData(): Promise<void> {
+  await ensureMigrationDone();
+  const db = await getDb();
+  await db.runAsync("DELETE FROM transactions");
+  await db.runAsync("DELETE FROM recurring_skip");
+  await db.runAsync("DELETE FROM recurring");
+  await db.runAsync("DELETE FROM monthly_fixed_items");
+  await db.runAsync("DELETE FROM annual_budget_entries");
+  await db.runAsync("DELETE FROM categories");
+  await db.runAsync("DELETE FROM accounts");
+  await setSetting(SETTINGS_KEY_ONBOARDING, "false");
+  await saveBudgetSettings({
+    defaultMonthlyIncome: 0,
+    weekdayWeight: BUDGET_DEFAULT_WEEKDAY_WEIGHT,
+    weekendWeight: BUDGET_DEFAULT_WEEKEND_WEIGHT,
+    fixedExpenseCategoryKeys: [],
+  });
 }
 
 /** 取得某固定收支在 [startDateKey, endDateKey] 內所有應發生的日期（YYYY-MM-DD） */
 function getApplicableDateKeys(
   item: RecurringItem,
   startDateKey: string,
-  endDateKey: string
+  endDateKey: string,
 ): string[] {
-  const [sy, sm] = startDateKey.split('-').map(Number);
-  const [ey, em] = endDateKey.split('-').map(Number);
+  const [sy, sm] = startDateKey.split("-").map(Number);
+  const [ey, em] = endDateKey.split("-").map(Number);
   const start = new Date(sy, sm - 1, 1);
   const end = new Date(ey, em - 1, 31);
   const keys: string[] = [];
   const minDay = 1;
   const maxDayMonth = 28;
-  if (item.repeat === 'monthly') {
+  if (item.repeat === "monthly") {
     const dayOfMonth = Math.min(Math.max(minDay, item.day), maxDayMonth);
     for (let y = sy; y <= ey; y++) {
       const monthStart = y === sy ? sm : 1;
@@ -554,15 +754,15 @@ function getApplicableDateKeys(
         const d = Math.min(dayOfMonth, lastDay);
         const date = new Date(y, m - 1, d);
         if (date >= start && date <= end) {
-          const key = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+          const key = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
           if (key >= startDateKey && key <= endDateKey) keys.push(key);
         }
       }
     }
   } else {
     const targetDay = item.day;
-    const [sYear, sMonth, sDay] = startDateKey.split('-').map(Number);
-    const [eYear, eMonth, eDay] = endDateKey.split('-').map(Number);
+    const [sYear, sMonth, sDay] = startDateKey.split("-").map(Number);
+    const [eYear, eMonth, eDay] = endDateKey.split("-").map(Number);
     const cursor = new Date(sYear, sMonth - 1, sDay);
     const endDate = new Date(eYear, eMonth - 1, eDay);
     while (cursor <= endDate) {
@@ -571,7 +771,7 @@ function getApplicableDateKeys(
         const m = cursor.getMonth() + 1;
         const d = cursor.getDate();
         keys.push(
-          `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+          `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`,
         );
       }
       cursor.setDate(cursor.getDate() + 1);
@@ -582,7 +782,7 @@ function getApplicableDateKeys(
 
 /** 將固定收支從「設定當下之後」的應發生日自動填入帳本（已有或已 skip 的不重複建立） */
 export async function syncRecurringToTransactions(): Promise<Transaction[]> {
-  const { generateId } = await import('./id');
+  const { generateId } = await import("./id");
   const [transactions, recurringList, skipList] = await Promise.all([
     getStoredTransactions(),
     getStoredRecurring(),
@@ -592,10 +792,10 @@ export async function syncRecurringToTransactions(): Promise<Transaction[]> {
   const existingSet = new Set(
     transactions
       .filter((t) => t.recurringId != null)
-      .map((t) => `${t.recurringId}\t${t.date}`)
+      .map((t) => `${t.recurringId}\t${t.date}`),
   );
   const now = new Date();
-  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const added: Transaction[] = [];
   for (const item of recurringList) {
     const startKey = item.createdAt.slice(0, 10);
