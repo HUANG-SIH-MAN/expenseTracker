@@ -150,7 +150,12 @@ export default function ImportExportScreen(): React.JSX.Element {
   const handleImportNative = useCallback(async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: 'text/csv',
+        type: [
+          'text/csv',
+          'text/comma-separated-values',
+          'application/vnd.ms-excel',
+          'text/plain',
+        ],
         copyToCacheDirectory: true,
       });
       if (result.canceled) {

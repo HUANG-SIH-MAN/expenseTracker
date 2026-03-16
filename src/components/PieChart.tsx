@@ -7,6 +7,7 @@ import Svg, { Path } from 'react-native-svg';
 
 const FULL_CIRCLE_RADIANS = 2 * Math.PI;
 const START_OFFSET_RADIANS = -Math.PI / 2;
+const FULL_CIRCLE_EPSILON = 0.0001;
 
 export interface PieChartSlice {
   name: string;
@@ -26,11 +27,16 @@ function getPathForSlice(
   cy: number,
   r: number
 ): string {
+  let adjustedEndAngle = endAngle;
+  const sweep = endAngle - startAngle;
+  if (sweep >= FULL_CIRCLE_RADIANS) {
+    adjustedEndAngle = startAngle + FULL_CIRCLE_RADIANS - FULL_CIRCLE_EPSILON;
+  }
   const x1 = cx + r * Math.cos(startAngle);
   const y1 = cy + r * Math.sin(startAngle);
-  const x2 = cx + r * Math.cos(endAngle);
-  const y2 = cy + r * Math.sin(endAngle);
-  const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
+  const x2 = cx + r * Math.cos(adjustedEndAngle);
+  const y2 = cy + r * Math.sin(adjustedEndAngle);
+  const largeArc = adjustedEndAngle - startAngle > Math.PI ? 1 : 0;
   return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`;
 }
 

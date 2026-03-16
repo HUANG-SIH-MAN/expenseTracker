@@ -17,8 +17,10 @@ import { formatDateWithWeekday } from '../utils/date';
 import { parseAmountInput } from '../utils/amountExpression';
 import { useCategories } from '../contexts/CategoriesContext';
 import CalculatorKeypad from './CalculatorKeypad';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const KEYPAD_HEIGHT_PERCENT = 0.42;
+const KEYPAD_MIN_BOTTOM_PADDING = 8;
 
 export interface AddTransactionModalProps {
   visible: boolean;
@@ -42,6 +44,7 @@ export default function AddTransactionModal({
   onSubmit,
 }: AddTransactionModalProps): React.JSX.Element {
   const { expenseCategories, incomeCategories } = useCategories();
+  const insets = useSafeAreaInsets();
   const [type, setType] = useState<TransactionType>('expense');
   const [amountStr, setAmountStr] = useState('');
   const [note, setNote] = useState('');
@@ -183,7 +186,15 @@ export default function AddTransactionModal({
             />
           </View>
 
-          <View style={[styles.keypadWrap, { height: keypadHeight }]}>
+          <View
+            style={[
+              styles.keypadWrap,
+              {
+                height: keypadHeight,
+                paddingBottom: Math.max(insets.bottom, KEYPAD_MIN_BOTTOM_PADDING),
+              },
+            ]}
+          >
             <CalculatorKeypad
               value={amountStr}
               onValueChange={setAmountStr}

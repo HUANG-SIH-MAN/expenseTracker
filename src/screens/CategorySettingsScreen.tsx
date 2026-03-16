@@ -36,6 +36,8 @@ const BTN_SAVE = '儲存';
 const BTN_CANCEL = '取消';
 const MIN_CATEGORIES_COUNT = 1;
 const ROW_HEIGHT = 56;
+const ROW_ICON_SIZE = 28;
+const ROW_ICON_CONTAINER_WIDTH = 40;
 const SWAP_THRESHOLD_RATIO = 0.8;
 
 type NavProp = NativeStackNavigationProp<MainStackParamList, 'CategorySettings'>;
@@ -482,7 +484,9 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
   rowIcon: {
-    fontSize: 24,
+    width: ROW_ICON_CONTAINER_WIDTH,
+    fontSize: ROW_ICON_SIZE,
+    textAlign: 'center',
     marginRight: 12,
   },
   rowLabel: {

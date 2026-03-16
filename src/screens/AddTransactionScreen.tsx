@@ -30,6 +30,7 @@ type RouteProps = NativeStackScreenProps<MainStackParamList, 'AddTransaction'>['
 /** 鍵盤區佔畫面高度比例（0～1），表單區佔其餘，讓「整頁」都在畫面內 */
 const KEYPAD_FLEX_RATIO = 0.32;
 const BODY_FLEX_RATIO = 1 - KEYPAD_FLEX_RATIO;
+const KEYPAD_MIN_BOTTOM_PADDING = 8;
 const LABEL_ACCOUNT = '帳戶';
 const LABEL_ANNUAL_BUDGET = '對應年度預算項目（選填）';
 const BTN_SELECT_ANNUAL = '選擇年度預算項目';
@@ -407,7 +408,12 @@ export default function AddTransactionScreen(): React.JSX.Element {
         />
       </ScrollView>
 
-      <View style={[styles.keypadWrap, { flex: KEYPAD_FLEX_RATIO }]}>
+      <View
+        style={[
+          styles.keypadWrap,
+          { flex: KEYPAD_FLEX_RATIO, paddingBottom: Math.max(insets.bottom, KEYPAD_MIN_BOTTOM_PADDING) },
+        ]}
+      >
         <CalculatorKeypad
           value={amountStr}
           onValueChange={setAmountStr}

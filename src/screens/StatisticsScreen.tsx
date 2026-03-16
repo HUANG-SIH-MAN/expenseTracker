@@ -52,6 +52,8 @@ const SUMMARY_LABEL_FONT_SIZE = 14;
 const PERIOD_BTN_FONT_SIZE = 16;
 const PERIOD_ARROW_FONT_SIZE = 24;
 const CHART_SIZE = 160;
+const CHART_LEGEND_GAP = 16;
+const CHART_LAYOUT_BREAKPOINT_EXTRA = 120;
 const LEGEND_ITEM_FONT_SIZE = 13;
 const LEGEND_ITEM_HEIGHT = 24;
 const LIST_HEADER_FONT_SIZE = 12;
@@ -60,7 +62,7 @@ const LIST_ROW_MIN_HEIGHT = 44;
 const COL_RANK_WIDTH = 28;
 const COL_CATEGORY_FLEX = 1;
 const COL_AMOUNT_WIDTH = 80;
-const COL_RATIO_WIDTH = 56;
+const COL_RATIO_WIDTH = 64;
 
 const CHART_COLORS = [
   '#3b82f6',
@@ -163,6 +165,8 @@ export default function StatisticsScreen(): React.JSX.Element {
 
   const screenWidth = Dimensions.get('window').width;
   const chartSize = CHART_SIZE;
+  const chartRowWidth = screenWidth - HEADER_PADDING_H * 2;
+  const isCompactChartLayout = chartRowWidth <= CHART_SIZE + CHART_LAYOUT_BREAKPOINT_EXTRA;
 
   const goToCategoryExpenses = useCallback(
     (categoryKey: string) => {
@@ -304,11 +308,13 @@ export default function StatisticsScreen(): React.JSX.Element {
           </View>
         ) : (
           <>
-            <View style={styles.chartWithLegendRow}>
-              <View style={styles.chartWrap}>
+            <View
+              style={[styles.chartWithLegendRow, isCompactChartLayout && styles.chartWithLegendRowCompact]}
+            >
+              <View style={[styles.chartWrap, isCompactChartLayout && styles.chartWrapCompact]}>
                 <PieChart data={pieData} size={chartSize} />
               </View>
-              <View style={styles.legend}>
+              <View style={[styles.legend, isCompactChartLayout && styles.legendCompact]}>
                 {categorySlices.map((slice, i) => (
                   <View key={`${slice.category}-${i}`} style={styles.legendItem}>
                     <View
@@ -344,7 +350,7 @@ export default function StatisticsScreen(): React.JSX.Element {
                     activeOpacity={0.7}
                   >
                     <Text style={[styles.listCell, styles.colRank]}>{i + 1}</Text>
-                    <View style={[styles.listCell, styles.colCategory]}>
+                    <View style={styles.colCategory}>
                       <Text style={styles.listCategoryIcon}>
                         {getCategoryIcon(chartType, slice.category)}
                       </Text>
@@ -355,7 +361,7 @@ export default function StatisticsScreen(): React.JSX.Element {
                     <Text style={[styles.listCell, styles.colAmount, { color }]}>
                       {formatAmount(slice.amount)}
                     </Text>
-                    <Text style={[styles.listCell, styles.colRatio, { color }]}>
+                    <Text style={[styles.listCell, styles.colRatio, { color }]} numberOfLines={1}>
                       {slice.percentage.toFixed(1)}%
                     </Text>
                   </TouchableOpacity>
@@ -523,8 +529,15 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     paddingVertical: 8,
   },
+  chartWithLegendRowCompact: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+  },
   chartWrap: {
-    marginRight: 16,
+    alignItems: 'center',
+  },
+  chartWrapCompact: {
+    marginBottom: 12,
   },
   emptyChartWrap: {
     height: CHART_SIZE,
@@ -536,7 +549,13 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
   },
   legend: {
-    flexShrink: 0,
+    minWidth: 0,
+    flexShrink: 1,
+    marginLeft: CHART_LEGEND_GAP,
+  },
+  legendCompact: {
+    width: '100%',
+    marginLeft: 0,
   },
   legendItem: {
     flexDirection: 'row',
@@ -551,7 +570,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   legendLabel: {
-    flex: 1,
+    flexShrink: 1,
     fontSize: LEGEND_ITEM_FONT_SIZE,
     color: '#1f2937',
   },
@@ -607,6 +626,8 @@ const styles = StyleSheet.create({
   },
   colRatio: {
     width: COL_RATIO_WIDTH,
+    minWidth: COL_RATIO_WIDTH,
+    flexShrink: 0,
     textAlign: 'right',
     fontWeight: '600',
   },
