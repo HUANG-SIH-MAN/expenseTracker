@@ -47,7 +47,7 @@ const MAX_DAY_MONTHLY = 28;
 type NavProp = NativeStackNavigationProp<MainStackParamList, 'RecurringEdit'>;
 type RouteProps = NativeStackScreenProps<MainStackParamList, 'RecurringEdit'>['route'];
 
-export default function RecurringEditScreen(): React.JSX.Element {
+export default function RecurringEditScreen(): React.ReactElement | null {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavProp>();
   const route = useRoute<RouteProps>();

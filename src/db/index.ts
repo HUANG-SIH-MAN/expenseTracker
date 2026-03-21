@@ -1,6 +1,8 @@
 /**
  * SQLite 資料庫：開庫、建表、匯出查詢介面
+ * Web 環境不支援 expo-sqlite，回傳 null 由上層改用 AsyncStorage
  */
+import { Platform } from "react-native";
 import * as SQLite from "expo-sqlite";
 
 const DB_NAME = "expense_tracker.db";
@@ -100,9 +102,13 @@ CREATE INDEX IF NOT EXISTS idx_recurring_skip_lookup ON recurring_skip(recurring
 }
 
 /**
- * 取得已初始化的 DB 實例（首次呼叫時開庫並執行 schema）
+ * 取得已初始化的 DB 實例（首次呼叫時開庫並執行 schema）。
+ * Web 環境回傳 null，呼叫端應改用 AsyncStorage。
  */
-export async function getDb(): Promise<SQLite.SQLiteDatabase> {
+export async function getDb(): Promise<SQLite.SQLiteDatabase | null> {
+  if (Platform.OS === "web") {
+    return null;
+  }
   if (dbInstance != null) {
     return dbInstance;
   }

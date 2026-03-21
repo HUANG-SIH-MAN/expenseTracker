@@ -70,7 +70,7 @@ export default function CurrencySettingsScreen(): React.JSX.Element {
     const code = newCode.trim().toUpperCase();
     const label = newLabel.trim() || code;
     if (!code) return;
-    const builtInSet = new Set(BUILT_IN_CURRENCY_CODES);
+    const builtInSet = new Set<string>([...BUILT_IN_CURRENCY_CODES]);
     if (builtInSet.has(code)) {
       Alert.alert('無法新增', '此代碼為內建幣別，無須重複新增。');
       return;

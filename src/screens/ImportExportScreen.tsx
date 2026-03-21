@@ -30,7 +30,7 @@ import {
   resolveAccountsForImport,
   exportTransactionsToCsv,
 } from '../utils/csvImportExport';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystemLegacy from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 
@@ -87,9 +87,11 @@ export default function ImportExportScreen(): React.JSX.Element {
         URL.revokeObjectURL(url);
         Alert.alert('', SUCCESS_EXPORT);
       } else {
-        const dir = FileSystem.cacheDirectory ?? '';
+        const dir = FileSystemLegacy.cacheDirectory ?? '';
         const path = `${dir}${filename}`;
-        await FileSystem.writeAsStringAsync(path, csv, { encoding: FileSystem.EncodingType.UTF8 });
+        await FileSystemLegacy.writeAsStringAsync(path, csv, {
+          encoding: FileSystemLegacy.EncodingType.UTF8,
+        });
         const canShare = await Sharing.isAvailableAsync();
         if (canShare) {
           await Sharing.shareAsync(path, { mimeType: 'text/csv', dialogTitle: filename });
@@ -156,17 +158,24 @@ export default function ImportExportScreen(): React.JSX.Element {
           'application/vnd.ms-excel',
           'text/plain',
         ],
-        copyToCacheDirectory: true,
+        copyToCacheDirectory: false,
       });
       if (result.canceled) {
         return;
       }
-      const uri = result.assets[0]?.uri;
+      const asset = result.assets[0];
+      const uri = asset?.uri;
       if (!uri) {
         Alert.alert('', ERROR_NO_FILE);
         return;
       }
-      const text = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.UTF8 });
+      const cacheDir = FileSystemLegacy.cacheDirectory ?? '';
+      const safeName = (asset.name ?? 'import.csv').replace(/[^a-zA-Z0-9._-]/g, '_');
+      const cachePath = `${cacheDir}import_${Date.now()}_${safeName}`;
+      await FileSystemLegacy.copyAsync({ from: uri, to: cachePath });
+      const text = await FileSystemLegacy.readAsStringAsync(cachePath, {
+        encoding: FileSystemLegacy.EncodingType.UTF8,
+      });
       const rows = parseSourceCsv(text);
       if (rows.length === 0) {
         Alert.alert('', ERROR_IMPORT);
