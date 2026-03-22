@@ -52,6 +52,9 @@ export const CATEGORY_ICONS: Record<string, string> = {
   investment: "📈",
 };
 
+/** 匯入 CSV 時自動建立之類別所使用的圖示（與預設「其他」一致，值同 `CATEGORY_ICONS.other`） */
+export const DEFAULT_IMPORTED_CATEGORY_ICON = CATEGORY_ICONS.other;
+
 /** 預設支出類別（含圖示，陣列形式供設定頁與儲存使用） */
 export const DEFAULT_EXPENSE_CATEGORIES_LIST: {
   key: string;
