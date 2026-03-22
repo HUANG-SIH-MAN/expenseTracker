@@ -14,14 +14,14 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import type { NativeStackScreenProps, NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { Account, AnnualBudgetEntry, TransactionType, CurrencyOption } from '../types';
+import type { Account, AnnualBudgetEntry, TransactionType } from '../types';
 import type { MainStackParamList } from '../navigation/MainStack';
 import { generateId } from '../utils/id';
 import { parseAmountInput } from '../utils/amountExpression';
 import { formatDateWithWeekday } from '../utils/date';
 import { useTransactions } from '../contexts/TransactionsContext';
 import { useCategories } from '../contexts/CategoriesContext';
-import { getStoredAccounts, addRecurringSkip, getAnnualBudgetEntries, getCurrencyOptions } from '../utils/storage';
+import { getStoredAccounts, addRecurringSkip, getAnnualBudgetEntries } from '../utils/storage';
 import { CalculatorKeypad } from '../components';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
@@ -30,8 +30,17 @@ type RouteProps = NativeStackScreenProps<MainStackParamList, 'AddTransaction'>['
 /** 鍵盤區佔畫面高度比例（0～1），表單區佔其餘，讓「整頁」都在畫面內 */
 const KEYPAD_FLEX_RATIO = 0.32;
 const BODY_FLEX_RATIO = 1 - KEYPAD_FLEX_RATIO;
+/** 備註欄聚焦、系統鍵盤開啟時，表單區佔滿並隱藏計算機，避免與鍵盤重疊 */
+const BODY_FLEX_WHEN_NOTE_FOCUSED = 1;
 const KEYPAD_MIN_BOTTOM_PADDING = 8;
+/** 頂部表單區塊垂直節奏（取代過小的百分比 margin，減少擁擠感） */
+const FORM_GAP_AFTER_TABS = 18;
+const FORM_SECTION_GAP = 14;
+const AMOUNT_DISPLAY_FONT_SIZE = 24;
+const AMOUNT_CURRENCY_SUFFIX_SIZE = 15;
+const LABEL_CATEGORY = '類別';
 const LABEL_ACCOUNT = '帳戶';
+const CHEVRON_FORWARD_SIZE = 18;
 const LABEL_ANNUAL_BUDGET = '對應年度預算項目（選填）';
 const BTN_SELECT_ANNUAL = '選擇年度預算項目';
 const ANNUAL_BUDGET_NONE = '不指定';
@@ -47,7 +56,6 @@ export default function AddTransactionScreen(): React.JSX.Element {
   const { expenseCategories, incomeCategories, getCategoryLabel } = useCategories();
 
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [currencyOptions, setCurrencyOptions] = useState<CurrencyOption[]>([]);
   const [type, setType] = useState<TransactionType>('expense');
   const [dateKey, setDateKey] = useState(selectedDate);
   const [amountStr, setAmountStr] = useState('');
@@ -65,6 +73,7 @@ export default function AddTransactionScreen(): React.JSX.Element {
     Pick<AnnualBudgetEntry, 'id' | 'month' | 'categoryKey' | 'label' | 'estimatedAmount'>[]
   >([]);
   const [showAnnualPicker, setShowAnnualPicker] = useState(false);
+  const [isNoteFocused, setIsNoteFocused] = useState(false);
 
   const isEditMode = Boolean(transactionId);
   const existing = transactionId ? getTransactionById(transactionId) : undefined;
@@ -78,10 +87,6 @@ export default function AddTransactionScreen(): React.JSX.Element {
   }, [type, expenseCategories, incomeCategories]);
 
   useEffect(() => {
-    getCurrencyOptions().then(setCurrencyOptions);
-  }, []);
-
-  useEffect(() => {
     getStoredAccounts().then((list: Account[]) => {
       const valid = list.filter((a: Account) => a.name.trim() !== '');
       setAccounts(valid);
@@ -90,6 +95,24 @@ export default function AddTransactionScreen(): React.JSX.Element {
       }
     });
   }, [transactionId]);
+
+  useEffect(() => {
+    const pk = route.params.pickedCategoryKey;
+    if (pk == null) return;
+    const keys =
+      type === 'expense'
+        ? expenseCategories.map((c) => c.key)
+        : incomeCategories.map((c) => c.key);
+    if (keys.includes(pk)) setCategory(pk);
+    navigation.setParams({ pickedCategoryKey: undefined });
+  }, [route.params.pickedCategoryKey, type, expenseCategories, incomeCategories, navigation]);
+
+  useEffect(() => {
+    const aid = route.params.pickedAccountId;
+    if (aid == null) return;
+    setAccountId(aid);
+    navigation.setParams({ pickedAccountId: undefined });
+  }, [route.params.pickedAccountId, navigation]);
 
   useEffect(() => {
     if (!existing) return;
@@ -181,19 +204,20 @@ export default function AddTransactionScreen(): React.JSX.Element {
 
   const selectedAccount = accounts.find((a) => a.id === accountId);
   const accountCurrency = selectedAccount?.currency ?? 'TWD';
-  const accountCurrencyLabel =
-    currencyOptions.find((o) => o.code === accountCurrency)?.label ?? accountCurrency;
+  const currencyCodeDisplay = accountCurrency.trim().toUpperCase();
   const amountDisplay = amountStr.trim() === '' ? '金額' : amountStr;
+
+  const bodyFlex = isNoteFocused ? BODY_FLEX_WHEN_NOTE_FOCUSED : BODY_FLEX_RATIO;
 
   return (
     <View style={styles.container}>
       <ScrollView
-        style={[styles.bodyScroll, { flex: BODY_FLEX_RATIO }]}
+        style={[styles.bodyScroll, { flex: bodyFlex }]}
         contentContainerStyle={[
           styles.bodyContent,
           {
-            paddingTop: Math.max(12, insets.top),
-            paddingBottom: Math.max(8, insets.bottom),
+            paddingTop: Math.max(16, insets.top),
+            paddingBottom: Math.max(12, insets.bottom),
           },
         ]}
         keyboardShouldPersistTaps="handled"
@@ -233,67 +257,65 @@ export default function AddTransactionScreen(): React.JSX.Element {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.fieldRow}>
+        <View style={[styles.fieldRow, styles.fieldRowFirst]}>
           <Text style={styles.fieldLabel}>日期</Text>
           <Text style={styles.fieldValue}>{formatDateWithWeekday(dateKey)}</Text>
         </View>
 
         <View style={styles.amountSection}>
-          <Text style={styles.amountCurrencyLabel}>金額 ({accountCurrencyLabel})</Text>
-          <Text style={[styles.amountDisplay, amountError && styles.amountDisplayError]}>
-            {amountDisplay}
-          </Text>
+          <View style={styles.amountRow}>
+            <Text
+              style={[styles.amountDisplay, amountError && styles.amountDisplayError]}
+              numberOfLines={1}
+            >
+              {amountDisplay}
+            </Text>
+            <Text style={styles.amountCurrencySuffix}>{currencyCodeDisplay}</Text>
+          </View>
           {amountError ? <Text style={styles.amountError}>{amountError}</Text> : null}
         </View>
 
-        <View style={styles.categoryWrap}>
-          {categoryKeys.map((key) => {
-            const isSelected = category === key;
-            return (
-              <TouchableOpacity
-                key={key}
-                style={[styles.categoryChip, isSelected && styles.categoryChipSelected]}
-                onPress={() => setCategory(key)}
-              >
-                <Text
-                  style={[styles.categoryChipText, isSelected && styles.categoryChipTextSelected]}
-                  numberOfLines={1}
-                >
-                  {categoryMap[key]}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <TouchableOpacity
+          style={styles.selectorRow}
+          onPress={() =>
+            navigation.navigate('SelectTransactionCategory', {
+              transactionType: type === 'income' ? 'income' : 'expense',
+              selectedKey: category,
+              returnDate: dateKey,
+              returnTransactionId: transactionId,
+            })
+          }
+          activeOpacity={0.7}
+        >
+          <Text style={styles.selectorLabel}>{LABEL_CATEGORY}</Text>
+          <View style={styles.selectorRight}>
+            <Text style={styles.selectorValue} numberOfLines={1}>
+              {categoryMap[category] ?? '—'}
+            </Text>
+            <Ionicons name="chevron-forward" size={CHEVRON_FORWARD_SIZE} color="#9ca3af" />
+          </View>
+        </TouchableOpacity>
 
         {accounts.length > 0 ? (
-          <>
-            <View style={styles.fieldRow}>
-              <Text style={styles.fieldLabel}>{LABEL_ACCOUNT}</Text>
+          <TouchableOpacity
+            style={styles.selectorRow}
+            onPress={() =>
+              navigation.navigate('SelectTransactionAccount', {
+                selectedAccountId: accountId,
+                returnDate: dateKey,
+                returnTransactionId: transactionId,
+              })
+            }
+            activeOpacity={0.7}
+          >
+            <Text style={styles.selectorLabel}>{LABEL_ACCOUNT}</Text>
+            <View style={styles.selectorRight}>
+              <Text style={styles.selectorValue} numberOfLines={1}>
+                {selectedAccount?.name?.trim() ? selectedAccount.name : '—'}
+              </Text>
+              <Ionicons name="chevron-forward" size={CHEVRON_FORWARD_SIZE} color="#9ca3af" />
             </View>
-            <View style={styles.accountWrap}>
-              {accounts.map((acc) => {
-                const isSelected = accountId === acc.id;
-                return (
-                  <TouchableOpacity
-                    key={acc.id}
-                    style={[styles.categoryChip, isSelected && styles.categoryChipSelected]}
-                    onPress={() => setAccountId(acc.id)}
-                  >
-                    <Text
-                      style={[
-                        styles.categoryChipText,
-                        isSelected && styles.categoryChipTextSelected,
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {acc.name}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </>
+          </TouchableOpacity>
         ) : null}
 
         {annualEntries.length > 0 ? (
@@ -396,30 +418,37 @@ export default function AddTransactionScreen(): React.JSX.Element {
           </>
         ) : null}
 
-        <View style={styles.fieldRow}>
-          <Text style={styles.fieldLabel}>備註（選填）</Text>
+        <View style={styles.noteSection}>
+          <Text style={styles.noteSectionLabel}>備註（選填）</Text>
+          <TextInput
+            style={styles.noteInput}
+            placeholder="可輸入備註"
+            placeholderTextColor="#9ca3af"
+            value={note}
+            onChangeText={setNote}
+            onFocus={() => setIsNoteFocused(true)}
+            onBlur={() => setIsNoteFocused(false)}
+          />
         </View>
-        <TextInput
-          style={styles.noteInput}
-          placeholder="可輸入備註"
-          placeholderTextColor="#9ca3af"
-          value={note}
-          onChangeText={setNote}
-        />
       </ScrollView>
 
-      <View
-        style={[
-          styles.keypadWrap,
-          { flex: KEYPAD_FLEX_RATIO, paddingBottom: Math.max(insets.bottom, KEYPAD_MIN_BOTTOM_PADDING) },
-        ]}
-      >
-        <CalculatorKeypad
-          value={amountStr}
-          onValueChange={setAmountStr}
-          onConfirm={handleSubmit}
-        />
-      </View>
+      {!isNoteFocused ? (
+        <View
+          style={[
+            styles.keypadWrap,
+            {
+              flex: KEYPAD_FLEX_RATIO,
+              paddingBottom: Math.max(insets.bottom, KEYPAD_MIN_BOTTOM_PADDING),
+            },
+          ]}
+        >
+          <CalculatorKeypad
+            value={amountStr}
+            onValueChange={setAmountStr}
+            onConfirm={handleSubmit}
+          />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -434,7 +463,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: '2%',
+    marginBottom: FORM_GAP_AFTER_TABS,
   },
   backBtn: {
     paddingVertical: 8,
@@ -477,14 +506,17 @@ const styles = StyleSheet.create({
     minHeight: 0,
   },
   bodyContent: {
-    paddingHorizontal: '5%',
-    paddingBottom: '1%',
+    paddingHorizontal: 20,
+    paddingBottom: 8,
   },
   fieldRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: '1.2%',
+    marginBottom: FORM_SECTION_GAP,
+  },
+  fieldRowFirst: {
+    paddingTop: 2,
   },
   fieldLabel: {
     fontSize: 15,
@@ -495,17 +527,27 @@ const styles = StyleSheet.create({
     color: '#1a1a1a',
   },
   amountSection: {
-    marginBottom: '1.5%',
+    marginBottom: FORM_SECTION_GAP,
   },
-  amountCurrencyLabel: {
-    fontSize: 13,
-    color: '#6b7280',
-    marginBottom: 4,
+  amountRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 10,
   },
   amountDisplay: {
-    fontSize: 28,
+    flex: 1,
+    minWidth: 0,
+    fontSize: AMOUNT_DISPLAY_FONT_SIZE,
     fontWeight: '600',
     color: '#1a1a1a',
+    letterSpacing: 0.3,
+  },
+  amountCurrencySuffix: {
+    fontSize: AMOUNT_CURRENCY_SUFFIX_SIZE,
+    fontWeight: '600',
+    color: '#9ca3af',
+    letterSpacing: 0.5,
   },
   amountDisplayError: {
     color: '#dc2626',
@@ -515,37 +557,35 @@ const styles = StyleSheet.create({
     color: '#dc2626',
     marginTop: 2,
   },
-  categoryWrap: {
+  selectorRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: '-1%',
-    marginBottom: '1.2%',
-    marginTop: '0.3%',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 2,
+    marginBottom: FORM_SECTION_GAP,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e5e7eb',
   },
-  accountWrap: {
+  selectorLabel: {
+    fontSize: 15,
+    color: '#6b7280',
+    marginRight: 12,
+  },
+  selectorRight: {
+    flex: 1,
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: '-1%',
-    marginBottom: '1.2%',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 6,
+    minWidth: 0,
   },
-  categoryChip: {
-    paddingVertical: 6,
-    paddingHorizontal: '2.5%',
-    borderRadius: 20,
-    backgroundColor: '#f3f4f6',
-    marginHorizontal: '1%',
-    marginBottom: 4,
-  },
-  categoryChipSelected: {
-    backgroundColor: '#0a84ff',
-  },
-  categoryChipText: {
-    fontSize: 14,
-    color: '#374151',
-  },
-  categoryChipTextSelected: {
-    color: '#fff',
+  selectorValue: {
+    fontSize: 16,
+    color: '#1a1a1a',
     fontWeight: '500',
+    textAlign: 'right',
+    flexShrink: 1,
   },
   annualBudgetButton: {
     flexDirection: 'row',
@@ -553,7 +593,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 12,
     paddingHorizontal: 14,
-    marginBottom: '1.2%',
+    marginBottom: FORM_SECTION_GAP,
     backgroundColor: '#f9fafb',
     borderWidth: 1,
     borderColor: '#e5e7eb',
@@ -615,16 +655,25 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#2563eb',
   },
+  noteSection: {
+    marginTop: 4,
+  },
+  noteSectionLabel: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginBottom: 8,
+  },
   noteInput: {
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 8,
-    paddingHorizontal: '2%',
-    paddingVertical: 8,
+    borderWidth: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e5e7eb',
+    borderRadius: 0,
+    paddingHorizontal: 0,
+    paddingVertical: 10,
     fontSize: 15,
     color: '#1a1a1a',
-    minHeight: 36,
-    maxHeight: 56,
+    minHeight: 40,
+    maxHeight: 72,
   },
   keypadWrap: {
     minHeight: 0,

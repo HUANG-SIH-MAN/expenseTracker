@@ -14,6 +14,7 @@ import {
   Alert,
   PanResponder,
   Animated,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -35,9 +36,21 @@ const PLACEHOLDER_LABEL = '類別名稱';
 const BTN_SAVE = '儲存';
 const BTN_CANCEL = '取消';
 const MIN_CATEGORIES_COUNT = 1;
-const ROW_HEIGHT = 56;
-const ROW_ICON_SIZE = 28;
-const ROW_ICON_CONTAINER_WIDTH = 40;
+/** 列內距（與分隔線之間的留白） */
+const ROW_VERTICAL_PADDING = 12;
+/** 列表 emoji 字級：勿與列高綁成同一比例，否則縮字級時列高跟著縮，視覺上永遠「撐滿」 */
+const ROW_ICON_FONT_SIZE = 19;
+/** 行高略大於字級，避免 Android 裁切 emoji */
+const ROW_ICON_LINE_LEADING = 6;
+const ROW_ICON_LINE_HEIGHT = ROW_ICON_FONT_SIZE + ROW_ICON_LINE_LEADING;
+/** 圖示區塊內側留白（與字級分開，才能看出上下空隙） */
+const ROW_ICON_CELL_PADDING_VERTICAL = 6;
+const ROW_ICON_CELL_PADDING_HORIZONTAL = 4;
+const ROW_ICON_MIN_WIDTH = 36;
+const ROW_HEIGHT =
+  ROW_VERTICAL_PADDING * 2 +
+  ROW_ICON_LINE_HEIGHT +
+  ROW_ICON_CELL_PADDING_VERTICAL * 2;
 const SWAP_THRESHOLD_RATIO = 0.8;
 
 type NavProp = NativeStackNavigationProp<MainStackParamList, 'CategorySettings'>;
@@ -131,7 +144,14 @@ function DraggableCategoryRow({
           color={isDragging ? '#2563eb' : '#9ca3af'}
         />
       </View>
-      <Text style={styles.rowIcon}>{item.icon}</Text>
+      <View style={styles.rowIconWrap}>
+        <Text
+          style={styles.rowIcon}
+          {...(Platform.OS === 'android' ? { includeFontPadding: false } : {})}
+        >
+          {item.icon}
+        </Text>
+      </View>
       <Text style={styles.rowLabel} numberOfLines={1}>
         {item.label}
       </Text>
@@ -456,11 +476,11 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
+    paddingVertical: ROW_VERTICAL_PADDING,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#f3f4f6',
-    height: ROW_HEIGHT,
+    minHeight: ROW_HEIGHT,
     backgroundColor: '#fff',
     zIndex: 1,
   },
@@ -483,11 +503,19 @@ const styles = StyleSheet.create({
     marginLeft: -12,
     marginRight: 4,
   },
-  rowIcon: {
-    width: ROW_ICON_CONTAINER_WIDTH,
-    fontSize: ROW_ICON_SIZE,
-    textAlign: 'center',
+  rowIconWrap: {
     marginRight: 12,
+    minWidth: ROW_ICON_MIN_WIDTH,
+    paddingVertical: ROW_ICON_CELL_PADDING_VERTICAL,
+    paddingHorizontal: ROW_ICON_CELL_PADDING_HORIZONTAL,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  rowIcon: {
+    fontSize: ROW_ICON_FONT_SIZE,
+    lineHeight: ROW_ICON_LINE_HEIGHT,
+    textAlign: 'center',
+    textAlignVertical: 'center',
   },
   rowLabel: {
     flex: 1,

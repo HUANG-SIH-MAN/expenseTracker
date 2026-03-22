@@ -18,11 +18,20 @@ import AddTransferScreen from '../screens/AddTransferScreen';
 import ExchangeRatesScreen from '../screens/ExchangeRatesScreen';
 import AddAccountScreen from '../screens/AddAccountScreen';
 import CurrencySettingsScreen from '../screens/CurrencySettingsScreen';
+import SelectTransactionCategoryScreen from '../screens/SelectTransactionCategoryScreen';
+import SelectTransactionAccountScreen from '../screens/SelectTransactionAccountScreen';
 import type { TransactionType } from '../types';
 
 export type MainStackParamList = {
   Home: undefined;
-  AddTransaction: { selectedDate: string; transactionId?: string };
+  AddTransaction: {
+    selectedDate: string;
+    transactionId?: string;
+    /** 由選擇類別頁返回時帶入，套用後會清除 */
+    pickedCategoryKey?: string;
+    /** 由選擇帳戶頁返回時帶入，套用後會清除 */
+    pickedAccountId?: string;
+  };
   AddTransfer: { selectedDate?: string };
   LedgerBalance: undefined;
   AddAccount: undefined;
@@ -45,6 +54,17 @@ export type MainStackParamList = {
   BudgetSettings: undefined;
   BudgetFixedEdit: { itemId?: string };
   ImportExport: undefined;
+  SelectTransactionCategory: {
+    transactionType: 'expense' | 'income';
+    selectedKey: string;
+    returnDate: string;
+    returnTransactionId?: string;
+  };
+  SelectTransactionAccount: {
+    selectedAccountId?: string;
+    returnDate: string;
+    returnTransactionId?: string;
+  };
 };
 
 const Stack = createNativeStackNavigator<MainStackParamList>();
@@ -65,6 +85,16 @@ export default function MainStack(): React.JSX.Element {
       <Stack.Screen
         name="AddTransaction"
         component={AddTransactionScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="SelectTransactionCategory"
+        component={SelectTransactionCategoryScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="SelectTransactionAccount"
+        component={SelectTransactionAccountScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen

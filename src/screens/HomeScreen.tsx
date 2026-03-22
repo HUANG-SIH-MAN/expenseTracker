@@ -28,9 +28,14 @@ const MONTH_PREV = '‹';
 const MONTH_NEXT = '›';
 const EMPTY_DAY = '當天尚無紀錄，點下方按鈕新增一筆';
 const BTN_ADD = '新增一筆';
-const SUB_LABEL_SELF = '自己';
 const DEFAULT_ACCOUNT_LABEL = '現金';
-const MENU_ELLIPSIS = '⋯';
+/** 備註與類別同欄、單行向右延伸，過長以省略顯示 */
+const RECORD_NOTE_MAX_LINES = 1;
+/** 編輯／刪除圖示字級（視覺縮小；觸控範圍靠 hitSlop） */
+const RECORD_ROW_ACTION_ICON_SIZE = 16;
+const RECORD_ACTIONS_GAP = 4;
+const RECORD_ACTION_BTN_PADDING = 2;
+const RECORD_ACTION_HIT_SLOP = 10;
 const BOTTOM_LEDGER = '帳本';
 const BOTTOM_STATS = '統計';
 const BOTTOM_ADD_LABEL = '記一筆';
@@ -165,16 +170,28 @@ export default function HomeScreen(): React.JSX.Element {
     setConfirmDeleteTransaction(null);
   }, [confirmDeleteTransaction, deleteTransaction]);
 
-  const renderItem = ({ item }: { item: Transaction }) => (
+  const renderItem = ({ item }: { item: Transaction }) => {
+    const noteLine = item.note?.trim() ?? '';
+    return (
     <View style={styles.recordRow}>
       <View style={styles.recordLeft}>
-        <View style={styles.recordIconWrap}>
+        <View style={styles.recordIconColumn}>
           <Text style={styles.recordIcon}>{getCategoryIcon(item)}</Text>
-          <Text style={styles.recordSubLabel}>{SUB_LABEL_SELF}</Text>
         </View>
-        <Text style={styles.recordCategoryName} numberOfLines={1}>
-          {getCategoryLabel(item)}
-        </Text>
+        <View style={styles.recordMainText}>
+          <Text style={styles.recordCategoryName} numberOfLines={1}>
+            {getCategoryLabel(item)}
+          </Text>
+          {noteLine.length > 0 ? (
+            <Text
+              style={styles.recordNoteLine}
+              numberOfLines={RECORD_NOTE_MAX_LINES}
+              ellipsizeMode="tail"
+            >
+              {noteLine}
+            </Text>
+          ) : null}
+        </View>
       </View>
       <View style={styles.recordRight}>
         <View style={styles.recordAmountBlock}>
@@ -207,20 +224,30 @@ export default function HomeScreen(): React.JSX.Element {
               ? navigation.navigate('AddTransfer', { selectedDate: item.date })
               : handleEditTransaction(item)
           }
-          hitSlop={8}
+          hitSlop={RECORD_ACTION_HIT_SLOP}
+          accessibilityLabel="編輯"
         >
-          <Text style={styles.recordMenuText}>{MENU_ELLIPSIS}</Text>
+          <Ionicons
+            name="ellipsis-vertical"
+            size={RECORD_ROW_ACTION_ICON_SIZE}
+            color="#6b7280"
+          />
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.recordDeleteBtn}
           onPress={() => askDeleteTransaction(item)}
-          hitSlop={8}
+          hitSlop={RECORD_ACTION_HIT_SLOP}
         >
-          <Ionicons name="trash-outline" size={20} color="#dc2626" />
+          <Ionicons
+            name="trash-outline"
+            size={RECORD_ROW_ACTION_ICON_SIZE}
+            color="#dc2626"
+          />
         </TouchableOpacity>
       </View>
     </View>
-  );
+    );
+  };
 
   const bottomBarPadding = BOTTOM_BAR_HEIGHT + insets.bottom;
 
@@ -543,7 +570,7 @@ const styles = StyleSheet.create({
   },
   recordRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#f3f4f6',
@@ -551,47 +578,50 @@ const styles = StyleSheet.create({
   recordLeft: {
     flex: 1,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 12,
+    minWidth: 0,
   },
-  recordIconWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
+  recordIconColumn: {
     width: 40,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingTop: 1,
   },
   recordIcon: {
     fontSize: 22,
   },
-  recordSubLabel: {
-    fontSize: 10,
-    color: '#9ca3af',
-    marginTop: 2,
+  recordMainText: {
+    flex: 1,
+    minWidth: 0,
   },
   recordCategoryName: {
     fontSize: 15,
     color: '#1f2937',
     fontWeight: '500',
-    flex: 1,
+  },
+  recordNoteLine: {
+    fontSize: 11,
+    color: '#9ca3af',
+    marginTop: 3,
   },
   recordRight: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    alignItems: 'flex-start',
+    gap: RECORD_ACTIONS_GAP,
+    paddingTop: 1,
   },
   recordMenuBtn: {
-    padding: 4,
-    minWidth: 28,
+    padding: RECORD_ACTION_BTN_PADDING,
+    minWidth: RECORD_ROW_ACTION_ICON_SIZE + RECORD_ACTION_BTN_PADDING * 2,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   recordDeleteBtn: {
-    padding: 4,
-    minWidth: 28,
+    padding: RECORD_ACTION_BTN_PADDING,
+    minWidth: RECORD_ROW_ACTION_ICON_SIZE + RECORD_ACTION_BTN_PADDING * 2,
     alignItems: 'center',
-  },
-  recordMenuText: {
-    fontSize: 18,
-    color: '#6b7280',
-    fontWeight: '600',
+    justifyContent: 'center',
   },
   recordAmountBlock: {
     alignItems: 'flex-end',
