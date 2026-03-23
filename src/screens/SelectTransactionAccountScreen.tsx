@@ -34,6 +34,7 @@ export default function SelectTransactionAccountScreen(): React.JSX.Element {
   const pick = (id: string) => {
     navigation.navigate({
       name: 'AddTransaction',
+      pop: true,
       merge: true,
       params: {
         selectedDate: returnDate,

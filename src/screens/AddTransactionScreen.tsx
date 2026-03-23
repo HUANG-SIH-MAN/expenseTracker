@@ -28,7 +28,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 type RouteProps = NativeStackScreenProps<MainStackParamList, 'AddTransaction'>['route'];
 
 /** 鍵盤區佔畫面高度比例（0～1），表單區佔其餘，讓「整頁」都在畫面內 */
-const KEYPAD_FLEX_RATIO = 0.32;
+const KEYPAD_FLEX_RATIO = 0.42;
 const BODY_FLEX_RATIO = 1 - KEYPAD_FLEX_RATIO;
 /** 備註欄聚焦、系統鍵盤開啟時，表單區佔滿並隱藏計算機，避免與鍵盤重疊 */
 const BODY_FLEX_WHEN_NOTE_FOCUSED = 1;
@@ -199,7 +199,7 @@ export default function AddTransactionScreen(): React.JSX.Element {
         createdAt: new Date().toISOString(),
       });
     }
-    navigation.goBack();
+    navigation.popToTop();
   };
 
   const selectedAccount = accounts.find((a) => a.id === accountId);
@@ -283,6 +283,7 @@ export default function AddTransactionScreen(): React.JSX.Element {
               selectedKey: category,
               returnDate: dateKey,
               returnTransactionId: transactionId,
+              returnToRouteKey: route.key,
             })
           }
           activeOpacity={0.7}
@@ -304,6 +305,7 @@ export default function AddTransactionScreen(): React.JSX.Element {
                 selectedAccountId: accountId,
                 returnDate: dateKey,
                 returnTransactionId: transactionId,
+                returnToRouteKey: route.key,
               })
             }
             activeOpacity={0.7}
@@ -677,7 +679,5 @@ const styles = StyleSheet.create({
   },
   keypadWrap: {
     minHeight: 0,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#e5e7eb',
   },
 });

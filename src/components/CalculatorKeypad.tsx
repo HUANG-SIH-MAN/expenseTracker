@@ -45,8 +45,13 @@ const ROW5_KEYS = [
 ];
 
 const ROWS = [ROW1_KEYS, ROW2_KEYS, ROW3_KEYS, ROW4_KEYS, ROW5_KEYS];
-const KEY_GAP = 4;
-const KEY_BORDER_RADIUS = 6;
+const KEY_GAP = 0;
+const KEY_BORDER_RADIUS = 0;
+const KEYPAD_PADDING_HORIZONTAL = 0;
+const KEYPAD_PADDING_VERTICAL = 0;
+const KEY_FONT_SIZE = 24;
+const KEY_OPERATOR_FONT_SIZE = 26;
+const KEY_CONFIRM_FONT_SIZE = 19;
 
 export interface CalculatorKeypadProps {
   value: string;
@@ -150,11 +155,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: KEYPAD_BG,
-    paddingHorizontal: '2%',
-    paddingVertical: '1.5%',
+    paddingHorizontal: KEYPAD_PADDING_HORIZONTAL,
+    paddingVertical: KEYPAD_PADDING_VERTICAL,
     gap: KEY_GAP,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#e5e7eb',
   },
   row: {
     flex: 1,
@@ -167,8 +170,6 @@ const styles = StyleSheet.create({
     borderRadius: KEY_BORDER_RADIUS,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
   },
   keyOperator: {
     backgroundColor: KEY_SPECIAL_BG,
@@ -178,17 +179,18 @@ const styles = StyleSheet.create({
     borderColor: '#0a84ff',
   },
   keyText: {
-    fontSize: 16,
+    fontSize: KEY_FONT_SIZE,
     color: KEY_TEXT,
-    fontWeight: '500',
+    fontWeight: '400',
   },
   keyTextOperator: {
     color: KEY_OPERATOR,
-    fontSize: 18,
+    fontSize: KEY_OPERATOR_FONT_SIZE,
+    fontWeight: '400',
   },
   keyTextConfirm: {
     color: '#ffffff',
-    fontWeight: '600',
-    fontSize: 15,
+    fontWeight: '500',
+    fontSize: KEY_CONFIRM_FONT_SIZE,
   },
 });

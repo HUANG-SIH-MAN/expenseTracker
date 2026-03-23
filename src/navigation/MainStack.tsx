@@ -59,11 +59,13 @@ export type MainStackParamList = {
     selectedKey: string;
     returnDate: string;
     returnTransactionId?: string;
+    returnToRouteKey?: string;
   };
   SelectTransactionAccount: {
     selectedAccountId?: string;
     returnDate: string;
     returnTransactionId?: string;
+    returnToRouteKey?: string;
   };
 };
 

@@ -29,6 +29,7 @@ export default function SelectTransactionCategoryScreen(): React.JSX.Element {
   const pick = (key: string) => {
     navigation.navigate({
       name: 'AddTransaction',
+      pop: true,
       merge: true,
       params: {
         selectedDate: returnDate,
