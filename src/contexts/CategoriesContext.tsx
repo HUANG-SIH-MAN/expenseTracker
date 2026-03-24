@@ -2,7 +2,7 @@
  * 類別列表狀態與持久化（支出/收入類別，含圖示）
  * 未儲存時使用預設類別
  */
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { CategoryItem, StoredCategories, TransactionType } from '../types';
 import { getStoredCategories, saveCategories } from '../utils/storage';
 import {
@@ -10,40 +10,39 @@ import {
   DEFAULT_INCOME_CATEGORIES_LIST,
 } from '../constants';
 
+export type CategoriesUpdater =
+  | StoredCategories
+  | ((prev: StoredCategories) => StoredCategories);
+
 interface CategoriesContextValue {
   expenseCategories: CategoryItem[];
   incomeCategories: CategoryItem[];
   getCategoryLabel: (type: TransactionType, key: string) => string;
   getCategoryIcon: (type: TransactionType, key: string) => string;
   refreshCategories: () => Promise<void>;
-  updateCategories: (data: StoredCategories) => Promise<void>;
+  updateCategories: (data: CategoriesUpdater) => void;
 }
 
 const CategoriesContext = createContext<CategoriesContextValue | null>(null);
 
-function getDefaultCategories(): StoredCategories {
-  return {
+export function CategoriesProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
+  const [storedCategories, setStoredCategories] = useState<StoredCategories>(() => ({
     expense: [...DEFAULT_EXPENSE_CATEGORIES_LIST],
     income: [...DEFAULT_INCOME_CATEGORIES_LIST],
-  };
-}
+  }));
 
-export function CategoriesProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
-  const [expenseCategories, setExpenseCategories] = useState<CategoryItem[]>(
-    DEFAULT_EXPENSE_CATEGORIES_LIST
-  );
-  const [incomeCategories, setIncomeCategories] = useState<CategoryItem[]>(
-    DEFAULT_INCOME_CATEGORIES_LIST
-  );
+  const expenseCategories = storedCategories.expense;
+  const incomeCategories = storedCategories.income;
 
   const refreshCategories = useCallback(async () => {
     const data = await getStoredCategories();
     if (data) {
-      setExpenseCategories(data.expense);
-      setIncomeCategories(data.income);
+      setStoredCategories(data);
     } else {
-      setExpenseCategories(DEFAULT_EXPENSE_CATEGORIES_LIST);
-      setIncomeCategories(DEFAULT_INCOME_CATEGORIES_LIST);
+      setStoredCategories({
+        expense: [...DEFAULT_EXPENSE_CATEGORIES_LIST],
+        income: [...DEFAULT_INCOME_CATEGORIES_LIST],
+      });
     }
   }, []);
 
@@ -51,13 +50,36 @@ export function CategoriesProvider({ children }: { children: React.ReactNode }):
     refreshCategories();
   }, [refreshCategories]);
 
-  const updateCategories = useCallback(async (data: StoredCategories) => {
-    setExpenseCategories(data.expense);
-    setIncomeCategories(data.income);
-    saveCategories(data).catch(() => {
-      refreshCategories();
-    });
-  }, [refreshCategories]);
+  /** 拖曳排序會連續觸發儲存；並行 SQLite 交易易鎖表失敗後 refresh 還原畫面，故序列化寫入。 */
+  const persistQueueRef = useRef<Promise<void>>(Promise.resolve());
+
+  const persistCategories = useCallback(
+    (snap: StoredCategories) => {
+      persistQueueRef.current = persistQueueRef.current
+        .catch(() => {
+          /* 前一筆拒絕時仍接續序列，避免之後無法再寫入 */
+        })
+        .then(async () => {
+          try {
+            await saveCategories(snap);
+          } catch {
+            await refreshCategories();
+          }
+        });
+    },
+    [refreshCategories],
+  );
+
+  const updateCategories = useCallback(
+    (data: CategoriesUpdater) => {
+      setStoredCategories((prev) => {
+        const next = typeof data === 'function' ? data(prev) : data;
+        persistCategories(next);
+        return next;
+      });
+    },
+    [persistCategories],
+  );
 
   const getCategoryLabel = useCallback(
     (type: TransactionType, key: string): string => {

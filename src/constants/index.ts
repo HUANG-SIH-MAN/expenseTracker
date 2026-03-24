@@ -3,7 +3,16 @@
  * 避免 Magic Number，便於維護與調整
  */
 
+import type { KeyboardTypeOptions } from "react-native";
+
 export const APP_NAME = "記帳本";
+
+/**
+ * 帳戶「目前／初始金額」等可為負數之欄位專用。
+ * `decimal-pad` 僅有數字與小數點，無負號，信用卡欠款等情境無法輸入。
+ */
+export const KEYBOARD_SIGNED_DECIMAL: KeyboardTypeOptions =
+  "numbers-and-punctuation";
 
 export const DEFAULT_DATE_FORMAT = "YYYY-MM-DD";
 

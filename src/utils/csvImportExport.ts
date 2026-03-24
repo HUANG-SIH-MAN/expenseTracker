@@ -6,6 +6,7 @@
 import { DEFAULT_IMPORTED_CATEGORY_ICON, DEFAULT_EXPENSE_CATEGORIES } from '../constants';
 import type { Account, CategoryItem, StoredCategories, Transaction, TransactionType } from '../types';
 import { generateId } from './id';
+import { newCustomCategoryKey } from './categoryKey';
 
 /** 與 parseSourceCsv 一致：trim 後若空則視為「其他」 */
 const FALLBACK_CATEGORY_LABEL = DEFAULT_EXPENSE_CATEGORIES.other;
@@ -225,7 +226,7 @@ export function resolveCategoriesForImport(
       }
     }
 
-    const newKey = generateId();
+    const newKey = newCustomCategoryKey();
     const newItem: CategoryItem = {
       key: newKey,
       label: normalizedName,

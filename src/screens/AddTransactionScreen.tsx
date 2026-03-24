@@ -1,7 +1,7 @@
 /**
  * 新增/編輯單筆收入/支出 — 表單 + 底部計算機鍵盤
  */
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -22,6 +22,7 @@ import { formatDateWithWeekday } from '../utils/date';
 import { useTransactions } from '../contexts/TransactionsContext';
 import { useCategories } from '../contexts/CategoriesContext';
 import { getStoredAccounts, addRecurringSkip, getAnnualBudgetEntries } from '../utils/storage';
+import { resolveEffectiveDefaultAccountId } from '../utils/categoryDefaultAccount';
 import { CalculatorKeypad } from '../components';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
@@ -78,6 +79,10 @@ export default function AddTransactionScreen(): React.JSX.Element {
   const isEditMode = Boolean(transactionId);
   const existing = transactionId ? getTransactionById(transactionId) : undefined;
 
+  const prevCategoryRef = useRef<string | null>(null);
+  const prevTypeRef = useRef<TransactionType | null>(null);
+  const skipCategoryAccountApplyRef = useRef(false);
+
   useEffect(() => {
     const keys = type === 'expense'
       ? expenseCategories.map((c) => c.key)
@@ -125,7 +130,35 @@ export default function AddTransactionScreen(): React.JSX.Element {
     setNote(existing.note ?? '');
     setAccountId(existing.accountId);
     setAnnualBudgetEntryId(existing.annualBudgetEntryId);
+    skipCategoryAccountApplyRef.current = true;
   }, [existing?.id]);
+
+  useEffect(() => {
+    if (accounts.length === 0) return;
+    const validIds = new Set(accounts.map((a) => a.id));
+    if (skipCategoryAccountApplyRef.current) {
+      skipCategoryAccountApplyRef.current = false;
+      prevCategoryRef.current = category;
+      prevTypeRef.current = type;
+      return;
+    }
+    if (prevCategoryRef.current === null) {
+      prevCategoryRef.current = category;
+      prevTypeRef.current = type;
+      return;
+    }
+    if (prevCategoryRef.current === category && prevTypeRef.current === type) {
+      return;
+    }
+    prevCategoryRef.current = category;
+    prevTypeRef.current = type;
+    const list = type === 'expense' ? expenseCategories : incomeCategories;
+    const item = list.find((c) => c.key === category);
+    const resolved = resolveEffectiveDefaultAccountId(item, validIds);
+    if (resolved) {
+      setAccountId(resolved);
+    }
+  }, [category, type, expenseCategories, incomeCategories, accounts]);
 
   const dateYear = useMemo(() => {
     const [y] = dateKey.split('-').map(Number);

@@ -1,6 +1,6 @@
 /**
  * 類別設定頁：編輯支出/收入類別與圖示
- * 拖曳排序參考 PanResponder + Animated 做法（與 FoodTagEditorModal 相同）
+ * 排序：PanResponder（與手動新增類別相同）；列表捲動使用 RNGH ScrollView 以降低與拖曳衝突
  */
 import React, { useState, useCallback, useRef } from 'react';
 import {
@@ -16,14 +16,18 @@ import {
   Animated,
   Platform,
 } from 'react-native';
+import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { MainStackParamList } from '../navigation/MainStack';
-import type { CategoryItem, StoredCategories, TransactionType } from '../types';
+import type { Account, CategoryItem, TransactionType } from '../types';
 import { useCategories } from '../contexts/CategoriesContext';
 import { CATEGORY_ICON_OPTIONS } from '../constants';
+import { getStoredAccounts } from '../utils/storage';
+import { resolveEffectiveDefaultAccountId } from '../utils/categoryDefaultAccount';
+import { newCustomCategoryKey } from '../utils/categoryKey';
 
 const TITLE = '類別管理';
 const BACK_ICON_SIZE = 28;
@@ -35,6 +39,9 @@ const MODAL_TITLE_EDIT = '編輯類別';
 const PLACEHOLDER_LABEL = '類別名稱';
 const BTN_SAVE = '儲存';
 const BTN_CANCEL = '取消';
+const LABEL_DEFAULT_ACCOUNT = '預設帳戶（選填）';
+const DEFAULT_ACCOUNT_NONE = '不指定';
+const DEFAULT_ACCOUNT_INVALID = '（預設帳戶已失效，請重選）';
 const MIN_CATEGORIES_COUNT = 1;
 /** 列內距（與分隔線之間的留白） */
 const ROW_VERTICAL_PADDING = 12;
@@ -61,6 +68,7 @@ interface DraggableCategoryRowProps {
   totalItems: number;
   isLast: boolean;
   canDelete: boolean;
+  defaultAccountSubtitle?: string;
   onSwap: (index1: number, index2: number) => void;
   onEdit: (item: CategoryItem) => void;
   onDelete: (item: CategoryItem) => void;
@@ -72,6 +80,7 @@ function DraggableCategoryRow({
   totalItems,
   isLast,
   canDelete,
+  defaultAccountSubtitle,
   onSwap,
   onEdit,
   onDelete,
@@ -152,9 +161,16 @@ function DraggableCategoryRow({
           {item.icon}
         </Text>
       </View>
-      <Text style={styles.rowLabel} numberOfLines={1}>
-        {item.label}
-      </Text>
+      <View style={styles.rowLabelCol}>
+        <Text style={styles.rowLabel} numberOfLines={1}>
+          {item.label}
+        </Text>
+        {defaultAccountSubtitle != null && defaultAccountSubtitle !== '' ? (
+          <Text style={styles.rowDefaultAccount} numberOfLines={1}>
+            {defaultAccountSubtitle}
+          </Text>
+        ) : null}
+      </View>
       <View style={styles.rowActions}>
         <TouchableOpacity style={styles.iconBtn} onPress={() => onEdit(item)} hitSlop={8}>
           <Ionicons name="pencil" size={20} color="#2563eb" />
@@ -181,25 +197,24 @@ export default function CategorySettingsScreen(): React.JSX.Element {
   const navigation = useNavigation<NavProp>();
   const { expenseCategories, incomeCategories, updateCategories } = useCategories();
   const [activeTab, setActiveTab] = useState<TransactionType>('expense');
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingItem, setEditingItem] = useState<CategoryItem | null>(null);
   const [editLabel, setEditLabel] = useState('');
   const [editIcon, setEditIcon] = useState('📌');
+  const [editDefaultAccountId, setEditDefaultAccountId] = useState<string | undefined>(undefined);
 
   const list = activeTab === 'expense' ? expenseCategories : incomeCategories;
-  const listRef = useRef(list);
-  const expenseRef = useRef(expenseCategories);
-  const incomeRef = useRef(incomeCategories);
   const activeTabRef = useRef(activeTab);
-  listRef.current = list;
-  expenseRef.current = expenseCategories;
-  incomeRef.current = incomeCategories;
   activeTabRef.current = activeTab;
 
   useFocusEffect(
     useCallback(() => {
       setModalVisible(false);
       setEditingItem(null);
+      getStoredAccounts().then((list: Account[]) => {
+        setAccounts(list.filter((a) => a.name.trim() !== ''));
+      });
     }, [])
   );
 
@@ -207,6 +222,7 @@ export default function CategorySettingsScreen(): React.JSX.Element {
     setEditingItem(null);
     setEditLabel('');
     setEditIcon(CATEGORY_ICON_OPTIONS[0] ?? '📌');
+    setEditDefaultAccountId(undefined);
     setModalVisible(true);
   };
 
@@ -214,6 +230,8 @@ export default function CategorySettingsScreen(): React.JSX.Element {
     setEditingItem(item);
     setEditLabel(item.label);
     setEditIcon(item.icon);
+    const validIds = new Set(accounts.map((a) => a.id));
+    setEditDefaultAccountId(resolveEffectiveDefaultAccountId(item, validIds));
     setModalVisible(true);
   };
 
@@ -231,12 +249,15 @@ export default function CategorySettingsScreen(): React.JSX.Element {
           text: '刪除',
           style: 'destructive',
           onPress: () => {
-            const nextList = list.filter((c) => c.key !== item.key);
-            const next: StoredCategories = {
-              expense: activeTab === 'expense' ? nextList : expenseCategories,
-              income: activeTab === 'income' ? nextList : incomeCategories,
-            };
-            updateCategories(next);
+            const tab = activeTab;
+            updateCategories((prev) => {
+              const curList = tab === 'expense' ? prev.expense : prev.income;
+              const nextList = curList.filter((c) => c.key !== item.key);
+              return {
+                expense: tab === 'expense' ? nextList : prev.expense,
+                income: tab === 'income' ? nextList : prev.income,
+              };
+            });
           },
         },
       ]
@@ -246,40 +267,78 @@ export default function CategorySettingsScreen(): React.JSX.Element {
   const handleSaveCategory = () => {
     const label = editLabel.trim();
     if (!label) return;
-    if (editingItem) {
-      const nextList = list.map((c) =>
-        c.key === editingItem.key ? { ...c, label, icon: editIcon } : c
-      );
-      const next: StoredCategories = {
-        expense: activeTab === 'expense' ? nextList : expenseCategories,
-        income: activeTab === 'income' ? nextList : incomeCategories,
-      };
-      updateCategories(next);
+    const tab = activeTab;
+    const editing = editingItem;
+    if (editing) {
+      updateCategories((prev) => {
+        const curList = tab === 'expense' ? prev.expense : prev.income;
+        const nextList = curList.map((c) => {
+          if (c.key !== editing.key) return c;
+          const updated: CategoryItem = { ...c, label, icon: editIcon };
+          if (editDefaultAccountId != null && editDefaultAccountId !== '') {
+            updated.defaultAccountId = editDefaultAccountId;
+          } else {
+            delete updated.defaultAccountId;
+          }
+          return updated;
+        });
+        return {
+          expense: tab === 'expense' ? nextList : prev.expense,
+          income: tab === 'income' ? nextList : prev.income,
+        };
+      });
     } else {
-      const key = `custom_${Date.now()}`;
+      const key = newCustomCategoryKey();
       const newItem: CategoryItem = { key, label, icon: editIcon };
-      const nextList = [...list, newItem];
-      const next: StoredCategories = {
-        expense: activeTab === 'expense' ? nextList : expenseCategories,
-        income: activeTab === 'income' ? nextList : incomeCategories,
-      };
-      updateCategories(next);
+      if (editDefaultAccountId != null && editDefaultAccountId !== '') {
+        newItem.defaultAccountId = editDefaultAccountId;
+      }
+      updateCategories((prev) => {
+        const curList = tab === 'expense' ? prev.expense : prev.income;
+        const nextList = [...curList, newItem];
+        return {
+          expense: tab === 'expense' ? nextList : prev.expense,
+          income: tab === 'income' ? nextList : prev.income,
+        };
+      });
     }
     setModalVisible(false);
     setEditingItem(null);
   };
 
+  const getDefaultAccountSubtitle = useCallback(
+    (item: CategoryItem): string | undefined => {
+      const id = item.defaultAccountId;
+      if (id == null || id === '') return undefined;
+      const validIds = new Set(accounts.map((a) => a.id));
+      if (resolveEffectiveDefaultAccountId(item, validIds)) {
+        const name = accounts.find((a) => a.id === id)?.name?.trim();
+        return name ? `預設：${name}` : undefined;
+      }
+      return DEFAULT_ACCOUNT_INVALID;
+    },
+    [accounts],
+  );
+
   const swapCategories = useCallback((index1: number, index2: number) => {
-    const currentList = listRef.current;
-    if (index2 < 0 || index2 >= currentList.length) return;
-    const nextList = [...currentList];
-    [nextList[index1], nextList[index2]] = [nextList[index2], nextList[index1]];
     const tab = activeTabRef.current;
-    const next: StoredCategories = {
-      expense: tab === 'expense' ? nextList : expenseRef.current,
-      income: tab === 'income' ? nextList : incomeRef.current,
-    };
-    updateCategories(next);
+    updateCategories((prev) => {
+      const currentList = tab === 'expense' ? prev.expense : prev.income;
+      if (
+        index1 < 0 ||
+        index1 >= currentList.length ||
+        index2 < 0 ||
+        index2 >= currentList.length
+      ) {
+        return prev;
+      }
+      const nextList = [...currentList];
+      [nextList[index1], nextList[index2]] = [nextList[index2], nextList[index1]];
+      return {
+        expense: tab === 'expense' ? nextList : prev.expense,
+        income: tab === 'income' ? nextList : prev.income,
+      };
+    });
   }, [updateCategories]);
 
   return (
@@ -314,7 +373,7 @@ export default function CategorySettingsScreen(): React.JSX.Element {
         </TouchableOpacity>
       </View>
 
-      <ScrollView
+      <GHScrollView
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
@@ -322,6 +381,7 @@ export default function CategorySettingsScreen(): React.JSX.Element {
         ]}
         showsVerticalScrollIndicator
         keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled
       >
         <Text style={styles.dragHint}>按住左側圖示並上下拖曳來調整順序</Text>
         <View style={styles.listBlock}>
@@ -333,6 +393,7 @@ export default function CategorySettingsScreen(): React.JSX.Element {
               totalItems={list.length}
               isLast={index === list.length - 1}
               canDelete={list.length > MIN_CATEGORIES_COUNT}
+              defaultAccountSubtitle={getDefaultAccountSubtitle(item)}
               onSwap={swapCategories}
               onEdit={openEdit}
               onDelete={handleDelete}
@@ -345,7 +406,7 @@ export default function CategorySettingsScreen(): React.JSX.Element {
             <Text style={styles.addBtnText}>{BTN_ADD}</Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
+      </GHScrollView>
 
       <Modal
         visible={modalVisible}
@@ -381,6 +442,51 @@ export default function CategorySettingsScreen(): React.JSX.Element {
                   <Text style={styles.iconOptionText}>{emoji}</Text>
                 </TouchableOpacity>
               ))}
+            </ScrollView>
+            <Text style={styles.iconPickerLabel}>{LABEL_DEFAULT_ACCOUNT}</Text>
+            <ScrollView
+              style={styles.accountPickerScroll}
+              contentContainerStyle={styles.accountPickerList}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled
+            >
+              <TouchableOpacity
+                style={[
+                  styles.accountRow,
+                  editDefaultAccountId == null && styles.accountRowSelected,
+                ]}
+                onPress={() => setEditDefaultAccountId(undefined)}
+              >
+                <Text
+                  style={[
+                    styles.accountRowText,
+                    editDefaultAccountId == null && styles.accountRowTextSelected,
+                  ]}
+                >
+                  {DEFAULT_ACCOUNT_NONE}
+                </Text>
+                {editDefaultAccountId == null ? (
+                  <Ionicons name="checkmark" size={20} color="#2563eb" />
+                ) : null}
+              </TouchableOpacity>
+              {accounts.map((a) => {
+                const selected = editDefaultAccountId === a.id;
+                return (
+                  <TouchableOpacity
+                    key={a.id}
+                    style={[styles.accountRow, selected && styles.accountRowSelected]}
+                    onPress={() => setEditDefaultAccountId(a.id)}
+                  >
+                    <Text
+                      style={[styles.accountRowText, selected && styles.accountRowTextSelected]}
+                      numberOfLines={1}
+                    >
+                      {a.name.trim()}
+                    </Text>
+                    {selected ? <Ionicons name="checkmark" size={20} color="#2563eb" /> : null}
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
             <View style={styles.modalActions}>
               <TouchableOpacity
@@ -517,10 +623,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     textAlignVertical: 'center',
   },
-  rowLabel: {
+  rowLabelCol: {
     flex: 1,
+    minWidth: 0,
+  },
+  rowLabel: {
     fontSize: 16,
     color: '#1f2937',
+  },
+  rowDefaultAccount: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
   },
   rowActions: {
     flexDirection: 'row',
@@ -587,7 +701,38 @@ const styles = StyleSheet.create({
   },
   iconPickerScroll: {
     maxHeight: 160,
-    marginBottom: 20,
+    marginBottom: 12,
+  },
+  accountPickerScroll: {
+    maxHeight: 160,
+    marginBottom: 16,
+  },
+  accountPickerList: {},
+  accountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    marginBottom: 6,
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  accountRowSelected: {
+    backgroundColor: '#eff6ff',
+    borderColor: '#2563eb',
+  },
+  accountRowText: {
+    flex: 1,
+    fontSize: 15,
+    color: '#374151',
+    marginRight: 8,
+  },
+  accountRowTextSelected: {
+    color: '#2563eb',
+    fontWeight: '600',
   },
   iconPickerGrid: {
     flexDirection: 'row',

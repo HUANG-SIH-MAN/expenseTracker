@@ -149,6 +149,13 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase | null> {
   } catch {
     // Column already exists on existing DBs
   }
+  try {
+    await db.runAsync(
+      "ALTER TABLE categories ADD COLUMN default_account_id TEXT",
+    );
+  } catch {
+    // Column already exists on existing DBs
+  }
   dbInstance = db;
   return db;
 }

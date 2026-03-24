@@ -16,6 +16,7 @@ import type { Account, CurrencyCode, CurrencyOption } from '../../types';
 import { generateId } from '../../utils/id';
 import { getCurrencyOptions } from '../../utils/storage';
 import type { OnboardingStackParamList } from '../../navigation/OnboardingStack';
+import { KEYBOARD_SIGNED_DECIMAL } from '../../constants';
 
 const LABEL_ACCOUNTS = '設定您的帳戶';
 const LABEL_ACCOUNTS_DESC = '新增每個帳戶的名稱與目前金額，至少需要一個帳戶。';
@@ -145,7 +146,7 @@ export default function AccountsSetupScreen(): React.JSX.Element {
               style={[styles.input, styles.inputAmount]}
               placeholder={PLACEHOLDER_AMOUNT}
               placeholderTextColor="#999"
-              keyboardType="decimal-pad"
+              keyboardType={KEYBOARD_SIGNED_DECIMAL}
               value={amountInputs[acc.id] ?? (acc.initialBalance ? String(acc.initialBalance) : '')}
               onChangeText={(t) => {
                 const num = t.replace(/[^0-9.-]/g, '');

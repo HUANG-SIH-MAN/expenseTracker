@@ -22,6 +22,7 @@ import type { Account, CurrencyCode, CurrencyOption } from '../types';
 import { getStoredAccounts, updateStoredAccounts, getCurrencyOptions } from '../utils/storage';
 import { useTransactions } from '../contexts/TransactionsContext';
 import type { MainStackParamList } from '../navigation/MainStack';
+import { KEYBOARD_SIGNED_DECIMAL } from '../constants';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 const TITLE = '編輯帳本';
@@ -187,7 +188,7 @@ export default function EditAccountScreen(): React.JSX.Element {
             style={styles.input}
             placeholder={PLACEHOLDER_AMOUNT}
             placeholderTextColor="#9ca3af"
-            keyboardType="decimal-pad"
+            keyboardType={KEYBOARD_SIGNED_DECIMAL}
             value={currentAmount}
             onChangeText={(t) => setCurrentAmount(t.replace(/[^0-9.-]/g, ''))}
           />

@@ -22,6 +22,7 @@ import { generateId } from '../utils/id';
 import { getStoredAccounts, updateStoredAccounts, getCurrencyOptions } from '../utils/storage';
 import type { CurrencyOption } from '../types';
 import type { MainStackParamList } from '../navigation/MainStack';
+import { KEYBOARD_SIGNED_DECIMAL } from '../constants';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 const TITLE = '新增帳本';
@@ -146,7 +147,7 @@ export default function AddAccountScreen(): React.JSX.Element {
             style={styles.input}
             placeholder={PLACEHOLDER_AMOUNT}
             placeholderTextColor="#9ca3af"
-            keyboardType="decimal-pad"
+            keyboardType={KEYBOARD_SIGNED_DECIMAL}
             value={initialAmountStr}
             onChangeText={(t) => setInitialAmountStr(t.replace(/[^0-9.-]/g, ''))}
           />

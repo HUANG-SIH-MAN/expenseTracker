@@ -52,6 +52,8 @@ export interface CategoryItem {
   key: string;
   label: string;
   icon: string;
+  /** 新增交易選此類別時預先帶入的帳戶；單筆仍可改選 */
+  defaultAccountId?: string;
 }
 
 /** 使用者自訂的支出/收入類別列表（儲存於 AsyncStorage） */

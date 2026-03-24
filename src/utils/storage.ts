@@ -159,23 +159,25 @@ async function runMigrationFromAsyncStorageIfNeeded(
         let sortOrder = 0;
         for (const c of data.expense) {
           await db.runAsync(
-            "INSERT INTO categories (kind, key, label, icon, sort_order) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO categories (kind, key, label, icon, sort_order, default_account_id) VALUES (?, ?, ?, ?, ?, ?)",
             "expense",
             c.key,
             c.label,
             c.icon,
             sortOrder++,
+            c.defaultAccountId ?? null,
           );
         }
         sortOrder = 0;
         for (const c of data.income) {
           await db.runAsync(
-            "INSERT INTO categories (kind, key, label, icon, sort_order) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO categories (kind, key, label, icon, sort_order, default_account_id) VALUES (?, ?, ?, ?, ?, ?)",
             "income",
             c.key,
             c.label,
             c.icon,
             sortOrder++,
+            c.defaultAccountId ?? null,
           );
         }
       }
@@ -586,10 +588,15 @@ interface CategoryRow {
   label: string;
   icon: string;
   sort_order: number;
+  default_account_id: string | null;
 }
 
 function rowToCategoryItem(r: CategoryRow): CategoryItem {
-  return { key: r.key, label: r.label, icon: r.icon };
+  const item: CategoryItem = { key: r.key, label: r.label, icon: r.icon };
+  if (r.default_account_id != null && r.default_account_id !== "") {
+    item.defaultAccountId = r.default_account_id;
+  }
+  return item;
 }
 
 export async function getStoredCategories(): Promise<StoredCategories | null> {
@@ -597,7 +604,7 @@ export async function getStoredCategories(): Promise<StoredCategories | null> {
   if (db) {
     await ensureMigrationDone(db);
     const rows = await db.getAllAsync<CategoryRow>(
-      "SELECT kind, key, label, icon, sort_order FROM categories ORDER BY kind, sort_order, id",
+      "SELECT kind, key, label, icon, sort_order, default_account_id FROM categories ORDER BY kind, sort_order, id",
     );
     const expense = rows
       .filter((r) => r.kind === "expense")
@@ -627,29 +634,33 @@ export async function getStoredCategories(): Promise<StoredCategories | null> {
 export async function saveCategories(data: StoredCategories): Promise<void> {
   const db = await getDb();
   if (db) {
-    await db.runAsync("DELETE FROM categories");
-    let sortOrder = 0;
-    for (const c of data.expense) {
-      await db.runAsync(
-        "INSERT INTO categories (kind, key, label, icon, sort_order) VALUES (?, ?, ?, ?, ?)",
-        "expense",
-        c.key,
-        c.label,
-        c.icon,
-        sortOrder++,
-      );
-    }
-    sortOrder = 0;
-    for (const c of data.income) {
-      await db.runAsync(
-        "INSERT INTO categories (kind, key, label, icon, sort_order) VALUES (?, ?, ?, ?, ?)",
-        "income",
-        c.key,
-        c.label,
-        c.icon,
-        sortOrder++,
-      );
-    }
+    await db.withTransactionAsync(async () => {
+      await db.runAsync("DELETE FROM categories");
+      let sortOrder = 0;
+      for (const c of data.expense) {
+        await db.runAsync(
+          "INSERT INTO categories (kind, key, label, icon, sort_order, default_account_id) VALUES (?, ?, ?, ?, ?, ?)",
+          "expense",
+          c.key,
+          c.label,
+          c.icon,
+          sortOrder++,
+          c.defaultAccountId ?? null,
+        );
+      }
+      sortOrder = 0;
+      for (const c of data.income) {
+        await db.runAsync(
+          "INSERT INTO categories (kind, key, label, icon, sort_order, default_account_id) VALUES (?, ?, ?, ?, ?, ?)",
+          "income",
+          c.key,
+          c.label,
+          c.icon,
+          sortOrder++,
+          c.defaultAccountId ?? null,
+        );
+      }
+    });
     return;
   }
   await AsyncStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(data));
