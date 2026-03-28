@@ -14,13 +14,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { Transaction, Account } from '../types';
+import type { Transaction, Account, RecurringItem } from '../types';
 import { Calendar } from '../components';
 import { useTransactions } from '../contexts/TransactionsContext';
 import { useCategories } from '../contexts/CategoriesContext';
 import { useBudget } from '../contexts/BudgetContext';
 import { getTodayKey } from '../utils/date';
-import { getStoredAccounts } from '../utils/storage';
+import { getStoredAccounts, getExchangeRates, getStoredRecurring } from '../utils/storage';
 import { getBudgetSummary } from '../utils/budget';
 import type { MainStackParamList } from '../navigation/MainStack';
 
@@ -109,9 +109,15 @@ export default function HomeScreen(): React.JSX.Element {
   );
   const { getCategoryLabel: getCategoryLabelFromContext, getCategoryIcon: getCategoryIconFromContext } = useCategories();
   const { monthlyFixedItems, budgetSettings } = useBudget();
+  const [ratesToPrimary, setRatesToPrimary] = useState<Record<string, number>>({});
+  const [recurringItems, setRecurringItems] = useState<RecurringItem[]>([]);
+  useEffect(() => {
+    getExchangeRates().then(({ rates }) => setRatesToPrimary(rates));
+    getStoredRecurring().then(setRecurringItems);
+  }, []);
   const budgetSummary = useMemo(() => {
-    return getBudgetSummary(today, transactions, monthlyFixedItems, budgetSettings);
-  }, [today, transactions, monthlyFixedItems, budgetSettings]);
+    return getBudgetSummary(today, transactions, monthlyFixedItems, budgetSettings, ratesToPrimary, recurringItems);
+  }, [today, transactions, monthlyFixedItems, budgetSettings, ratesToPrimary, recurringItems]);
   const { year, month } = useMemo(
     () => getYearMonthFromDateKey(selectedDate),
     [selectedDate]

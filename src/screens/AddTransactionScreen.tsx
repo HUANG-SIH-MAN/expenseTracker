@@ -14,13 +14,14 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import type { NativeStackScreenProps, NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { Account, AnnualBudgetEntry, Transaction, TransactionType } from '../types';
+import type { Account, AnnualBudgetEntry, MonthlyFixedItem, Transaction, TransactionType } from '../types';
 import type { MainStackParamList } from '../navigation/MainStack';
 import { generateId } from '../utils/id';
 import { parseAmountInput } from '../utils/amountExpression';
 import { formatDateWithWeekday } from '../utils/date';
 import { useTransactions } from '../contexts/TransactionsContext';
 import { useCategories } from '../contexts/CategoriesContext';
+import { useBudget } from '../contexts/BudgetContext';
 import { getStoredAccounts, addRecurringSkip, getAnnualBudgetEntries } from '../utils/storage';
 import { resolveEffectiveDefaultAccountId } from '../utils/categoryDefaultAccount';
 import { CalculatorKeypad } from '../components';
@@ -46,6 +47,10 @@ const LABEL_ANNUAL_BUDGET = '對應年度預算項目（選填）';
 const BTN_SELECT_ANNUAL = '選擇年度預算項目';
 const ANNUAL_BUDGET_NONE = '不指定';
 const ANNUAL_PICKER_TITLE = '選擇對應的年度預算項目';
+const LABEL_MONTHLY_FIXED = '對應每月固定項目（選填）';
+const BTN_SELECT_MONTHLY_FIXED = '選擇每月固定項目';
+const MONTHLY_FIXED_NONE = '不指定';
+const MONTHLY_FIXED_PICKER_TITLE = '選擇對應的每月固定項目';
 const BACK_ICON_SIZE = 28;
 const AUTOPAY_READONLY_HINT = '此筆交易為系統自動建立的信用卡自動扣款，僅可檢視，無法編輯或刪除。';
 
@@ -66,6 +71,7 @@ export default function AddTransactionScreen(): React.JSX.Element {
   const { selectedDate, transactionId } = route.params;
   const { addTransaction, updateTransaction, getTransactionById } = useTransactions();
   const { expenseCategories, incomeCategories, getCategoryLabel } = useCategories();
+  const { monthlyFixedItems } = useBudget();
 
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [type, setType] = useState<TransactionType>('expense');
@@ -81,6 +87,8 @@ export default function AddTransactionScreen(): React.JSX.Element {
   const [note, setNote] = useState('');
   const [accountId, setAccountId] = useState<string | undefined>(undefined);
   const [annualBudgetEntryId, setAnnualBudgetEntryId] = useState<string | undefined>(undefined);
+  const [monthlyFixedItemId, setMonthlyFixedItemId] = useState<string | undefined>(undefined);
+  const [showMonthlyFixedPicker, setShowMonthlyFixedPicker] = useState(false);
   const [annualEntries, setAnnualEntries] = useState<
     Pick<AnnualBudgetEntry, 'id' | 'month' | 'categoryKey' | 'label' | 'estimatedAmount'>[]
   >([]);
@@ -143,6 +151,7 @@ export default function AddTransactionScreen(): React.JSX.Element {
     setNote(existing.note ?? '');
     setAccountId(existing.accountId);
     setAnnualBudgetEntryId(existing.annualBudgetEntryId);
+    setMonthlyFixedItemId(existing.monthlyFixedItemId);
     skipCategoryAccountApplyRef.current = true;
   }, [existing?.id]);
 
@@ -232,6 +241,7 @@ export default function AddTransactionScreen(): React.JSX.Element {
         accountId: accountId || undefined,
         recurringId: undefined,
         annualBudgetEntryId,
+        monthlyFixedItemId,
       });
     } else {
       addTransaction({
@@ -243,6 +253,7 @@ export default function AddTransactionScreen(): React.JSX.Element {
         note: note.trim() || undefined,
         accountId: accountId || undefined,
         annualBudgetEntryId,
+        monthlyFixedItemId,
         createdAt: new Date().toISOString(),
       });
     }
@@ -395,6 +406,102 @@ export default function AddTransactionScreen(): React.JSX.Element {
               <Ionicons name="chevron-forward" size={CHEVRON_FORWARD_SIZE} color="#9ca3af" />
             </View>
           </TouchableOpacity>
+        ) : null}
+
+        {type === 'expense' && monthlyFixedItems.length > 0 ? (
+          <>
+            <View style={styles.fieldRow}>
+              <Text style={styles.fieldLabel}>{LABEL_MONTHLY_FIXED}</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.annualBudgetButton}
+              onPress={() => setShowMonthlyFixedPicker(true)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.annualBudgetButtonText} numberOfLines={1}>
+                {monthlyFixedItemId
+                  ? (() => {
+                      const sel = monthlyFixedItems.find((x) => x.id === monthlyFixedItemId);
+                      return sel ? `已選：${sel.label}` : BTN_SELECT_MONTHLY_FIXED;
+                    })()
+                  : BTN_SELECT_MONTHLY_FIXED}
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color="#6b7280" />
+            </TouchableOpacity>
+
+            <Modal
+              visible={showMonthlyFixedPicker}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setShowMonthlyFixedPicker(false)}
+            >
+              <TouchableOpacity
+                style={styles.annualPickerOverlay}
+                activeOpacity={1}
+                onPress={() => setShowMonthlyFixedPicker(false)}
+              >
+                <View style={styles.annualPickerContent}>
+                  <Text style={styles.annualPickerTitle}>{MONTHLY_FIXED_PICKER_TITLE}</Text>
+                  <ScrollView style={styles.annualPickerList}>
+                    <TouchableOpacity
+                      style={[
+                        styles.annualPickerRow,
+                        monthlyFixedItemId == null && styles.annualPickerRowSelected,
+                      ]}
+                      onPress={() => {
+                        setMonthlyFixedItemId(undefined);
+                        setShowMonthlyFixedPicker(false);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.annualPickerRowText,
+                          monthlyFixedItemId == null && styles.annualPickerRowTextSelected,
+                        ]}
+                      >
+                        {MONTHLY_FIXED_NONE}
+                      </Text>
+                    </TouchableOpacity>
+                    {monthlyFixedItems.map((item) => {
+                      const isSelected = monthlyFixedItemId === item.id;
+                      const amountLabel = item.currency && item.currency !== 'TWD' && item.originalAmount != null
+                        ? `${item.originalAmount} ${item.currency} ≈ NT$${Math.round(item.estimatedAmount).toLocaleString()}`
+                        : `NT$${item.estimatedAmount.toLocaleString()}`;
+                      return (
+                        <TouchableOpacity
+                          key={item.id}
+                          style={[
+                            styles.annualPickerRow,
+                            isSelected && styles.annualPickerRowSelected,
+                          ]}
+                          onPress={() => {
+                            setMonthlyFixedItemId(item.id);
+                            setShowMonthlyFixedPicker(false);
+                          }}
+                        >
+                          <Text
+                            style={[
+                              styles.annualPickerRowText,
+                              isSelected && styles.annualPickerRowTextSelected,
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {item.label}　預估 {amountLabel}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                  <TouchableOpacity
+                    style={styles.annualPickerClose}
+                    onPress={() => setShowMonthlyFixedPicker(false)}
+                  >
+                    <Text style={styles.annualPickerCloseText}>關閉</Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
+            </Modal>
+          </>
         ) : null}
 
         {annualEntries.length > 0 ? (

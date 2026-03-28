@@ -131,7 +131,7 @@ async function runMigrationFromAsyncStorageIfNeeded(
       if (Array.isArray(list) && list.length > 0) {
         for (const t of list) {
           await db.runAsync(
-            "INSERT OR REPLACE INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, to_account_id, transfer_amount, is_system_generated, system_generated_type, locked_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, monthly_fixed_item_id, to_account_id, transfer_amount, is_system_generated, system_generated_type, locked_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             t.id,
             t.type,
             t.amount,
@@ -141,6 +141,7 @@ async function runMigrationFromAsyncStorageIfNeeded(
             t.accountId ?? null,
             t.recurringId ?? null,
             (t as Transaction).annualBudgetEntryId ?? null,
+            (t as Transaction).monthlyFixedItemId ?? null,
             (t as Transaction).toAccountId ?? null,
             (t as Transaction).transferAmount ?? null,
             (t as Transaction).isSystemGenerated === true ? SQLITE_TRUE : SQLITE_FALSE,
@@ -445,6 +446,7 @@ interface TransactionRow {
   account_id: string | null;
   recurring_id: string | null;
   annual_budget_entry_id: string | null;
+  monthly_fixed_item_id: string | null;
   to_account_id: string | null;
   transfer_amount: number | null;
   is_system_generated: number;
@@ -464,6 +466,7 @@ function rowToTransaction(r: TransactionRow): Transaction {
     accountId: r.account_id ?? undefined,
     recurringId: r.recurring_id ?? undefined,
     annualBudgetEntryId: r.annual_budget_entry_id ?? undefined,
+    monthlyFixedItemId: r.monthly_fixed_item_id ?? undefined,
     toAccountId: r.to_account_id ?? undefined,
     transferAmount: r.transfer_amount ?? undefined,
     isSystemGenerated: r.is_system_generated === SQLITE_TRUE,
@@ -489,7 +492,7 @@ export async function getStoredTransactions(): Promise<Transaction[]> {
   if (db) {
     await ensureMigrationDone(db);
     const rows = await db.getAllAsync<TransactionRow>(
-      "SELECT id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, to_account_id, transfer_amount, is_system_generated, system_generated_type, locked_reason, created_at FROM transactions ORDER BY date, created_at",
+      "SELECT id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, monthly_fixed_item_id, to_account_id, transfer_amount, is_system_generated, system_generated_type, locked_reason, created_at FROM transactions ORDER BY date, created_at",
     );
     return rows.map(rowToTransaction);
   }
@@ -511,7 +514,7 @@ export async function saveTransactions(
     await db.runAsync("DELETE FROM transactions");
     for (const t of transactions) {
       await db.runAsync(
-        "INSERT INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, to_account_id, transfer_amount, is_system_generated, system_generated_type, locked_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, monthly_fixed_item_id, to_account_id, transfer_amount, is_system_generated, system_generated_type, locked_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         t.id,
         t.type,
         t.amount,
@@ -521,6 +524,7 @@ export async function saveTransactions(
         t.accountId ?? null,
         t.recurringId ?? null,
         t.annualBudgetEntryId ?? null,
+        t.monthlyFixedItemId ?? null,
         t.toAccountId ?? null,
         t.transferAmount ?? null,
         t.isSystemGenerated === true ? SQLITE_TRUE : SQLITE_FALSE,
@@ -541,7 +545,7 @@ export async function addTransaction(transaction: Transaction): Promise<void> {
   const db = await getDb();
   if (db) {
     await db.runAsync(
-      "INSERT INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, to_account_id, transfer_amount, is_system_generated, system_generated_type, locked_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, monthly_fixed_item_id, to_account_id, transfer_amount, is_system_generated, system_generated_type, locked_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       transaction.id,
       transaction.type,
       transaction.amount,
@@ -551,6 +555,7 @@ export async function addTransaction(transaction: Transaction): Promise<void> {
       transaction.accountId ?? null,
       transaction.recurringId ?? null,
       transaction.annualBudgetEntryId ?? null,
+      transaction.monthlyFixedItemId ?? null,
       transaction.toAccountId ?? null,
       transaction.transferAmount ?? null,
       transaction.isSystemGenerated === true ? SQLITE_TRUE : SQLITE_FALSE,
@@ -640,7 +645,7 @@ export async function updateTransaction(
       throw new Error("Locked autopay transaction cannot be updated");
     }
     await db.runAsync(
-      "UPDATE transactions SET type = ?, amount = ?, date = ?, category = ?, note = ?, account_id = ?, recurring_id = ?, annual_budget_entry_id = ?, to_account_id = ?, transfer_amount = ?, is_system_generated = ?, system_generated_type = ?, locked_reason = ?, created_at = ? WHERE id = ?",
+      "UPDATE transactions SET type = ?, amount = ?, date = ?, category = ?, note = ?, account_id = ?, recurring_id = ?, annual_budget_entry_id = ?, monthly_fixed_item_id = ?, to_account_id = ?, transfer_amount = ?, is_system_generated = ?, system_generated_type = ?, locked_reason = ?, created_at = ? WHERE id = ?",
       transaction.type,
       transaction.amount,
       transaction.date,
@@ -649,6 +654,7 @@ export async function updateTransaction(
       transaction.accountId ?? null,
       transaction.recurringId ?? null,
       transaction.annualBudgetEntryId ?? null,
+      transaction.monthlyFixedItemId ?? null,
       transaction.toAccountId ?? null,
       transaction.transferAmount ?? null,
       transaction.isSystemGenerated === true ? SQLITE_TRUE : SQLITE_FALSE,
@@ -907,6 +913,9 @@ interface MonthlyFixedRow {
   label: string;
   category_key: string | null;
   estimated_amount: number;
+  currency: string | null;
+  original_amount: number | null;
+  recurring_item_id: string | null;
   sort_order: number;
 }
 
@@ -916,6 +925,9 @@ function rowToMonthlyFixedItem(r: MonthlyFixedRow): MonthlyFixedItem {
     label: r.label,
     categoryKey: r.category_key ?? undefined,
     estimatedAmount: r.estimated_amount,
+    currency: (r.currency as MonthlyFixedItem['currency']) ?? undefined,
+    originalAmount: r.original_amount ?? undefined,
+    recurringItemId: r.recurring_item_id ?? undefined,
     sortOrder: r.sort_order,
   };
 }
@@ -925,7 +937,7 @@ export async function getMonthlyFixedItems(): Promise<MonthlyFixedItem[]> {
   if (db) {
     await ensureMigrationDone(db);
     const rows = await db.getAllAsync<MonthlyFixedRow>(
-      "SELECT id, label, category_key, estimated_amount, sort_order FROM monthly_fixed_items ORDER BY sort_order, id",
+      "SELECT id, label, category_key, estimated_amount, currency, original_amount, recurring_item_id, sort_order FROM monthly_fixed_items ORDER BY sort_order, id",
     );
     return rows.map(rowToMonthlyFixedItem);
   }
@@ -947,11 +959,14 @@ export async function saveMonthlyFixedItems(
     await db.runAsync("DELETE FROM monthly_fixed_items");
     for (const item of items) {
       await db.runAsync(
-        "INSERT INTO monthly_fixed_items (id, label, category_key, estimated_amount, sort_order) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO monthly_fixed_items (id, label, category_key, estimated_amount, currency, original_amount, recurring_item_id, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         item.id,
         item.label,
         item.categoryKey ?? null,
         item.estimatedAmount,
+        item.currency ?? null,
+        item.originalAmount ?? null,
+        item.recurringItemId ?? null,
         item.sortOrder,
       );
     }

@@ -81,6 +81,8 @@ export interface Transaction {
   recurringId?: string;
   /** 對應年度預算項目 id；有值時不計入「日常已花」，僅在年預算頁顯示實際 */
   annualBudgetEntryId?: string;
+  /** 對應每月固定項目 id；有值時不計入「日常已花」，僅在月預算頁顯示實際 */
+  monthlyFixedItemId?: string;
   /** 僅轉帳：轉入帳戶 ID */
   toAccountId?: string;
   /** 僅轉帳：轉入端金額（轉入帳戶幣別） */
@@ -124,8 +126,14 @@ export interface MonthlyFixedItem {
   label: string;
   /** 選填，綁定支出類別以計算「預估 vs 當月已發生」 */
   categoryKey?: string;
-  /** 當月預估金額 */
+  /** 當月預估金額（主幣別 TWD） */
   estimatedAmount: number;
+  /** 原始幣別（預設 TWD；設為 USD 時以 originalAmount 換算） */
+  currency?: CurrencyCode;
+  /** 原始幣別金額（僅 currency !== primaryCurrency 時有意義） */
+  originalAmount?: number;
+  /** 連結的固定收支項目 id；有值時金額跟著 RecurringItem 走 */
+  recurringItemId?: string;
   sortOrder: number;
 }
 

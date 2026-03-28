@@ -245,6 +245,34 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase | null> {
   } catch {
     // Table already exists on existing DBs
   }
+  try {
+    await db.runAsync(
+      "ALTER TABLE transactions ADD COLUMN monthly_fixed_item_id TEXT"
+    );
+  } catch {
+    // Column already exists on existing DBs
+  }
+  try {
+    await db.runAsync(
+      "ALTER TABLE monthly_fixed_items ADD COLUMN recurring_item_id TEXT"
+    );
+  } catch {
+    // Column already exists on existing DBs
+  }
+  try {
+    await db.runAsync(
+      "ALTER TABLE monthly_fixed_items ADD COLUMN currency TEXT"
+    );
+  } catch {
+    // Column already exists on existing DBs
+  }
+  try {
+    await db.runAsync(
+      "ALTER TABLE monthly_fixed_items ADD COLUMN original_amount REAL"
+    );
+  } catch {
+    // Column already exists on existing DBs
+  }
   dbInstance = db;
   return db;
 }

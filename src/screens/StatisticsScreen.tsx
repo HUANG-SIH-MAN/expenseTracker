@@ -47,8 +47,8 @@ const HEADER_PADDING_BOTTOM = 16;
 const CARD_PADDING = 20;
 const CARD_BORDER_RADIUS = 12;
 const CARD_MARGIN_BOTTOM = 16;
-const SUMMARY_AMOUNT_FONT_SIZE = 28;
-const SUMMARY_LABEL_FONT_SIZE = 14;
+const SUMMARY_AMOUNT_FONT_SIZE = 20;
+const SUMMARY_LABEL_FONT_SIZE = 12;
 const PERIOD_BTN_FONT_SIZE = 16;
 const PERIOD_ARROW_FONT_SIZE = 24;
 const CHART_SIZE = 160;
@@ -246,19 +246,21 @@ export default function StatisticsScreen(): React.JSX.Element {
 
         {/* 總收支區 */}
         <View style={styles.summaryCard}>
-          <View style={styles.summaryRow}>
+          <View style={styles.summaryCol}>
             <Text style={styles.summaryLabel}>{LABEL_INCOME}</Text>
             <Text style={[styles.summaryAmount, styles.amountIncome]}>
               {formatAmount(totals.totalIncome)}
             </Text>
           </View>
-          <View style={styles.summaryRow}>
+          <View style={styles.summaryVertDivider} />
+          <View style={styles.summaryCol}>
             <Text style={styles.summaryLabel}>{LABEL_EXPENSE}</Text>
             <Text style={[styles.summaryAmount, styles.amountExpense]}>
               {formatAmount(totals.totalExpense)}
             </Text>
           </View>
-          <View style={[styles.summaryRow, styles.summaryRowLast]}>
+          <View style={styles.summaryVertDivider} />
+          <View style={styles.summaryCol}>
             <Text style={styles.summaryLabel}>{LABEL_BALANCE}</Text>
             <Text
               style={[
@@ -467,23 +469,23 @@ const styles = StyleSheet.create({
   summaryCard: {
     backgroundColor: '#fff',
     borderRadius: CARD_BORDER_RADIUS,
-    padding: CARD_PADDING,
+    paddingVertical: CARD_PADDING,
+    paddingHorizontal: 8,
     marginBottom: CARD_MARGIN_BOTTOM,
     borderWidth: 1,
     borderColor: '#e5e7eb',
-  },
-  summaryRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
   },
-  summaryRowLast: {
-    marginBottom: 0,
-    marginTop: 4,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
+  summaryCol: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 4,
+  },
+  summaryVertDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: '#e5e7eb',
   },
   summaryLabel: {
     fontSize: SUMMARY_LABEL_FONT_SIZE,

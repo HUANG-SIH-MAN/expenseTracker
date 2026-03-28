@@ -44,6 +44,13 @@ const LABEL_ITEM_NAME_PLACEHOLDER = '例如：汽車保養、年終獎金';
 const LABEL_ESTIMATED = '計劃金額';
 const BTN_SAVE = '儲存';
 const BTN_CANCEL = '取消';
+const BTN_COPY_YEAR = '複製到其他年份';
+const COPY_MODAL_TITLE = '複製年度預算';
+const COPY_MODAL_DESC = '將目前年份的所有項目複製到：';
+const COPY_OVERWRITE_WARNING = '筆項目，是否要覆蓋？';
+const COPY_OVERWRITE_CONFIRM = '覆蓋並複製';
+const COPY_SUCCESS_EMPTY = '已複製完成';
+const BTN_COPY = '複製';
 
 interface AnnualBudgetTabProps {
   insets: { top: number; bottom: number; left: number; right: number };
@@ -71,6 +78,10 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
   const [formAmountStr, setFormAmountStr] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<AnnualBudgetEntry | null>(null);
   const [yearPickerVisible, setYearPickerVisible] = useState(false);
+  const [copyModalVisible, setCopyModalVisible] = useState(false);
+  const [copyTargetYear, setCopyTargetYear] = useState(currentYear + 1);
+  const [copyTargetEntryCount, setCopyTargetEntryCount] = useState(0);
+  const [copyConfirmOverwrite, setCopyConfirmOverwrite] = useState(false);
 
   const loadEntries = useCallback(async () => {
     setLoading(true);
@@ -160,6 +171,39 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
     setEntries(next);
     setConfirmDelete(null);
   }, [confirmDelete, entries, year]);
+
+  const openCopyModal = useCallback(async () => {
+    const defaultTarget = year >= currentYear ? year + 1 : currentYear;
+    setCopyTargetYear(defaultTarget);
+    setCopyConfirmOverwrite(false);
+    const existing = await getAnnualBudgetEntries(defaultTarget);
+    setCopyTargetEntryCount(existing.length);
+    setCopyModalVisible(true);
+  }, [year, currentYear]);
+
+  const handleCopyTargetYearChange = useCallback(async (y: number) => {
+    setCopyTargetYear(y);
+    setCopyConfirmOverwrite(false);
+    const existing = await getAnnualBudgetEntries(y);
+    setCopyTargetEntryCount(existing.length);
+  }, []);
+
+  const handleCopyConfirm = useCallback(async () => {
+    if (entries.length === 0) return;
+    if (copyTargetEntryCount > 0 && !copyConfirmOverwrite) {
+      setCopyConfirmOverwrite(true);
+      return;
+    }
+    const copied = entries.map((e, i) => ({
+      ...e,
+      id: generateId(),
+      year: copyTargetYear,
+      sortOrder: e.sortOrder,
+    }));
+    await saveAnnualBudgetEntries(copyTargetYear, copied);
+    setCopyModalVisible(false);
+    setCopyConfirmOverwrite(false);
+  }, [entries, copyTargetYear, copyTargetEntryCount, copyConfirmOverwrite]);
 
   const sortedEntries = React.useMemo(() => {
     return [...entries]
@@ -265,6 +309,16 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
               <Ionicons name="add-circle-outline" size={20} color="#2563eb" />
               <Text style={styles.addItemBtnText}>{BTN_ADD_ITEM}</Text>
             </TouchableOpacity>
+            {entries.length > 0 && (
+              <TouchableOpacity
+                style={styles.copyYearBtn}
+                onPress={openCopyModal}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="copy-outline" size={18} color="#6b7280" />
+                <Text style={styles.copyYearBtnText}>{BTN_COPY_YEAR}</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           <View style={styles.summaryCard}>
@@ -441,6 +495,57 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
                 onPress={handleSaveEntry}
               >
                 <Text style={styles.saveBtnText}>{BTN_SAVE}</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal
+        visible={copyModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { setCopyModalVisible(false); setCopyConfirmOverwrite(false); }}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => { setCopyModalVisible(false); setCopyConfirmOverwrite(false); }}
+        >
+          <TouchableOpacity
+            style={styles.modalContent}
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={styles.modalTitle}>{COPY_MODAL_TITLE}</Text>
+            <Text style={styles.copyModalDesc}>{COPY_MODAL_DESC}</Text>
+            <ScrollView style={styles.yearPickerList}>
+              {yearOptions.map((y) => (
+                <TouchableOpacity
+                  key={y}
+                  style={[styles.yearPickerItem, copyTargetYear === y && styles.yearPickerItemActive]}
+                  onPress={() => handleCopyTargetYearChange(y)}
+                >
+                  <Text style={[styles.yearPickerItemText, copyTargetYear === y && styles.yearPickerItemTextActive]}>{y}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            {copyConfirmOverwrite && copyTargetEntryCount > 0 && (
+              <Text style={styles.copyOverwriteWarning}>
+                目標年份已有 {copyTargetEntryCount} {COPY_OVERWRITE_WARNING}
+              </Text>
+            )}
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => { setCopyModalVisible(false); setCopyConfirmOverwrite(false); }}
+              >
+                <Text style={styles.cancelBtnText}>{BTN_CANCEL}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveBtn} onPress={handleCopyConfirm}>
+                <Text style={styles.saveBtnText}>
+                  {copyTargetEntryCount > 0 && !copyConfirmOverwrite ? BTN_COPY : copyConfirmOverwrite ? COPY_OVERWRITE_CONFIRM : BTN_COPY}
+                </Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
@@ -650,4 +755,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#dc2626',
   },
   confirmDeleteText: { fontSize: 16, fontWeight: '600', color: '#fff' },
+  copyYearBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+  },
+  copyYearBtnText: { fontSize: 14, fontWeight: '500', color: '#6b7280' },
+  copyModalDesc: { fontSize: 14, color: '#6b7280', marginBottom: 12 },
+  copyOverwriteWarning: { fontSize: 13, color: '#d97706', marginTop: 8, marginBottom: 4 },
 });

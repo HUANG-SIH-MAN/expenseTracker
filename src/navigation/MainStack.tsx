@@ -60,7 +60,7 @@ export type MainStackParamList = {
   CashTopUpSettings: undefined;
   CashTopUpEdit: { ruleId?: string };
   BudgetSettings: undefined;
-  BudgetFixedEdit: { itemId?: string };
+  BudgetFixedEdit: { itemId?: string; linkedRecurringItemId?: string };
   ImportExport: undefined;
   SelectTransactionCategory: {
     transactionType: 'expense' | 'income';

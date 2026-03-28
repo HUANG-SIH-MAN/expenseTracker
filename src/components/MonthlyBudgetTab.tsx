@@ -13,9 +13,12 @@ import {
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { MainStackParamList } from '../navigation/MainStack';
-import type { MonthlyFixedItem } from '../types';
+import type { MonthlyFixedItem, RecurringItem } from '../types';
 import { useBudget } from '../contexts/BudgetContext';
 import { useCategories } from '../contexts/CategoriesContext';
+import { useTransactions } from '../contexts/TransactionsContext';
+import { getTodayKey } from '../utils/date';
+import { getStoredRecurring } from '../utils/storage';
 
 const SECTION_FIXED = '每月固定/預估支出';
 const SECTION_SETTINGS = '預算設定';
@@ -34,6 +37,23 @@ interface MonthlyBudgetTabProps {
   insets: { top: number; bottom: number; left: number; right: number };
 }
 
+function getActualForFixedItem(
+  transactions: { amount: number; monthlyFixedItemId?: string; type: string; date: string }[],
+  itemId: string,
+  year: number,
+  month: number,
+): number {
+  const prefix = `${year}-${String(month).padStart(2, '0')}`;
+  return transactions
+    .filter(
+      (t) =>
+        t.monthlyFixedItemId === itemId &&
+        t.type === 'expense' &&
+        t.date.startsWith(prefix),
+    )
+    .reduce((sum, t) => sum + t.amount, 0);
+}
+
 export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps): React.JSX.Element {
   const {
     monthlyFixedItems,
@@ -43,6 +63,37 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
     saveMonthlyFixedItems,
   } = useBudget();
   const { expenseCategories, getCategoryLabel } = useCategories();
+  const { transactions } = useTransactions();
+  const todayKey = getTodayKey();
+  const [todayYear, todayMonth] = React.useMemo(() => {
+    const [y, m] = todayKey.split('-').map(Number);
+    return [y, m];
+  }, [todayKey]);
+
+  const [recurringItems, setRecurringItems] = useState<RecurringItem[]>([]);
+  React.useEffect(() => {
+    getStoredRecurring().then(setRecurringItems);
+  }, []);
+
+  // 每月固定收支（支出）中尚未連結到預算的項目
+  const linkedRecurringIds = React.useMemo(
+    () => new Set(monthlyFixedItems.map((x) => x.recurringItemId).filter(Boolean)),
+    [monthlyFixedItems]
+  );
+  const unlinkedMonthlyExpenses = React.useMemo(
+    () => recurringItems.filter(
+      (r) => r.type === 'expense' && r.repeat === 'monthly' && !linkedRecurringIds.has(r.id)
+    ),
+    [recurringItems, linkedRecurringIds]
+  );
+
+  // 固定收入總計（用於 defaultMonthlyIncome 提示）
+  const recurringMonthlyIncomeTotal = React.useMemo(
+    () => recurringItems
+      .filter((r) => r.type === 'income' && r.repeat === 'monthly')
+      .reduce((sum, r) => sum + r.amount, 0),
+    [recurringItems]
+  );
 
   const [confirmDeleteItem, setConfirmDeleteItem] =
     useState<MonthlyFixedItem | null>(null);
@@ -141,10 +192,27 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
                 >
                   <Text style={styles.rowLabel} numberOfLines={1}>
                     {item.label}
+                    {item.currency && item.currency !== 'TWD' ? (
+                      <Text style={styles.rowCurrencyBadge}>  {item.currency}</Text>
+                    ) : null}
                   </Text>
-                  <Text style={styles.rowAmount}>
-                    預估 {item.estimatedAmount}
-                  </Text>
+                  <View style={styles.rowAmountRow}>
+                    <Text style={styles.rowAmount}>
+                      預估 {item.currency && item.currency !== 'TWD' && item.originalAmount != null
+                        ? `${item.originalAmount} ${item.currency} ≈ NT$${Math.round(item.estimatedAmount).toLocaleString()}`
+                        : item.estimatedAmount.toLocaleString()}
+                    </Text>
+                    {(() => {
+                      const actual = getActualForFixedItem(transactions, item.id, todayYear, todayMonth);
+                      if (actual <= 0) return null;
+                      const over = actual > item.estimatedAmount;
+                      return (
+                        <Text style={[styles.rowActual, over && styles.rowActualOver]}>
+                          實際 {actual.toLocaleString()}
+                        </Text>
+                      );
+                    })()}
+                  </View>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.iconBtn}
@@ -167,6 +235,31 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
           <Text style={styles.addBtnText}>{BTN_ADD}</Text>
         </TouchableOpacity>
 
+        {unlinkedMonthlyExpenses.length > 0 && (
+          <View style={styles.unlinkedCard}>
+            <View style={styles.unlinkedHeader}>
+              <Ionicons name="link-outline" size={16} color="#d97706" />
+              <Text style={styles.unlinkedTitle}>固定收支尚未加入預算</Text>
+            </View>
+            {unlinkedMonthlyExpenses.map((rec) => (
+              <TouchableOpacity
+                key={rec.id}
+                style={styles.unlinkedRow}
+                onPress={() => navigation.navigate('BudgetFixedEdit', { linkedRecurringItemId: rec.id })}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.unlinkedLabel} numberOfLines={1}>
+                  {rec.note ?? '固定支出'}　NT${rec.amount.toLocaleString()}／月
+                </Text>
+                <View style={styles.unlinkedAddBtn}>
+                  <Ionicons name="add" size={16} color="#2563eb" />
+                  <Text style={styles.unlinkedAddText}>加入預算</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
         <Text style={[styles.sectionTitle, styles.sectionTitleSecond]}>
           {SECTION_SETTINGS}
         </Text>
@@ -184,6 +277,11 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
               placeholderTextColor="#9ca3af"
               keyboardType="numeric"
             />
+            {recurringMonthlyIncomeTotal > 0 && (
+              <Text style={styles.incomeHint}>
+                固定收入加總：NT${recurringMonthlyIncomeTotal.toLocaleString()}（無收入記帳時自動使用）
+              </Text>
+            )}
             <Text style={styles.fieldHint}>{LABEL_DEFAULT_INCOME_HINT}</Text>
           </View>
           <View style={styles.field}>
@@ -330,10 +428,28 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#1f2937',
   },
+  rowCurrencyBadge: {
+    fontSize: 12,
+    color: '#2563eb',
+    fontWeight: '600',
+  },
+  rowAmountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 2,
+  },
   rowAmount: {
     fontSize: 14,
     color: '#6b7280',
-    marginTop: 2,
+  },
+  rowActual: {
+    fontSize: 14,
+    color: '#059669',
+    fontWeight: '500',
+  },
+  rowActualOver: {
+    color: '#dc2626',
   },
   iconBtn: {
     padding: 12,
@@ -377,6 +493,60 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6b7280',
     marginTop: 4,
+  },
+  incomeHint: {
+    fontSize: 12,
+    color: '#2563eb',
+    marginTop: 4,
+  },
+  unlinkedCard: {
+    backgroundColor: '#fffbeb',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#fcd34d',
+    padding: 12,
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  unlinkedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  unlinkedTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#92400e',
+  },
+  unlinkedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#fde68a',
+  },
+  unlinkedLabel: {
+    fontSize: 14,
+    color: '#374151',
+    flex: 1,
+  },
+  unlinkedAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#eff6ff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  unlinkedAddText: {
+    fontSize: 13,
+    color: '#2563eb',
+    fontWeight: '600',
   },
   input: {
     backgroundColor: '#f9fafb',

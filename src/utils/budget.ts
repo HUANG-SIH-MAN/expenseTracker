@@ -1,7 +1,7 @@
 /**
  * 預算：當月可支配、剩餘日加權、今日建議預算
  */
-import type { BudgetSettings, MonthlyFixedItem, Transaction } from '../types';
+import type { BudgetSettings, MonthlyFixedItem, RecurringItem, Transaction } from '../types';
 import { BUDGET_WEEKEND_DAY_INDICES } from '../constants';
 import { filterTransactionsByPeriod, PERIOD_MONTH } from './statistics';
 
@@ -86,12 +86,45 @@ export function getMonthlyDisposable(
 }
 
 /**
+ * 取得固定項目實際使用的估算金額（TWD）：
+ * 1. 有連結 RecurringItem → 用 recurringItem.amount
+ * 2. 有 USD 原始金額 + 匯率 → 動態換算
+ * 3. fallback → 儲存的 estimatedAmount（TWD 快照）
+ */
+export function resolveFixedItemAmount(
+  item: MonthlyFixedItem,
+  recurringMap: Map<string, RecurringItem>,
+  ratesToPrimary?: Record<string, number>
+): number {
+  if (item.recurringItemId) {
+    const rec = recurringMap.get(item.recurringItemId);
+    if (rec) return rec.amount;
+  }
+  if (
+    item.currency &&
+    item.currency !== 'TWD' &&
+    item.originalAmount != null &&
+    ratesToPrimary
+  ) {
+    const rate = ratesToPrimary[item.currency] ?? 0;
+    return item.originalAmount * rate;
+  }
+  return item.estimatedAmount;
+}
+
+/**
  * 固定/投資預估總和（月固定項目加總）
  */
 export function getFixedEstimatedTotal(
-  monthlyFixedItems: MonthlyFixedItem[]
+  monthlyFixedItems: MonthlyFixedItem[],
+  ratesToPrimary?: Record<string, number>,
+  recurringItems?: RecurringItem[]
 ): number {
-  return monthlyFixedItems.reduce((sum, item) => sum + item.estimatedAmount, 0);
+  const recurringMap = new Map((recurringItems ?? []).map((r) => [r.id, r]));
+  return monthlyFixedItems.reduce(
+    (sum, item) => sum + resolveFixedItemAmount(item, recurringMap, ratesToPrimary),
+    0
+  );
 }
 
 /**
@@ -117,6 +150,7 @@ export function getDailyExpenseSoFar(
     if (t.date > upToDateKey) continue;
     if (fixedSet.has(t.category)) continue;
     if (t.annualBudgetEntryId != null) continue;
+    if (t.monthlyFixedItemId != null) continue;
     sum += t.amount;
   }
   return sum;
@@ -146,13 +180,16 @@ export function getTodaySuggestedBudget(
 }
 
 /**
- * 當月收入：依記帳加總；若為 0 則用設定的預設月收入
+ * 當月收入：依記帳加總；
+ * 若為 0 → 用每月固定收入項目（repeat=monthly）加總；
+ * 若仍為 0 → 用設定的預設月收入
  */
 export function getMonthIncome(
   transactions: Transaction[],
   year: number,
   month: number,
-  defaultMonthlyIncome: number
+  defaultMonthlyIncome: number,
+  recurringItems?: RecurringItem[]
 ): number {
   const list = filterTransactionsByPeriod(
     transactions,
@@ -160,10 +197,19 @@ export function getMonthIncome(
     year,
     month
   );
-  const total = list
+  const transactionTotal = list
     .filter((t) => t.type === 'income')
     .reduce((sum, t) => sum + t.amount, 0);
-  return total > 0 ? total : defaultMonthlyIncome;
+  if (transactionTotal > 0) return transactionTotal;
+
+  if (recurringItems && recurringItems.length > 0) {
+    const recurringIncomeTotal = recurringItems
+      .filter((r) => r.type === 'income' && r.repeat === 'monthly')
+      .reduce((sum, r) => sum + r.amount, 0);
+    if (recurringIncomeTotal > 0) return recurringIncomeTotal;
+  }
+
+  return defaultMonthlyIncome;
 }
 
 /**
@@ -185,16 +231,19 @@ export function getBudgetSummary(
   todayKey: string,
   transactions: Transaction[],
   monthlyFixedItems: MonthlyFixedItem[],
-  settings: BudgetSettings
+  settings: BudgetSettings,
+  ratesToPrimary?: Record<string, number>,
+  recurringItems?: RecurringItem[]
 ): BudgetSummary | null {
   const [year, month] = todayKey.split('-').map(Number);
   const monthIncome = getMonthIncome(
     transactions,
     year,
     month,
-    settings.defaultMonthlyIncome
+    settings.defaultMonthlyIncome,
+    recurringItems
   );
-  const fixedEstimatedTotal = getFixedEstimatedTotal(monthlyFixedItems);
+  const fixedEstimatedTotal = getFixedEstimatedTotal(monthlyFixedItems, ratesToPrimary, recurringItems);
   const monthlyDisposable = getMonthlyDisposable(
     monthIncome,
     fixedEstimatedTotal
