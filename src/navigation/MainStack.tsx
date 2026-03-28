@@ -22,6 +22,8 @@ import SelectTransactionCategoryScreen from '../screens/SelectTransactionCategor
 import SelectTransactionAccountScreen from '../screens/SelectTransactionAccountScreen';
 import CreditCardAutoPaySettingsScreen from '../screens/CreditCardAutoPaySettingsScreen';
 import CreditCardAutoPayEditScreen from '../screens/CreditCardAutoPayEditScreen';
+import CashTopUpSettingsScreen from '../screens/CashTopUpSettingsScreen';
+import CashTopUpEditScreen from '../screens/CashTopUpEditScreen';
 import type { TransactionType } from '../types';
 
 export type MainStackParamList = {
@@ -55,6 +57,8 @@ export type MainStackParamList = {
   RecurringEdit: { recurringId?: string };
   CreditCardAutoPaySettings: undefined;
   CreditCardAutoPayEdit: { ruleId?: string };
+  CashTopUpSettings: undefined;
+  CashTopUpEdit: { ruleId?: string };
   BudgetSettings: undefined;
   BudgetFixedEdit: { itemId?: string };
   ImportExport: undefined;
@@ -191,6 +195,16 @@ export default function MainStack(): React.JSX.Element {
       <Stack.Screen
         name="ImportExport"
         component={ImportExportScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="CashTopUpSettings"
+        component={CashTopUpSettingsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="CashTopUpEdit"
+        component={CashTopUpEditScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>

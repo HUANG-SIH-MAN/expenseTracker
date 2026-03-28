@@ -105,12 +105,13 @@ export default function AddTransactionScreen(): React.JSX.Element {
 
   useEffect(() => {
     getStoredAccounts().then((list: Account[]) => {
-      const valid = list.filter((a: Account) => a.name.trim() !== '');
+      const valid = list.filter((a: Account) => a.name.trim() !== '' && (!a.isHidden || a.id === accountId));
       setAccounts(valid);
       if (valid.length > 0 && !transactionId) {
         setAccountId((prev) => prev ?? valid[0].id);
       }
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transactionId]);
 
   useEffect(() => {

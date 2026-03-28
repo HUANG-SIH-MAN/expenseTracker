@@ -6,12 +6,14 @@ import * as SQLite from "expo-sqlite";
 import { getDb } from "../db";
 import { STORAGE_KEYS } from "../constants";
 import { syncCreditCardAutopay } from "./creditCardAutopay";
+import { syncCashTopUp } from "./cashTopUp";
 import type {
   Account,
   AutoPayExecutionLog,
   AnnualBudgetEntry,
   BudgetSettings,
   CategoryItem,
+  CashTopUpRule,
   CreditCardAutoPayRule,
   CurrencyCode,
   CurrencyOption,
@@ -109,11 +111,12 @@ async function runMigrationFromAsyncStorageIfNeeded(
         for (const a of data.accounts ?? []) {
           const currency = (a as Account).currency ?? "TWD";
           await db.runAsync(
-            "INSERT INTO accounts (id, name, initial_balance, currency) VALUES (?, ?, ?, ?)",
+            "INSERT INTO accounts (id, name, initial_balance, currency, is_hidden) VALUES (?, ?, ?, ?, ?)",
             a.id,
             a.name,
             a.initialBalance,
             currency,
+            (a as Account).isHidden === true ? SQLITE_TRUE : SQLITE_FALSE,
           );
         }
       }
@@ -270,12 +273,14 @@ export async function getOnboardingData(): Promise<OnboardingData | null> {
       name: string;
       initial_balance: number;
       currency: string;
-    }>("SELECT id, name, initial_balance, currency FROM accounts ORDER BY id");
+      is_hidden: number;
+    }>("SELECT id, name, initial_balance, currency, is_hidden FROM accounts ORDER BY id");
     const accounts: Account[] = rows.map((r) => ({
       id: r.id,
       name: r.name,
       initialBalance: r.initial_balance,
       currency: (r.currency as CurrencyCode) || "TWD",
+      isHidden: r.is_hidden === SQLITE_TRUE ? true : undefined,
     }));
     return {
       hasCompletedOnboarding: true,
@@ -310,11 +315,12 @@ export async function setOnboardingComplete(data: {
     await db.runAsync("DELETE FROM accounts");
     for (const a of data.accounts) {
       await db.runAsync(
-        "INSERT INTO accounts (id, name, initial_balance, currency) VALUES (?, ?, ?, ?)",
+        "INSERT INTO accounts (id, name, initial_balance, currency, is_hidden) VALUES (?, ?, ?, ?, ?)",
         a.id,
         a.name,
         a.initialBalance,
         a.currency ?? "TWD",
+        a.isHidden === true ? SQLITE_TRUE : SQLITE_FALSE,
       );
     }
     return;
@@ -1487,6 +1493,113 @@ export async function syncCreditCardAutopayToTransactions(): Promise<{
   return { createdCount: syncResult.createdCount };
 }
 
+// ─── 現金自動補充規則 ───────────────────────────────────────────────────────
+
+interface CashTopUpRuleRow {
+  id: string;
+  target_account_id: string;
+  source_account_id: string;
+  threshold: number;
+  top_up_amount: number;
+  is_enabled: number;
+  created_at: string;
+  updated_at: string;
+}
+
+function rowToCashTopUpRule(row: CashTopUpRuleRow): CashTopUpRule {
+  return {
+    id: row.id,
+    targetAccountId: row.target_account_id,
+    sourceAccountId: row.source_account_id,
+    threshold: row.threshold,
+    topUpAmount: row.top_up_amount,
+    isEnabled: row.is_enabled === SQLITE_TRUE,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function getCashTopUpRules(): Promise<CashTopUpRule[]> {
+  const db = await getDb();
+  if (db) {
+    await ensureMigrationDone(db);
+    const rows = await db.getAllAsync<CashTopUpRuleRow>(
+      "SELECT id, target_account_id, source_account_id, threshold, top_up_amount, is_enabled, created_at, updated_at FROM cash_topup_rules ORDER BY created_at, id",
+    );
+    return rows.map(rowToCashTopUpRule);
+  }
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.CASH_TOPUP_RULES);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as CashTopUpRule[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveCashTopUpRules(rules: CashTopUpRule[]): Promise<void> {
+  const db = await getDb();
+  if (db) {
+    await db.withTransactionAsync(async () => {
+      await db.runAsync("DELETE FROM cash_topup_rules");
+      for (const rule of rules) {
+        await db.runAsync(
+          "INSERT INTO cash_topup_rules (id, target_account_id, source_account_id, threshold, top_up_amount, is_enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+          rule.id,
+          rule.targetAccountId,
+          rule.sourceAccountId,
+          rule.threshold,
+          rule.topUpAmount,
+          rule.isEnabled ? SQLITE_TRUE : SQLITE_FALSE,
+          rule.createdAt,
+          rule.updatedAt,
+        );
+      }
+    });
+    return;
+  }
+  await AsyncStorage.setItem(STORAGE_KEYS.CASH_TOPUP_RULES, JSON.stringify(rules));
+}
+
+export async function syncCashTopUpToTransactions(): Promise<{ createdCount: number }> {
+  const { generateId } = await import("./id");
+  const [rules, transactions, accounts] = await Promise.all([
+    getCashTopUpRules(),
+    getStoredTransactions(),
+    getStoredAccounts(),
+  ]);
+  const accountIdSet = new Set(accounts.map((a) => a.id));
+  const nowIso = new Date().toISOString();
+
+  let hasRuleChanges = false;
+  const normalizedRules = rules.map((rule) => {
+    if (!rule.isEnabled) return rule;
+    if (accountIdSet.has(rule.targetAccountId) && accountIdSet.has(rule.sourceAccountId)) {
+      return rule;
+    }
+    hasRuleChanges = true;
+    return { ...rule, isEnabled: false, updatedAt: nowIso };
+  });
+  if (hasRuleChanges) {
+    await saveCashTopUpRules(normalizedRules);
+  }
+
+  const syncResult = syncCashTopUp({
+    rules: normalizedRules.filter((r) => r.isEnabled),
+    accounts,
+    transactions,
+    now: new Date(),
+    generateId,
+  });
+
+  for (const transfer of syncResult.newTransfers) {
+    await addTransaction(transfer);
+  }
+
+  return { createdCount: syncResult.createdCount };
+}
+
 /**
  * 清除所有用戶輸入的設定與資料（交易、類別、固定收支、預算、年度預算、帳本／導覽），回到未完成導覽狀態。此操作無法復原。
  */
@@ -1501,6 +1614,7 @@ export async function clearAllData(): Promise<void> {
     await db.runAsync("DELETE FROM annual_budget_entries");
     await db.runAsync("DELETE FROM credit_card_autopay_execution_logs");
     await db.runAsync("DELETE FROM credit_card_autopay_rules");
+    await db.runAsync("DELETE FROM cash_topup_rules");
     await db.runAsync("DELETE FROM exchange_rates");
     await db.runAsync("DELETE FROM categories");
     await db.runAsync("DELETE FROM accounts");
@@ -1521,6 +1635,7 @@ export async function clearAllData(): Promise<void> {
   await AsyncStorage.removeItem(STORAGE_KEYS.ANNUAL_BUDGET_ENTRIES);
   await AsyncStorage.removeItem(STORAGE_KEYS.CREDIT_CARD_AUTOPAY_RULES);
   await AsyncStorage.removeItem(STORAGE_KEYS.CREDIT_CARD_AUTOPAY_EXECUTION_LOGS);
+  await AsyncStorage.removeItem(STORAGE_KEYS.CASH_TOPUP_RULES);
   await saveBudgetSettings({
     defaultMonthlyIncome: 0,
     weekdayWeight: BUDGET_DEFAULT_WEEKDAY_WEIGHT,

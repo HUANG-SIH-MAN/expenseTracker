@@ -28,6 +28,8 @@ export interface Account {
   initialBalance: number;
   /** 帳戶幣別，預設 TWD */
   currency: CurrencyCode;
+  /** 在記帳時隱藏此帳戶（餘額頁仍顯示） */
+  isHidden?: boolean;
 }
 
 /** 貨幣代碼（內建 + 使用者自訂，皆為字串如 TWD、AUD） */
@@ -86,9 +88,9 @@ export interface Transaction {
   /** 系統自動建立（如信用卡自動扣款） */
   isSystemGenerated?: boolean;
   /** 系統建立類型 */
-  systemGeneratedType?: "credit_card_autopay";
+  systemGeneratedType?: "credit_card_autopay" | "cash_topup";
   /** 鎖定原因（鎖定後不可編輯/刪除） */
-  lockedReason?: "credit_card_autopay";
+  lockedReason?: "credit_card_autopay" | "cash_topup";
   createdAt: string; // ISO 8601
 }
 
@@ -152,6 +154,9 @@ export interface BudgetSettings {
   fixedExpenseCategoryKeys: string[];
 }
 
+/** 遇假日（週末）時的日期調整方式 */
+export type HolidayAdjust = 'none' | 'next_workday' | 'prev_workday';
+
 /** 信用卡自動扣款規則 */
 export interface CreditCardAutoPayRule {
   id: string;
@@ -159,11 +164,28 @@ export interface CreditCardAutoPayRule {
   payFromAccountId: string;
   statementDay: number;
   paymentDay: number;
+  holidayAdjust: HolidayAdjust;
   createdAt: string; // ISO 8601
   updatedAt: string; // ISO 8601
   isEnabled: boolean;
   deletedAt?: string; // ISO 8601
   deleteReason?: "source_account_deleted" | "credit_card_account_deleted";
+}
+
+/** 現金自動補充規則：帳戶餘額低於門檻時，自動從來源帳戶補充 */
+export interface CashTopUpRule {
+  id: string;
+  /** 被補充的帳戶（通常為現金） */
+  targetAccountId: string;
+  /** 提款來源帳戶 */
+  sourceAccountId: string;
+  /** 低於此餘額時觸發補充 */
+  threshold: number;
+  /** 每次補充金額 */
+  topUpAmount: number;
+  isEnabled: boolean;
+  createdAt: string; // ISO 8601
+  updatedAt: string; // ISO 8601
 }
 
 /** 自動扣款執行紀錄 */

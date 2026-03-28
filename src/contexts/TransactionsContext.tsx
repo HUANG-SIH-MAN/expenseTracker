@@ -7,6 +7,7 @@ import type { Transaction } from '../types';
 import {
   syncRecurringToTransactions,
   syncCreditCardAutopayToTransactions,
+  syncCashTopUpToTransactions,
   getStoredTransactions,
   addTransaction as addTransactionStorage,
   deleteTransaction as deleteTransactionStorage,
@@ -46,6 +47,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   const runRefreshFlow = useCallback(async (): Promise<RefreshTransactionsResult> => {
     await syncRecurringToTransactions();
     const autopayResult = await syncCreditCardAutopayToTransactions();
+    await syncCashTopUpToTransactions();
     setLatestAutopaySyncEvent((prev) => {
       if (autopayResult.createdCount <= 0) {
         return {

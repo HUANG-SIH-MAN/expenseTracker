@@ -57,6 +57,21 @@ function addMonths(date: Date, months: number): Date {
   return createDateWithClampedDay(nextYear, normalizedMonthIndex, date.getDate());
 }
 
+/** 若日期落在週末，依 holidayAdjust 調整至最近工作日 */
+function adjustForWeekend(date: Date, holidayAdjust: CreditCardAutoPayRule['holidayAdjust']): Date {
+  const dow = date.getDay(); // 0=Sun, 6=Sat
+  if (dow !== 0 && dow !== 6) return date;
+  if (holidayAdjust === 'next_workday') {
+    const daysToAdd = dow === 6 ? 2 : 1;
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate() + daysToAdd);
+  }
+  if (holidayAdjust === 'prev_workday') {
+    const daysToSub = dow === 0 ? 2 : 1;
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate() - daysToSub);
+  }
+  return date;
+}
+
 function getScheduledPaymentDates(
   rule: CreditCardAutoPayRule,
   todayDateKey: string,
@@ -76,7 +91,8 @@ function getScheduledPaymentDates(
 
   const scheduledDates: string[] = [];
   while (cursor <= todayDate) {
-    scheduledDates.push(toDateKey(cursor));
+    const adjusted = adjustForWeekend(cursor, rule.holidayAdjust ?? 'none');
+    scheduledDates.push(toDateKey(adjusted));
     cursor = addMonths(cursor, DAY_START_INDEX);
   }
   return scheduledDates;

@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS accounts (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   initial_balance REAL NOT NULL DEFAULT 0,
-  currency TEXT NOT NULL DEFAULT 'TWD'
+  currency TEXT NOT NULL DEFAULT 'TWD',
+  is_hidden INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS transactions (
@@ -120,6 +121,17 @@ CREATE TABLE IF NOT EXISTS credit_card_autopay_execution_logs (
   executed_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS cash_topup_rules (
+  id TEXT PRIMARY KEY,
+  target_account_id TEXT NOT NULL,
+  source_account_id TEXT NOT NULL,
+  threshold REAL NOT NULL,
+  top_up_amount REAL NOT NULL,
+  is_enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_annual_budget_entries_year ON annual_budget_entries(year);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_transactions_annual_entry ON transactions(annual_budget_entry_id);
@@ -211,6 +223,27 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase | null> {
     );
   } catch {
     // Column already exists on existing DBs
+  }
+  try {
+    await db.runAsync(
+      "ALTER TABLE accounts ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0"
+    );
+  } catch {
+    // Column already exists on existing DBs
+  }
+  try {
+    await db.execAsync(`CREATE TABLE IF NOT EXISTS cash_topup_rules (
+      id TEXT PRIMARY KEY,
+      target_account_id TEXT NOT NULL,
+      source_account_id TEXT NOT NULL,
+      threshold REAL NOT NULL,
+      top_up_amount REAL NOT NULL,
+      is_enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch {
+    // Table already exists on existing DBs
   }
   dbInstance = db;
   return db;

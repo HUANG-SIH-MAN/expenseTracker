@@ -213,7 +213,7 @@ export default function CategorySettingsScreen(): React.JSX.Element {
       setModalVisible(false);
       setEditingItem(null);
       getStoredAccounts().then((list: Account[]) => {
-        setAccounts(list.filter((a) => a.name.trim() !== ''));
+        setAccounts(list.filter((a) => a.name.trim() !== '' && !a.isHidden));
       });
     }, [])
   );
@@ -675,7 +675,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 16,
     paddingHorizontal: 20,
     paddingTop: 24,
-    maxHeight: '80%',
+    height: '80%',
   },
   modalTitle: {
     fontSize: 18,
@@ -700,11 +700,11 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   iconPickerScroll: {
-    maxHeight: 160,
+    maxHeight: 76,
     marginBottom: 12,
   },
   accountPickerScroll: {
-    maxHeight: 160,
+    flex: 1,
     marginBottom: 16,
   },
   accountPickerList: {},

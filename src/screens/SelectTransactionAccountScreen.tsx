@@ -27,9 +27,11 @@ export default function SelectTransactionAccountScreen(): React.JSX.Element {
 
   useEffect(() => {
     getStoredAccounts().then((list) => {
-      setAccounts(list.filter((a) => a.name.trim() !== ''));
+      setAccounts(
+        list.filter((a) => a.name.trim() !== '' && (!a.isHidden || a.id === selectedAccountId))
+      );
     });
-  }, []);
+  }, [selectedAccountId]);
 
   const pick = (id: string) => {
     navigation.navigate({

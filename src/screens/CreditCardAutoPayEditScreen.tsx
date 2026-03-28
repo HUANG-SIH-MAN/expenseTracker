@@ -21,6 +21,7 @@ import { generateId } from '../utils/id';
 import { getCreditCardAutoPayRules, getStoredAccounts, saveCreditCardAutoPayRules } from '../utils/storage';
 import {
   AUTO_PAY_MIN_DAY,
+  HOLIDAY_ADJUST_OPTIONS,
   validateAutoPayDraft,
   type AutoPayRuleDraft,
 } from './creditCardAutoPayUi';
@@ -46,6 +47,7 @@ export default function CreditCardAutoPayEditScreen(): React.JSX.Element | null 
     payFromAccountId: '',
     statementDay: AUTO_PAY_MIN_DAY,
     paymentDay: AUTO_PAY_MIN_DAY,
+    holidayAdjust: 'none',
     isEnabled: true,
   });
   const [statementDayStr, setStatementDayStr] = useState(String(AUTO_PAY_MIN_DAY));
@@ -70,6 +72,7 @@ export default function CreditCardAutoPayEditScreen(): React.JSX.Element | null 
             payFromAccountId: existing.payFromAccountId,
             statementDay: existing.statementDay,
             paymentDay: existing.paymentDay,
+            holidayAdjust: existing.holidayAdjust ?? 'none',
             isEnabled: existing.isEnabled && existing.deletedAt == null,
           });
           setStatementDayStr(String(existing.statementDay));
@@ -126,6 +129,7 @@ export default function CreditCardAutoPayEditScreen(): React.JSX.Element | null 
       payFromAccountId: draft.payFromAccountId,
       statementDay: statementDayNum,
       paymentDay: paymentDayNum,
+      holidayAdjust: draft.holidayAdjust,
       createdAt: existing?.createdAt ?? nowIso,
       updatedAt: nowIso,
       isEnabled: draft.isEnabled,
@@ -211,6 +215,27 @@ export default function CreditCardAutoPayEditScreen(): React.JSX.Element | null 
         {paymentDayError != null && (
           <Text style={styles.fieldError}>{paymentDayError}</Text>
         )}
+
+        <Text style={styles.label}>遇假日（週末）時</Text>
+        <View style={styles.chipWrap}>
+          {HOLIDAY_ADJUST_OPTIONS.map((opt) => {
+            const isSelected = draft.holidayAdjust === opt.value;
+            return (
+              <TouchableOpacity
+                key={opt.value}
+                style={[styles.adjustChip, isSelected && styles.chipActive]}
+                onPress={() => setDraft((prev) => ({ ...prev, holidayAdjust: opt.value }))}
+              >
+                <Text style={[styles.adjustChipLabel, isSelected && styles.chipTextActive]}>
+                  {opt.label}
+                </Text>
+                <Text style={[styles.adjustChipDesc, isSelected && styles.adjustChipDescActive]}>
+                  {opt.description}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
         <View style={styles.switchRow}>
           <Text style={styles.switchLabel}>啟用規則</Text>
@@ -309,6 +334,26 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#1f2937',
     backgroundColor: '#fff',
+  },
+  adjustChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+    width: '100%',
+  },
+  adjustChipLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  adjustChipDesc: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  adjustChipDescActive: {
+    color: '#bfdbfe',
   },
   switchRow: {
     marginTop: 20,

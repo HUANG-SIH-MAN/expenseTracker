@@ -1,4 +1,4 @@
-import type { CreditCardAutoPayRule } from '../types';
+import type { CreditCardAutoPayRule, HolidayAdjust } from '../types';
 
 export const AUTO_PAY_MIN_DAY = 1;
 export const AUTO_PAY_MAX_DAY = 28;
@@ -8,8 +8,15 @@ export interface AutoPayRuleDraft {
   payFromAccountId: string;
   statementDay: number;
   paymentDay: number;
+  holidayAdjust: HolidayAdjust;
   isEnabled: boolean;
 }
+
+export const HOLIDAY_ADJUST_OPTIONS: { value: HolidayAdjust; label: string; description: string }[] = [
+  { value: 'none', label: '不調整', description: '依原訂日期，不管是否為假日' },
+  { value: 'next_workday', label: '延後到下一個工作日', description: '遇週末順延至下週一' },
+  { value: 'prev_workday', label: '提前到前一個工作日', description: '遇週末提前至上週五' },
+];
 
 interface ValidationResult {
   isValid: boolean;

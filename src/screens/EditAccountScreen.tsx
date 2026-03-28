@@ -14,6 +14,7 @@ import {
   Modal,
   Platform,
   Keyboard,
+  Switch,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -85,6 +86,7 @@ export default function EditAccountScreen(): React.JSX.Element {
   const [saving, setSaving] = useState(false);
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
   const [showCalc, setShowCalc] = useState(false);
+  const [isHidden, setIsHidden] = useState(false);
 
   useEffect(() => {
     getCurrencyOptions().then(setCurrencyOptions);
@@ -96,6 +98,7 @@ export default function EditAccountScreen(): React.JSX.Element {
       if (acc) {
         setName(acc.name);
         setCurrency(acc.currency ?? 'TWD');
+        setIsHidden(acc.isHidden === true);
         const net = computeNetFromTransactions(accountId, transactions);
         const current = acc.initialBalance + net;
         setCurrentAmount(current === 0 ? '' : String(current));
@@ -135,6 +138,7 @@ export default function EditAccountScreen(): React.JSX.Element {
         name: trimmedName,
         initialBalance: newInitialBalance,
         currency: currency ?? 'TWD',
+        isHidden,
       };
       await updateStoredAccounts(next);
       navigation.goBack();
@@ -143,7 +147,7 @@ export default function EditAccountScreen(): React.JSX.Element {
     } finally {
       setSaving(false);
     }
-  }, [accountId, name, currency, currentAmount, transactions, navigation]);
+  }, [accountId, name, currency, currentAmount, isHidden, transactions, navigation]);
 
   const handleCalcConfirm = useCallback(() => {
     // 按 OK 時計算算式並關閉計算機
@@ -201,6 +205,14 @@ export default function EditAccountScreen(): React.JSX.Element {
               {getCurrencyLabel(currency, currencyOptions)}
             </Text>
           </TouchableOpacity>
+        </View>
+
+        <View style={styles.switchRow}>
+          <View style={styles.switchLabelWrap}>
+            <Text style={styles.switchLabel}>在記帳時隱藏此帳戶</Text>
+            <Text style={styles.switchHint}>帳本餘額頁仍會顯示</Text>
+          </View>
+          <Switch value={isHidden} onValueChange={setIsHidden} />
         </View>
 
         <View style={styles.field}>
@@ -356,6 +368,31 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6b7280',
     marginTop: 6,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 20,
+  },
+  switchLabelWrap: {
+    flex: 1,
+    marginRight: 12,
+  },
+  switchLabel: {
+    fontSize: 16,
+    color: '#1f2937',
+  },
+  switchHint: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
   },
   saveBtn: {
     marginTop: 12,
