@@ -292,6 +292,13 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase | null> {
     // Column already exists on existing DBs
   }
   try {
+    await db.runAsync(
+      "ALTER TABLE accounts ADD COLUMN low_balance_threshold REAL"
+    );
+  } catch {
+    // Column already exists on existing DBs
+  }
+  try {
     await db.execAsync(`CREATE TABLE IF NOT EXISTS transfer_templates (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,

@@ -42,7 +42,7 @@ export type MainStackParamList = {
     pickedMonthlyFixedItemId?: string | null;
     pickedAnnualBudgetEntryId?: string | null;
   };
-  AddTransfer: { selectedDate?: string };
+  AddTransfer: { selectedDate?: string; transactionId?: string };
   LedgerBalance: undefined;
   AddAccount: undefined;
   Statistics: undefined;

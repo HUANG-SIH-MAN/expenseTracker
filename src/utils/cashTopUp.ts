@@ -14,20 +14,6 @@ function toDateKey(date: Date): string {
   ].join("-");
 }
 
-function hasToppedUpTodayForRule(
-  transactions: Transaction[],
-  ruleId: string,
-  todayKey: string,
-): boolean {
-  return transactions.some(
-    (t) =>
-      t.isSystemGenerated === true &&
-      t.systemGeneratedType === "cash_topup" &&
-      t.category === `cash-topup-${ruleId}` &&
-      t.date === todayKey,
-  );
-}
-
 export function syncCashTopUp(params: {
   rules: CashTopUpRule[];
   accounts: Account[];
@@ -53,7 +39,6 @@ export function syncCashTopUp(params: {
       [...transactions, ...newTransfers],
     );
     if (balance >= rule.threshold) continue;
-    if (hasToppedUpTodayForRule([...transactions, ...newTransfers], rule.id, todayKey)) continue;
 
     const transfer: Transaction = {
       id: generateId(),

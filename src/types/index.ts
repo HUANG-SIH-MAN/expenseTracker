@@ -32,6 +32,8 @@ export interface Account {
   isHidden?: boolean;
   /** 已刪除：不出現在新增記帳選單，但舊紀錄仍可顯示帳戶名稱 */
   isDeleted?: boolean;
+  /** 低餘額警示門檻；有值時餘額低於此數字即發推播通知 */
+  lowBalanceThreshold?: number;
 }
 
 /** 貨幣代碼（內建 + 使用者自訂，皆為字串如 TWD、AUD） */

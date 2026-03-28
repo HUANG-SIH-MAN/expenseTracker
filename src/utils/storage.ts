@@ -112,13 +112,14 @@ async function runMigrationFromAsyncStorageIfNeeded(
         for (const a of data.accounts ?? []) {
           const currency = (a as Account).currency ?? "TWD";
           await db.runAsync(
-            "INSERT INTO accounts (id, name, initial_balance, currency, is_hidden, is_deleted) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO accounts (id, name, initial_balance, currency, is_hidden, is_deleted, low_balance_threshold) VALUES (?, ?, ?, ?, ?, ?, ?)",
             a.id,
             a.name,
             a.initialBalance,
             currency,
             (a as Account).isHidden === true ? SQLITE_TRUE : SQLITE_FALSE,
             (a as Account).isDeleted === true ? SQLITE_TRUE : SQLITE_FALSE,
+            (a as Account).lowBalanceThreshold ?? null,
           );
         }
       }
@@ -278,7 +279,8 @@ export async function getOnboardingData(): Promise<OnboardingData | null> {
       currency: string;
       is_hidden: number;
       is_deleted: number;
-    }>("SELECT id, name, initial_balance, currency, is_hidden, is_deleted FROM accounts ORDER BY id");
+      low_balance_threshold: number | null;
+    }>("SELECT id, name, initial_balance, currency, is_hidden, is_deleted, low_balance_threshold FROM accounts ORDER BY id");
     const accounts: Account[] = rows.map((r) => ({
       id: r.id,
       name: r.name,
@@ -286,6 +288,7 @@ export async function getOnboardingData(): Promise<OnboardingData | null> {
       currency: (r.currency as CurrencyCode) || "TWD",
       isHidden: r.is_hidden === SQLITE_TRUE ? true : undefined,
       isDeleted: r.is_deleted === SQLITE_TRUE ? true : undefined,
+      lowBalanceThreshold: r.low_balance_threshold ?? undefined,
     }));
     return {
       hasCompletedOnboarding: true,
@@ -320,13 +323,14 @@ export async function setOnboardingComplete(data: {
     await db.runAsync("DELETE FROM accounts");
     for (const a of data.accounts) {
       await db.runAsync(
-        "INSERT INTO accounts (id, name, initial_balance, currency, is_hidden, is_deleted) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO accounts (id, name, initial_balance, currency, is_hidden, is_deleted, low_balance_threshold) VALUES (?, ?, ?, ?, ?, ?, ?)",
         a.id,
         a.name,
         a.initialBalance,
         a.currency ?? "TWD",
         a.isHidden === true ? SQLITE_TRUE : SQLITE_FALSE,
         a.isDeleted === true ? SQLITE_TRUE : SQLITE_FALSE,
+        a.lowBalanceThreshold ?? null,
       );
     }
     return;
@@ -1582,7 +1586,7 @@ export async function saveCashTopUpRules(rules: CashTopUpRule[]): Promise<void> 
   await AsyncStorage.setItem(STORAGE_KEYS.CASH_TOPUP_RULES, JSON.stringify(rules));
 }
 
-export async function syncCashTopUpToTransactions(): Promise<{ createdCount: number }> {
+export async function syncCashTopUpToTransactions(triggerDate?: string): Promise<{ createdCount: number }> {
   const { generateId } = await import("./id");
   const [rules, transactions, accounts] = await Promise.all([
     getCashTopUpRules(),
@@ -1605,11 +1609,13 @@ export async function syncCashTopUpToTransactions(): Promise<{ createdCount: num
     await saveCashTopUpRules(normalizedRules);
   }
 
+  // 若有指定觸發日期（來自交易），用該日期；否則用今天
+  const now = triggerDate ? new Date(`${triggerDate}T12:00:00`) : new Date();
   const syncResult = syncCashTopUp({
     rules: normalizedRules.filter((r) => r.isEnabled),
     accounts,
     transactions,
-    now: new Date(),
+    now,
     generateId,
   });
 

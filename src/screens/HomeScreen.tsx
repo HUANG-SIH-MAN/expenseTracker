@@ -265,7 +265,7 @@ export default function HomeScreen(): React.JSX.Element {
               style={styles.recordMenuBtn}
               onPress={() =>
                 item.type === 'transfer'
-                  ? navigation.navigate('AddTransfer', { selectedDate: item.date })
+                  ? navigation.navigate('AddTransfer', { selectedDate: item.date, transactionId: item.id })
                   : handleEditTransaction(item)
               }
               hitSlop={RECORD_ACTION_HIT_SLOP}

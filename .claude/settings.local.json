@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(find c:/Users/User/Desktop/expense-tracker/src -name db*)"
+      "Bash(find c:/Users/User/Desktop/expense-tracker/src -name db*)",
+      "Bash(xargs grep:*)"
     ]
   }
 }

@@ -88,6 +88,8 @@ export default function EditAccountScreen(): React.JSX.Element {
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
   const [showCalc, setShowCalc] = useState(false);
   const [isHidden, setIsHidden] = useState(false);
+  const [lowBalanceEnabled, setLowBalanceEnabled] = useState(false);
+  const [lowBalanceThreshold, setLowBalanceThreshold] = useState('');
 
   useEffect(() => {
     getCurrencyOptions().then(setCurrencyOptions);
@@ -103,6 +105,10 @@ export default function EditAccountScreen(): React.JSX.Element {
         const net = computeNetFromTransactions(accountId, transactions);
         const current = acc.initialBalance + net;
         setCurrentAmount(current === 0 ? '' : String(current));
+        if (acc.lowBalanceThreshold != null) {
+          setLowBalanceEnabled(true);
+          setLowBalanceThreshold(String(acc.lowBalanceThreshold));
+        }
       }
     });
   }, [accountId, transactions]);
@@ -134,12 +140,16 @@ export default function EditAccountScreen(): React.JSX.Element {
         return;
       }
       const next = [...accounts];
+      const threshold = lowBalanceEnabled && lowBalanceThreshold.trim() !== ''
+        ? parseFloat(lowBalanceThreshold) || undefined
+        : undefined;
       next[index] = {
         ...next[index],
         name: trimmedName,
         initialBalance: newInitialBalance,
         currency: currency ?? 'TWD',
         isHidden,
+        lowBalanceThreshold: threshold,
       };
       await updateStoredAccounts(next);
       navigation.goBack();
@@ -238,6 +248,30 @@ export default function EditAccountScreen(): React.JSX.Element {
           </View>
           <Switch value={isHidden} onValueChange={setIsHidden} />
         </View>
+
+        <View style={styles.switchRow}>
+          <View style={styles.switchLabelWrap}>
+            <Text style={styles.switchLabel}>低餘額推播警示</Text>
+            <Text style={styles.switchHint}>餘額低於門檻時發出通知</Text>
+          </View>
+          <Switch value={lowBalanceEnabled} onValueChange={(v) => { setLowBalanceEnabled(v); if (!v) setLowBalanceThreshold(''); }} />
+        </View>
+
+        {lowBalanceEnabled && (
+          <View style={styles.field}>
+            <Text style={styles.label}>警示門檻金額</Text>
+            <TextInput
+              style={styles.input}
+              placeholder={`例如：1000`}
+              placeholderTextColor="#9ca3af"
+              value={lowBalanceThreshold}
+              onChangeText={setLowBalanceThreshold}
+              keyboardType="numeric"
+              onFocus={() => setShowCalc(false)}
+            />
+            <Text style={styles.hint}>餘額低於此金額時發出推播通知</Text>
+          </View>
+        )}
 
         <View style={styles.field}>
           <Text style={styles.label}>{LABEL_CURRENT_AMOUNT}</Text>

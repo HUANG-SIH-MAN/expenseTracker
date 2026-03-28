@@ -29,7 +29,15 @@
     },
     "plugins": [
       "expo-sqlite",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#2563eb",
+          "sounds": []
+        }
+      ]
     ],
     "extra": {
       "eas": {

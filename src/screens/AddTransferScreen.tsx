@@ -35,7 +35,8 @@ function getCurrencyLabel(code: string, options: CurrencyOption[]): string {
 }
 
 const BACK_ICON_SIZE = 28;
-const TITLE = "換匯／轉帳";
+const TITLE_NEW = "換匯／轉帳";
+const TITLE_EDIT = "編輯轉帳";
 const LABEL_FROM = "轉出帳戶";
 const LABEL_TO = "轉入帳戶";
 const LABEL_AMOUNT_FROM = "轉出金額";
@@ -59,8 +60,13 @@ export default function AddTransferScreen(): React.JSX.Element {
   const selectedDate =
     (route.params && "selectedDate" in route.params && route.params.selectedDate) ||
     new Date().toISOString().slice(0, 10);
-  const { addTransactions } = useTransactions();
+  const { addTransactions, updateTransaction, getTransactionById } = useTransactions();
   const { getCategoryLabel } = useCategories();
+  const transactionId =
+    (route.params && "transactionId" in route.params && route.params.transactionId) || undefined;
+  const existing = transactionId ? getTransactionById(transactionId) : undefined;
+  const isEditMode = Boolean(existing);
+  const isLocked = Boolean(existing?.lockedReason);
 
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [currencyOptions, setCurrencyOptions] = useState<CurrencyOption[]>([]);
@@ -83,12 +89,29 @@ export default function AddTransferScreen(): React.JSX.Element {
     getTransferTemplates().then(setTemplates);
   }, []);
 
+  // 編輯模式：prefill 金額、日期、備註
+  useEffect(() => {
+    if (!existing) return;
+    setAmountFromStr(String(existing.amount));
+    setAmountToStr(String(existing.transferAmount ?? existing.amount));
+    setDateKey(existing.date);
+    setNote(existing.note ?? '');
+  }, [existing?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     getStoredAccounts().then((list: Account[]) => {
-      const valid = list.filter((a: Account) => a.name.trim() !== "" && !a.isDeleted);
+      // 編輯模式下也顯示已刪除帳戶（舊紀錄可能綁定已刪帳戶）
+      const valid = list.filter((a: Account) => a.name.trim() !== "");
       setAccounts(valid);
-      if (valid.length > 0 && !fromAccountId) setFromAccountId(valid[0].id);
-      if (valid.length > 1 && !toAccountId) setToAccountId(valid[1]?.id ?? valid[0].id);
+      if (existing) {
+        // 編輯模式：優先用既有交易的帳戶
+        setFromAccountId(existing.accountId);
+        setToAccountId(existing.toAccountId);
+      } else {
+        const active = valid.filter((a) => !a.isDeleted);
+        if (active.length > 0 && !fromAccountId) setFromAccountId(active[0].id);
+        if (active.length > 1 && !toAccountId) setToAccountId(active[1]?.id ?? active[0].id);
+      }
     });
   }, []);
 
@@ -132,6 +155,7 @@ export default function AddTransferScreen(): React.JSX.Element {
   };
 
   const canSave =
+    !isLocked &&
     fromAccountId &&
     toAccountId &&
     fromAccountId !== toAccountId &&
@@ -141,6 +165,19 @@ export default function AddTransferScreen(): React.JSX.Element {
   const handleSave = () => {
     if (!canSave || !fromAccountId || !toAccountId) return;
     const now = new Date().toISOString();
+    if (isEditMode && existing) {
+      updateTransaction({
+        ...existing,
+        amount: amountFrom,
+        date: dateKey,
+        note: note.trim() || undefined,
+        accountId: fromAccountId,
+        toAccountId,
+        transferAmount: amountTo,
+      });
+      navigation.goBack();
+      return;
+    }
     const transferTx = {
       id: generateId(),
       type: "transfer" as const,
@@ -173,7 +210,7 @@ export default function AddTransferScreen(): React.JSX.Element {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} hitSlop={12}>
           <Ionicons name="chevron-back" size={BACK_ICON_SIZE} color="#2563eb" />
         </TouchableOpacity>
-        <Text style={styles.title}>{TITLE}</Text>
+        <Text style={styles.title}>{isEditMode ? TITLE_EDIT : TITLE_NEW}</Text>
         <TouchableOpacity
           onPress={handleSave}
           disabled={!canSave}
@@ -185,12 +222,18 @@ export default function AddTransferScreen(): React.JSX.Element {
         </TouchableOpacity>
       </View>
 
+      {isLocked && (
+        <View style={styles.lockedBanner}>
+          <Text style={styles.lockedBannerText}>🔒 此交易為系統自動建立，無法編輯</Text>
+        </View>
+      )}
+
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        {templates.length > 0 && (
+        {!isEditMode && templates.length > 0 && (
           <View style={styles.field}>
             {activeTemplateName == null ? (
               <TouchableOpacity
@@ -444,6 +487,14 @@ const styles = StyleSheet.create({
   saveBtn: { paddingVertical: 8, paddingHorizontal: 12 },
   saveBtnText: { fontSize: 16, color: "#2563eb", fontWeight: "600" },
   saveBtnTextDisabled: { color: "#9ca3af" },
+  lockedBanner: {
+    backgroundColor: "#fef3c7",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#fde68a",
+  },
+  lockedBannerText: { fontSize: 13, color: "#92400e" },
   scroll: { flex: 1 },
   scrollContent: { padding: 20, paddingBottom: 40 },
   field: { marginBottom: 20 },

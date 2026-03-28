@@ -9,11 +9,18 @@ import {
   syncCreditCardAutopayToTransactions,
   syncCashTopUpToTransactions,
   getStoredTransactions,
+  getStoredAccounts,
+  getCreditCardAutoPayRules,
+  getCashTopUpRules,
   addTransaction as addTransactionStorage,
   deleteTransaction as deleteTransactionStorage,
   updateTransaction as updateTransactionStorage,
   addTransactionsAtomically,
 } from '../utils/storage';
+import {
+  checkLowBalanceNotifications,
+  rescheduleAutopayWarningNotifications,
+} from '../utils/notifications';
 
 interface RefreshTransactionsResult {
   autopayCreatedCount: number;
@@ -64,6 +71,12 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     });
     const next = await getStoredTransactions();
     setTransactions(next);
+    // 檢查低餘額並重新排程自動繳款預警（非阻塞）
+    getStoredAccounts().then(async (accounts) => {
+      await checkLowBalanceNotifications(accounts, next);
+      const rules = await getCreditCardAutoPayRules();
+      await rescheduleAutopayWarningNotifications(rules, accounts, next);
+    }).catch(() => { /* 通知失敗不影響主流程 */ });
     return { autopayCreatedCount: autopayResult.createdCount };
   }, []);
 
@@ -80,25 +93,45 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     return () => subscription.remove();
   }, [runRefreshFlow]);
 
+  /** 若交易有動到 cash top-up 目標帳戶，立刻以該交易日期補一次 */
+  const syncCashTopUpIfNeeded = useCallback(async (
+    affectedAccountIds: (string | undefined)[],
+    triggerDate?: string,
+  ) => {
+    const rules = await getCashTopUpRules();
+    const activeRules = rules.filter((r) => r.isEnabled);
+    const affected = new Set(affectedAccountIds.filter(Boolean));
+    const hasMatch = activeRules.some((r) => affected.has(r.targetAccountId));
+    if (!hasMatch) return;
+    await syncCashTopUpToTransactions(triggerDate);
+  }, []);
+
   const addTransaction = useCallback(async (t: Transaction) => {
     await addTransactionStorage(t);
+    await syncCashTopUpIfNeeded([t.accountId, t.toAccountId], t.date);
     return runRefreshFlow();
-  }, [runRefreshFlow]);
+  }, [runRefreshFlow, syncCashTopUpIfNeeded]);
 
   const addTransactions = useCallback(async (txs: Transaction[]) => {
     await addTransactionsAtomically(txs);
+    const ids = txs.flatMap((t) => [t.accountId, t.toAccountId]);
+    const date = txs[0]?.date;
+    await syncCashTopUpIfNeeded(ids, date);
     return runRefreshFlow();
-  }, [runRefreshFlow]);
+  }, [runRefreshFlow, syncCashTopUpIfNeeded]);
 
   const deleteTransaction = useCallback(async (id: string) => {
+    const tx = transactions.find((t) => t.id === id);
     await deleteTransactionStorage(id);
+    await syncCashTopUpIfNeeded([tx?.accountId, tx?.toAccountId], tx?.date);
     return runRefreshFlow();
-  }, [runRefreshFlow]);
+  }, [runRefreshFlow, syncCashTopUpIfNeeded, transactions]);
 
   const updateTransaction = useCallback(async (t: Transaction) => {
     await updateTransactionStorage(t);
+    await syncCashTopUpIfNeeded([t.accountId, t.toAccountId], t.date);
     return runRefreshFlow();
-  }, [runRefreshFlow]);
+  }, [runRefreshFlow, syncCashTopUpIfNeeded]);
 
   const getTransactionById = useCallback(
     (id: string) => transactions.find((t) => t.id === id),
