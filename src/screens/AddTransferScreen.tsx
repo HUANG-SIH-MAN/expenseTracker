@@ -77,7 +77,7 @@ export default function AddTransferScreen(): React.JSX.Element {
 
   useEffect(() => {
     getStoredAccounts().then((list: Account[]) => {
-      const valid = list.filter((a: Account) => a.name.trim() !== "");
+      const valid = list.filter((a: Account) => a.name.trim() !== "" && !a.isDeleted);
       setAccounts(valid);
       if (valid.length > 0 && !fromAccountId) setFromAccountId(valid[0].id);
       if (valid.length > 1 && !toAccountId) setToAccountId(valid[1]?.id ?? valid[0].id);

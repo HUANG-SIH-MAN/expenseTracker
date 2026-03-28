@@ -61,7 +61,7 @@ export default function CashTopUpEditScreen(): React.JSX.Element | null {
         getCashTopUpRules(),
       ]);
       if (cancelled) return;
-      setAccounts(storedAccounts);
+      setAccounts(storedAccounts.filter((a) => !a.isDeleted));
       setRules(storedRules);
       if (isEdit) {
         const existing = storedRules.find((r) => r.id === ruleId);

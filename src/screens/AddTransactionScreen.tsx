@@ -1,7 +1,7 @@
 /**
  * 新增/編輯單筆收入/支出 — 表單 + 底部計算機鍵盤
  */
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -9,12 +9,11 @@ import {
   TouchableOpacity,
   View,
   ScrollView,
-  Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import type { NativeStackScreenProps, NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { Account, AnnualBudgetEntry, MonthlyFixedItem, Transaction, TransactionType } from '../types';
+import type { Account, MonthlyFixedItem, Transaction, TransactionType } from '../types';
 import type { MainStackParamList } from '../navigation/MainStack';
 import { generateId } from '../utils/id';
 import { parseAmountInput } from '../utils/amountExpression';
@@ -22,7 +21,7 @@ import { formatDateWithWeekday } from '../utils/date';
 import { useTransactions } from '../contexts/TransactionsContext';
 import { useCategories } from '../contexts/CategoriesContext';
 import { useBudget } from '../contexts/BudgetContext';
-import { getStoredAccounts, addRecurringSkip, getAnnualBudgetEntries } from '../utils/storage';
+import { getStoredAccounts, addRecurringSkip } from '../utils/storage';
 import { resolveEffectiveDefaultAccountId } from '../utils/categoryDefaultAccount';
 import { CalculatorKeypad } from '../components';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -43,14 +42,8 @@ const AMOUNT_CURRENCY_SUFFIX_SIZE = 15;
 const LABEL_CATEGORY = '類別';
 const LABEL_ACCOUNT = '帳戶';
 const CHEVRON_FORWARD_SIZE = 18;
-const LABEL_ANNUAL_BUDGET = '對應年度預算項目（選填）';
-const BTN_SELECT_ANNUAL = '選擇年度預算項目';
-const ANNUAL_BUDGET_NONE = '不指定';
-const ANNUAL_PICKER_TITLE = '選擇對應的年度預算項目';
-const LABEL_MONTHLY_FIXED = '對應每月固定項目（選填）';
-const BTN_SELECT_MONTHLY_FIXED = '選擇每月固定項目';
-const MONTHLY_FIXED_NONE = '不指定';
-const MONTHLY_FIXED_PICKER_TITLE = '選擇對應的每月固定項目';
+const LABEL_BUDGET_LINK = '連接預算（選填）';
+const BTN_BUDGET_LINK = '選擇固定收支項目';
 const BACK_ICON_SIZE = 28;
 const AUTOPAY_READONLY_HINT = '此筆交易為系統自動建立的信用卡自動扣款，僅可檢視，無法編輯或刪除。';
 
@@ -70,7 +63,7 @@ export default function AddTransactionScreen(): React.JSX.Element {
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const { selectedDate, transactionId } = route.params;
   const { addTransaction, updateTransaction, getTransactionById } = useTransactions();
-  const { expenseCategories, incomeCategories, getCategoryLabel } = useCategories();
+  const { expenseCategories, incomeCategories } = useCategories();
   const { monthlyFixedItems } = useBudget();
 
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -88,11 +81,6 @@ export default function AddTransactionScreen(): React.JSX.Element {
   const [accountId, setAccountId] = useState<string | undefined>(undefined);
   const [annualBudgetEntryId, setAnnualBudgetEntryId] = useState<string | undefined>(undefined);
   const [monthlyFixedItemId, setMonthlyFixedItemId] = useState<string | undefined>(undefined);
-  const [showMonthlyFixedPicker, setShowMonthlyFixedPicker] = useState(false);
-  const [annualEntries, setAnnualEntries] = useState<
-    Pick<AnnualBudgetEntry, 'id' | 'month' | 'categoryKey' | 'label' | 'estimatedAmount'>[]
-  >([]);
-  const [showAnnualPicker, setShowAnnualPicker] = useState(false);
   const [isNoteFocused, setIsNoteFocused] = useState(false);
 
   const isEditMode = Boolean(transactionId);
@@ -113,7 +101,11 @@ export default function AddTransactionScreen(): React.JSX.Element {
 
   useEffect(() => {
     getStoredAccounts().then((list: Account[]) => {
-      const valid = list.filter((a: Account) => a.name.trim() !== '' && (!a.isHidden || a.id === accountId));
+      const valid = list.filter((a: Account) =>
+        a.name.trim() !== '' &&
+        !a.isDeleted &&
+        (!a.isHidden || a.id === accountId || a.id === existing?.accountId)
+      );
       setAccounts(valid);
       if (valid.length > 0 && !transactionId) {
         setAccountId((prev) => prev ?? valid[0].id);
@@ -139,6 +131,20 @@ export default function AddTransactionScreen(): React.JSX.Element {
     setAccountId(aid);
     navigation.setParams({ pickedAccountId: undefined });
   }, [route.params.pickedAccountId, navigation]);
+
+  useEffect(() => {
+    const mid = route.params.pickedMonthlyFixedItemId;
+    if (mid === undefined) return;
+    setMonthlyFixedItemId(mid ?? undefined);
+    navigation.setParams({ pickedMonthlyFixedItemId: undefined });
+  }, [route.params.pickedMonthlyFixedItemId, navigation]);
+
+  useEffect(() => {
+    const aid = route.params.pickedAnnualBudgetEntryId;
+    if (aid === undefined) return;
+    setAnnualBudgetEntryId(aid ?? undefined);
+    navigation.setParams({ pickedAnnualBudgetEntryId: undefined });
+  }, [route.params.pickedAnnualBudgetEntryId, navigation]);
 
   useEffect(() => {
     if (!existing) return;
@@ -181,36 +187,6 @@ export default function AddTransactionScreen(): React.JSX.Element {
       setAccountId(resolved);
     }
   }, [category, type, expenseCategories, incomeCategories, accounts]);
-
-  const dateYear = useMemo(() => {
-    const [y] = dateKey.split('-').map(Number);
-    return y;
-  }, [dateKey]);
-  const dateMonth = useMemo(() => {
-    const [, m] = dateKey.split('-').map(Number);
-    return m;
-  }, [dateKey]);
-
-  useEffect(() => {
-    getAnnualBudgetEntries(dateYear).then((list: AnnualBudgetEntry[]) => {
-      const filtered = list
-        .filter((e: AnnualBudgetEntry) => e.month === dateMonth && e.type === type)
-        .map((e: AnnualBudgetEntry) => ({
-          id: e.id,
-          month: e.month,
-          categoryKey: e.categoryKey,
-          label: e.label,
-          estimatedAmount: e.estimatedAmount,
-        }));
-      setAnnualEntries(filtered);
-    });
-  }, [dateYear, dateMonth, type]);
-
-  useEffect(() => {
-    if (annualBudgetEntryId == null || annualEntries.length === 0) return;
-    const inList = annualEntries.some((e) => e.id === annualBudgetEntryId);
-    if (!inList) setAnnualBudgetEntryId(undefined);
-  }, [annualEntries, annualBudgetEntryId]);
 
   const handleTypeChange = (t: TransactionType) => {
     setType(t);
@@ -408,201 +384,32 @@ export default function AddTransactionScreen(): React.JSX.Element {
           </TouchableOpacity>
         ) : null}
 
-        {type === 'expense' && monthlyFixedItems.length > 0 ? (
-          <>
-            <View style={styles.fieldRow}>
-              <Text style={styles.fieldLabel}>{LABEL_MONTHLY_FIXED}</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.annualBudgetButton}
-              onPress={() => setShowMonthlyFixedPicker(true)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.annualBudgetButtonText} numberOfLines={1}>
-                {monthlyFixedItemId
-                  ? (() => {
-                      const sel = monthlyFixedItems.find((x) => x.id === monthlyFixedItemId);
-                      return sel ? `已選：${sel.label}` : BTN_SELECT_MONTHLY_FIXED;
-                    })()
-                  : BTN_SELECT_MONTHLY_FIXED}
-              </Text>
-              <Ionicons name="chevron-forward" size={18} color="#6b7280" />
-            </TouchableOpacity>
-
-            <Modal
-              visible={showMonthlyFixedPicker}
-              transparent
-              animationType="fade"
-              onRequestClose={() => setShowMonthlyFixedPicker(false)}
-            >
-              <TouchableOpacity
-                style={styles.annualPickerOverlay}
-                activeOpacity={1}
-                onPress={() => setShowMonthlyFixedPicker(false)}
-              >
-                <View style={styles.annualPickerContent}>
-                  <Text style={styles.annualPickerTitle}>{MONTHLY_FIXED_PICKER_TITLE}</Text>
-                  <ScrollView style={styles.annualPickerList}>
-                    <TouchableOpacity
-                      style={[
-                        styles.annualPickerRow,
-                        monthlyFixedItemId == null && styles.annualPickerRowSelected,
-                      ]}
-                      onPress={() => {
-                        setMonthlyFixedItemId(undefined);
-                        setShowMonthlyFixedPicker(false);
-                      }}
-                    >
-                      <Text
-                        style={[
-                          styles.annualPickerRowText,
-                          monthlyFixedItemId == null && styles.annualPickerRowTextSelected,
-                        ]}
-                      >
-                        {MONTHLY_FIXED_NONE}
-                      </Text>
-                    </TouchableOpacity>
-                    {monthlyFixedItems.map((item) => {
-                      const isSelected = monthlyFixedItemId === item.id;
-                      const amountLabel = item.currency && item.currency !== 'TWD' && item.originalAmount != null
-                        ? `${item.originalAmount} ${item.currency} ≈ NT$${Math.round(item.estimatedAmount).toLocaleString()}`
-                        : `NT$${item.estimatedAmount.toLocaleString()}`;
-                      return (
-                        <TouchableOpacity
-                          key={item.id}
-                          style={[
-                            styles.annualPickerRow,
-                            isSelected && styles.annualPickerRowSelected,
-                          ]}
-                          onPress={() => {
-                            setMonthlyFixedItemId(item.id);
-                            setShowMonthlyFixedPicker(false);
-                          }}
-                        >
-                          <Text
-                            style={[
-                              styles.annualPickerRowText,
-                              isSelected && styles.annualPickerRowTextSelected,
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {item.label}　預估 {amountLabel}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
-                  <TouchableOpacity
-                    style={styles.annualPickerClose}
-                    onPress={() => setShowMonthlyFixedPicker(false)}
-                  >
-                    <Text style={styles.annualPickerCloseText}>關閉</Text>
-                  </TouchableOpacity>
-                </View>
-              </TouchableOpacity>
-            </Modal>
-          </>
-        ) : null}
-
-        {annualEntries.length > 0 ? (
-          <>
-            <View style={styles.fieldRow}>
-              <Text style={styles.fieldLabel}>{LABEL_ANNUAL_BUDGET}</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.annualBudgetButton}
-              onPress={() => setShowAnnualPicker(true)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.annualBudgetButtonText} numberOfLines={1}>
-                {annualBudgetEntryId
-                  ? (() => {
-                      const sel = annualEntries.find((e) => e.id === annualBudgetEntryId);
-                      if (!sel) return BTN_SELECT_ANNUAL;
-                      const name = sel.label
-                        ? `${sel.month}月 ${sel.label}（${getCategoryLabel(type, sel.categoryKey)}）`
-                        : `${sel.month}月 ${getCategoryLabel(type, sel.categoryKey)}`;
-                      return `已選：${name}`;
-                    })()
-                  : BTN_SELECT_ANNUAL}
-              </Text>
-              <Ionicons name="chevron-forward" size={18} color="#6b7280" />
-            </TouchableOpacity>
-
-            <Modal
-              visible={showAnnualPicker}
-              transparent
-              animationType="fade"
-              onRequestClose={() => setShowAnnualPicker(false)}
-            >
-              <TouchableOpacity
-                style={styles.annualPickerOverlay}
-                activeOpacity={1}
-                onPress={() => setShowAnnualPicker(false)}
-              >
-                <View style={styles.annualPickerContent}>
-                  <Text style={styles.annualPickerTitle}>{ANNUAL_PICKER_TITLE}</Text>
-                  <ScrollView style={styles.annualPickerList}>
-                    <TouchableOpacity
-                      style={[
-                        styles.annualPickerRow,
-                        annualBudgetEntryId == null && styles.annualPickerRowSelected,
-                      ]}
-                      onPress={() => {
-                        setAnnualBudgetEntryId(undefined);
-                        setShowAnnualPicker(false);
-                      }}
-                    >
-                      <Text
-                        style={[
-                          styles.annualPickerRowText,
-                          annualBudgetEntryId == null && styles.annualPickerRowTextSelected,
-                        ]}
-                      >
-                        {ANNUAL_BUDGET_NONE}
-                      </Text>
-                    </TouchableOpacity>
-                    {annualEntries.map((e) => {
-                      const displayName = e.label
-                        ? `${e.month}月 ${e.label}（${getCategoryLabel(type, e.categoryKey)}）`
-                        : `${e.month}月 ${getCategoryLabel(type, e.categoryKey)}`;
-                      const isSelected = annualBudgetEntryId === e.id;
-                      return (
-                        <TouchableOpacity
-                          key={e.id}
-                          style={[
-                            styles.annualPickerRow,
-                            isSelected && styles.annualPickerRowSelected,
-                          ]}
-                          onPress={() => {
-                            setAnnualBudgetEntryId(e.id);
-                            setShowAnnualPicker(false);
-                          }}
-                        >
-                          <Text
-                            style={[
-                              styles.annualPickerRowText,
-                              isSelected && styles.annualPickerRowTextSelected,
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {displayName} 計劃 {e.estimatedAmount}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
-                  <TouchableOpacity
-                    style={styles.annualPickerClose}
-                    onPress={() => setShowAnnualPicker(false)}
-                  >
-                    <Text style={styles.annualPickerCloseText}>關閉</Text>
-                  </TouchableOpacity>
-                </View>
-              </TouchableOpacity>
-            </Modal>
-          </>
-        ) : null}
+        <TouchableOpacity
+          style={styles.selectorRow}
+          onPress={() =>
+            navigation.navigate('SelectBudgetLink', {
+              transactionType: type,
+              dateKey,
+              currentMonthlyFixedItemId: monthlyFixedItemId,
+              currentAnnualBudgetEntryId: annualBudgetEntryId,
+              returnDate: dateKey,
+              returnTransactionId: transactionId,
+            })
+          }
+          activeOpacity={0.7}
+        >
+          <Text style={styles.selectorLabel}>{LABEL_BUDGET_LINK}</Text>
+          <View style={styles.selectorRight}>
+            <Text style={styles.selectorValue} numberOfLines={1}>
+              {monthlyFixedItemId
+                ? (monthlyFixedItems.find((x) => x.id === monthlyFixedItemId)?.label ?? BTN_BUDGET_LINK)
+                : annualBudgetEntryId
+                ? '年度項目已連結'
+                : BTN_BUDGET_LINK}
+            </Text>
+            <Ionicons name="chevron-forward" size={CHEVRON_FORWARD_SIZE} color="#9ca3af" />
+          </View>
+        </TouchableOpacity>
 
         <View style={styles.noteSection}>
           <Text style={styles.noteSectionLabel}>備註（選填）</Text>
@@ -772,74 +579,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'right',
     flexShrink: 1,
-  },
-  annualBudgetButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginBottom: FORM_SECTION_GAP,
-    backgroundColor: '#f9fafb',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 10,
-  },
-  annualBudgetButtonText: {
-    fontSize: 15,
-    color: '#374151',
-    flex: 1,
-  },
-  annualPickerOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  annualPickerContent: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
-    width: '100%',
-    maxWidth: 400,
-    maxHeight: '80%',
-  },
-  annualPickerTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#1f2937',
-    marginBottom: 12,
-  },
-  annualPickerList: {
-    maxHeight: 320,
-    marginBottom: 12,
-  },
-  annualPickerRow: {
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#e5e7eb',
-  },
-  annualPickerRowSelected: {
-    backgroundColor: '#eff6ff',
-  },
-  annualPickerRowText: {
-    fontSize: 15,
-    color: '#374151',
-  },
-  annualPickerRowTextSelected: {
-    color: '#2563eb',
-    fontWeight: '600',
-  },
-  annualPickerClose: {
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  annualPickerCloseText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2563eb',
   },
   noteSection: {
     marginTop: 4,

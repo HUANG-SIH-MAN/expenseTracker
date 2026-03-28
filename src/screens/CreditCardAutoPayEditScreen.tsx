@@ -62,7 +62,7 @@ export default function CreditCardAutoPayEditScreen(): React.JSX.Element | null 
         getCreditCardAutoPayRules(),
       ]);
       if (cancelled) return;
-      setAccounts(storedAccounts);
+      setAccounts(storedAccounts.filter((a) => !a.isDeleted));
       setRules(storedRules);
       if (isEdit) {
         const existing = storedRules.find((item) => item.id === ruleId);

@@ -20,6 +20,7 @@ import AddAccountScreen from '../screens/AddAccountScreen';
 import CurrencySettingsScreen from '../screens/CurrencySettingsScreen';
 import SelectTransactionCategoryScreen from '../screens/SelectTransactionCategoryScreen';
 import SelectTransactionAccountScreen from '../screens/SelectTransactionAccountScreen';
+import SelectBudgetLinkScreen from '../screens/SelectBudgetLinkScreen';
 import CreditCardAutoPaySettingsScreen from '../screens/CreditCardAutoPaySettingsScreen';
 import CreditCardAutoPayEditScreen from '../screens/CreditCardAutoPayEditScreen';
 import CashTopUpSettingsScreen from '../screens/CashTopUpSettingsScreen';
@@ -35,6 +36,9 @@ export type MainStackParamList = {
     pickedCategoryKey?: string;
     /** 由選擇帳戶頁返回時帶入，套用後會清除 */
     pickedAccountId?: string;
+    /** 由連接預算頁返回時帶入，null 表示清除，套用後會清除 */
+    pickedMonthlyFixedItemId?: string | null;
+    pickedAnnualBudgetEntryId?: string | null;
   };
   AddTransfer: { selectedDate?: string };
   LedgerBalance: undefined;
@@ -75,6 +79,14 @@ export type MainStackParamList = {
     returnTransactionId?: string;
     returnToRouteKey?: string;
   };
+  SelectBudgetLink: {
+    transactionType: string;
+    dateKey: string;
+    currentMonthlyFixedItemId?: string;
+    currentAnnualBudgetEntryId?: string;
+    returnDate: string;
+    returnTransactionId?: string;
+  };
 };
 
 const Stack = createNativeStackNavigator<MainStackParamList>();
@@ -105,6 +117,11 @@ export default function MainStack(): React.JSX.Element {
       <Stack.Screen
         name="SelectTransactionAccount"
         component={SelectTransactionAccountScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="SelectBudgetLink"
+        component={SelectBudgetLinkScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen

@@ -31,8 +31,8 @@ export function CategoriesProvider({ children }: { children: React.ReactNode }):
     income: [...DEFAULT_INCOME_CATEGORIES_LIST],
   }));
 
-  const expenseCategories = storedCategories.expense;
-  const incomeCategories = storedCategories.income;
+  const expenseCategories = storedCategories.expense.filter((c) => !c.deleted);
+  const incomeCategories = storedCategories.income.filter((c) => !c.deleted);
 
   const refreshCategories = useCallback(async () => {
     const data = await getStoredCategories();
@@ -83,20 +83,20 @@ export function CategoriesProvider({ children }: { children: React.ReactNode }):
 
   const getCategoryLabel = useCallback(
     (type: TransactionType, key: string): string => {
-      const list = type === 'expense' ? expenseCategories : incomeCategories;
-      const item = list.find((c) => c.key === key);
+      const allList = type === 'expense' ? storedCategories.expense : storedCategories.income;
+      const item = allList.find((c) => c.key === key);
       return item?.label ?? key;
     },
-    [expenseCategories, incomeCategories]
+    [storedCategories]
   );
 
   const getCategoryIcon = useCallback(
     (type: TransactionType, key: string): string => {
-      const list = type === 'expense' ? expenseCategories : incomeCategories;
-      const item = list.find((c) => c.key === key);
+      const allList = type === 'expense' ? storedCategories.expense : storedCategories.income;
+      const item = allList.find((c) => c.key === key);
       return item?.icon ?? '📌';
     },
-    [expenseCategories, incomeCategories]
+    [storedCategories]
   );
 
   const value: CategoriesContextValue = {

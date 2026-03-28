@@ -111,12 +111,13 @@ async function runMigrationFromAsyncStorageIfNeeded(
         for (const a of data.accounts ?? []) {
           const currency = (a as Account).currency ?? "TWD";
           await db.runAsync(
-            "INSERT INTO accounts (id, name, initial_balance, currency, is_hidden) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO accounts (id, name, initial_balance, currency, is_hidden, is_deleted) VALUES (?, ?, ?, ?, ?, ?)",
             a.id,
             a.name,
             a.initialBalance,
             currency,
             (a as Account).isHidden === true ? SQLITE_TRUE : SQLITE_FALSE,
+            (a as Account).isDeleted === true ? SQLITE_TRUE : SQLITE_FALSE,
           );
         }
       }
@@ -275,13 +276,15 @@ export async function getOnboardingData(): Promise<OnboardingData | null> {
       initial_balance: number;
       currency: string;
       is_hidden: number;
-    }>("SELECT id, name, initial_balance, currency, is_hidden FROM accounts ORDER BY id");
+      is_deleted: number;
+    }>("SELECT id, name, initial_balance, currency, is_hidden, is_deleted FROM accounts ORDER BY id");
     const accounts: Account[] = rows.map((r) => ({
       id: r.id,
       name: r.name,
       initialBalance: r.initial_balance,
       currency: (r.currency as CurrencyCode) || "TWD",
       isHidden: r.is_hidden === SQLITE_TRUE ? true : undefined,
+      isDeleted: r.is_deleted === SQLITE_TRUE ? true : undefined,
     }));
     return {
       hasCompletedOnboarding: true,
@@ -316,12 +319,13 @@ export async function setOnboardingComplete(data: {
     await db.runAsync("DELETE FROM accounts");
     for (const a of data.accounts) {
       await db.runAsync(
-        "INSERT INTO accounts (id, name, initial_balance, currency, is_hidden) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO accounts (id, name, initial_balance, currency, is_hidden, is_deleted) VALUES (?, ?, ?, ?, ?, ?)",
         a.id,
         a.name,
         a.initialBalance,
         a.currency ?? "TWD",
         a.isHidden === true ? SQLITE_TRUE : SQLITE_FALSE,
+        a.isDeleted === true ? SQLITE_TRUE : SQLITE_FALSE,
       );
     }
     return;

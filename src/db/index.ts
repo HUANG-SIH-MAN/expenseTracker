@@ -273,6 +273,13 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase | null> {
   } catch {
     // Column already exists on existing DBs
   }
+  try {
+    await db.runAsync(
+      "ALTER TABLE accounts ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0"
+    );
+  } catch {
+    // Column already exists on existing DBs
+  }
   dbInstance = db;
   return db;
 }

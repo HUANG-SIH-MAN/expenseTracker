@@ -34,6 +34,7 @@ const LABEL_CURRENT_AMOUNT = '目前金額';
 const HINT_CURRENT_AMOUNT = '儲存後將自動回推初始金額';
 const PLACEHOLDER_NAME = '例如：現金、銀行、悠遊卡';
 const BTN_SAVE = '儲存';
+const BTN_DELETE = '刪除帳戶';
 const BACK_ICON_SIZE = 28;
 const ALERT_TITLE = '儲存失敗';
 const ALERT_MSG = '找不到該帳戶或無法更新，請重試。';
@@ -149,6 +150,29 @@ export default function EditAccountScreen(): React.JSX.Element {
     }
   }, [accountId, name, currency, currentAmount, isHidden, transactions, navigation]);
 
+  const handleDelete = useCallback(() => {
+    Alert.alert(
+      '刪除帳戶',
+      '刪除後此帳戶不再出現在新記帳選單，但舊紀錄仍會顯示帳戶名稱。確定要刪除嗎？',
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '刪除',
+          style: 'destructive',
+          onPress: async () => {
+            const accounts = await getStoredAccounts();
+            const index = accounts.findIndex((a: Account) => a.id === accountId);
+            if (index < 0) return;
+            const next = [...accounts];
+            next[index] = { ...next[index], isDeleted: true };
+            await updateStoredAccounts(next);
+            navigation.goBack();
+          },
+        },
+      ]
+    );
+  }, [accountId, navigation]);
+
   const handleCalcConfirm = useCallback(() => {
     // 按 OK 時計算算式並關閉計算機
     const parsed = parseAmountInput(currentAmount);
@@ -237,6 +261,14 @@ export default function EditAccountScreen(): React.JSX.Element {
           activeOpacity={0.8}
         >
           <Text style={styles.saveBtnText}>{saving ? '儲存中…' : BTN_SAVE}</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.deleteBtn}
+          onPress={handleDelete}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.deleteBtnText}>{BTN_DELETE}</Text>
         </TouchableOpacity>
 
         <Modal
@@ -406,6 +438,20 @@ const styles = StyleSheet.create({
   },
   saveBtnText: {
     color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  deleteBtn: {
+    marginTop: 12,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ef4444',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  deleteBtnText: {
+    color: '#ef4444',
     fontSize: 16,
     fontWeight: '600',
   },

@@ -213,7 +213,7 @@ export default function CategorySettingsScreen(): React.JSX.Element {
       setModalVisible(false);
       setEditingItem(null);
       getStoredAccounts().then((list: Account[]) => {
-        setAccounts(list.filter((a) => a.name.trim() !== '' && !a.isHidden));
+        setAccounts(list.filter((a) => a.name.trim() !== '' && !a.isHidden && !a.isDeleted));
       });
     }, [])
   );
@@ -242,7 +242,7 @@ export default function CategorySettingsScreen(): React.JSX.Element {
     }
     Alert.alert(
       '刪除類別',
-      `確定要刪除「${item.label}」嗎？已使用此類別的紀錄仍會保留，但會以類別代碼顯示。`,
+      `確定要刪除「${item.label}」嗎？已使用此類別的紀錄仍會顯示原本的類別名稱。`,
       [
         { text: '取消', style: 'cancel' },
         {
@@ -252,7 +252,9 @@ export default function CategorySettingsScreen(): React.JSX.Element {
             const tab = activeTab;
             updateCategories((prev) => {
               const curList = tab === 'expense' ? prev.expense : prev.income;
-              const nextList = curList.filter((c) => c.key !== item.key);
+              const nextList = curList.map((c) =>
+                c.key === item.key ? { ...c, deleted: true } : c
+              );
               return {
                 expense: tab === 'expense' ? nextList : prev.expense,
                 income: tab === 'income' ? nextList : prev.income,

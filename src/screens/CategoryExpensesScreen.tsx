@@ -124,8 +124,13 @@ export default function CategoryExpensesScreen(): React.JSX.Element {
         ) : (
           <View style={styles.listCard}>
             {sortedList.map((item) => (
-              <View key={item.id} style={styles.row}>
-                <Text style={styles.rowDate}>{formatDateShort(item.date)}</Text>
+              <TouchableOpacity
+                key={item.id}
+                style={styles.row}
+                onPress={() => navigation.navigate('AddTransaction', { selectedDate: item.date, transactionId: item.id })}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.rowDate} numberOfLines={1}>{formatDateShort(item.date)}</Text>
                 <Text style={styles.rowMiddle} numberOfLines={1}>
                   {item.note?.trim()
                     ? `${item.note.trim()} | ${getAccountName(item.accountId)}`
@@ -134,7 +139,7 @@ export default function CategoryExpensesScreen(): React.JSX.Element {
                 <Text style={[styles.rowAmount, isIncome ? styles.amountIncome : styles.amountExpense]}>
                   {isIncome ? '+' : '-'}{formatAmount(item.amount)}
                 </Text>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         )}
@@ -229,7 +234,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#f3f4f6',
   },
   rowDate: {
-    width: 64,
+    width: 72,
     fontSize: LIST_ROW_FONT_SIZE,
     color: '#6b7280',
   },

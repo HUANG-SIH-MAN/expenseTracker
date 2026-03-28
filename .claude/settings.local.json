@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find c:/Users/User/Desktop/expense-tracker/src -name db*)"
+    ]
+  }
+}

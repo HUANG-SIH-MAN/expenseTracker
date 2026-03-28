@@ -71,7 +71,7 @@ export default function LedgerBalanceScreen(): React.JSX.Element {
       getStoredPrimaryCurrency(),
       getExchangeRates(),
     ]).then(([accts, options, primary, ratesData]) => {
-      setAccounts(accts);
+      setAccounts(accts.filter((a) => !a.isDeleted));
       setCurrencyOptions(options);
       setPrimaryCurrency(primary);
       setRatesToPrimary(ratesData.rates ?? {});

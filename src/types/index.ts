@@ -30,6 +30,8 @@ export interface Account {
   currency: CurrencyCode;
   /** 在記帳時隱藏此帳戶（餘額頁仍顯示） */
   isHidden?: boolean;
+  /** 已刪除：不出現在新增記帳選單，但舊紀錄仍可顯示帳戶名稱 */
+  isDeleted?: boolean;
 }
 
 /** 貨幣代碼（內建 + 使用者自訂，皆為字串如 TWD、AUD） */
@@ -56,6 +58,8 @@ export interface CategoryItem {
   icon: string;
   /** 新增交易選此類別時預先帶入的帳戶；單筆仍可改選 */
   defaultAccountId?: string;
+  /** 已刪除：不出現在新增記帳選項，但舊紀錄仍可解析名稱 */
+  deleted?: boolean;
 }
 
 /** 使用者自訂的支出/收入類別列表（儲存於 AsyncStorage） */

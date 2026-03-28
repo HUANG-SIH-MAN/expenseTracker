@@ -81,7 +81,7 @@ export default function RecurringEditScreen(): React.ReactElement | null {
         getStoredAccounts(),
       ]);
       if (cancelled) return;
-      setAccounts(accs.filter((a) => a.name.trim() !== ''));
+      setAccounts(accs.filter((a) => a.name.trim() !== '' && !a.isDeleted));
       if (recurringId) {
         const item = recurring.find((r) => r.id === recurringId);
         if (item) {
