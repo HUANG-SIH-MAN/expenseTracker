@@ -23,7 +23,7 @@ import {
   getCurrencyOptions,
   type CustomCurrencyItem,
 } from '../utils/storage';
-import { BUILT_IN_CURRENCY_CODES, CURRENCY_LABELS } from '../constants';
+import { BUILT_IN_CURRENCY_CODES, CURRENCY_LABELS, KNOWN_CURRENCY_NAMES } from '../constants';
 
 const TITLE = '幣別管理';
 const BACK_ICON_SIZE = 28;
@@ -49,6 +49,7 @@ export default function CurrencySettingsScreen(): React.JSX.Element {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newCode, setNewCode] = useState('');
   const [newLabel, setNewLabel] = useState('');
+  const [labelAutoFilled, setLabelAutoFilled] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -68,7 +69,8 @@ export default function CurrencySettingsScreen(): React.JSX.Element {
 
   const handleAdd = useCallback(async () => {
     const code = newCode.trim().toUpperCase();
-    const label = newLabel.trim() || code;
+    const baseName = newLabel.trim() || code;
+    const label = baseName.includes(`(${code})`) ? baseName : `${baseName} (${code})`;
     if (!code) return;
     const builtInSet = new Set<string>([...BUILT_IN_CURRENCY_CODES]);
     if (builtInSet.has(code)) {
@@ -85,6 +87,7 @@ export default function CurrencySettingsScreen(): React.JSX.Element {
       await saveCustomCurrencies([...customList, { code, label }]);
       setNewCode('');
       setNewLabel('');
+      setLabelAutoFilled(false);
       setShowAddModal(false);
       await load();
     } finally {
@@ -185,9 +188,25 @@ export default function CurrencySettingsScreen(): React.JSX.Element {
                 placeholder={PLACEHOLDER_CODE}
                 placeholderTextColor="#9ca3af"
                 value={newCode}
-                onChangeText={(t) => setNewCode(t.replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 6))}
+                onChangeText={(t) => {
+                  const code = t.replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 6);
+                  setNewCode(code);
+                  const knownName = KNOWN_CURRENCY_NAMES[code];
+                  if (knownName) {
+                    setNewLabel(knownName);
+                    setLabelAutoFilled(true);
+                  } else if (labelAutoFilled) {
+                    setNewLabel('');
+                    setLabelAutoFilled(false);
+                  }
+                }}
                 autoCapitalize="characters"
               />
+              {newCode.length >= 2 && (
+                <Text style={KNOWN_CURRENCY_NAMES[newCode] ? styles.codeHintValid : styles.codeHintUnknown}>
+                  {KNOWN_CURRENCY_NAMES[newCode] ? `✓ ${KNOWN_CURRENCY_NAMES[newCode]}` : '未知幣別代碼，請手動填寫名稱'}
+                </Text>
+              )}
             </View>
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>{LABEL_NAME}</Text>
@@ -196,7 +215,10 @@ export default function CurrencySettingsScreen(): React.JSX.Element {
                 placeholder={PLACEHOLDER_NAME}
                 placeholderTextColor="#9ca3af"
                 value={newLabel}
-                onChangeText={setNewLabel}
+                onChangeText={(t) => {
+                  setNewLabel(t);
+                  setLabelAutoFilled(false);
+                }}
               />
             </View>
             <View style={styles.modalActions}>
@@ -206,6 +228,7 @@ export default function CurrencySettingsScreen(): React.JSX.Element {
                   setShowAddModal(false);
                   setNewCode('');
                   setNewLabel('');
+                  setLabelAutoFilled(false);
                 }}
               >
                 <Text style={styles.modalCancelText}>{BTN_CANCEL}</Text>
@@ -308,4 +331,6 @@ const styles = StyleSheet.create({
   modalSaveBtn: { flex: 1, backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
   modalSaveBtnDisabled: { backgroundColor: '#9ca3af' },
   modalSaveText: { fontSize: 16, color: '#fff', fontWeight: '600' },
+  codeHintValid: { fontSize: 12, color: '#16a34a', marginTop: 6 },
+  codeHintUnknown: { fontSize: 12, color: '#d97706', marginTop: 6 },
 });

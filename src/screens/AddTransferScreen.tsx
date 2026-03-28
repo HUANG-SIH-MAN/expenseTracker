@@ -20,19 +20,11 @@ import { useTransactions } from "../contexts/TransactionsContext";
 import { useCategories } from "../contexts/CategoriesContext";
 import {
   getStoredAccounts,
-  getExchangeRates,
   getStoredPrimaryCurrency,
-  getCurrencyOptions,
   getTransferTemplates,
 } from "../utils/storage";
-import type { CurrencyOption } from "../types";
 import type { MainStackParamList } from "../navigation/MainStack";
 import Ionicons from "@expo/vector-icons/Ionicons";
-
-function getCurrencyLabel(code: string, options: CurrencyOption[]): string {
-  const o = options.find((x) => x.code === code);
-  return o?.label ?? code;
-}
 
 const BACK_ICON_SIZE = 28;
 const TITLE_NEW = "換匯／轉帳";
@@ -41,7 +33,6 @@ const LABEL_FROM = "轉出帳戶";
 const LABEL_TO = "轉入帳戶";
 const LABEL_AMOUNT_FROM = "轉出金額";
 const LABEL_AMOUNT_TO = "轉入金額";
-const LABEL_RATE = "匯率（1 轉入幣 = ? 轉出幣）";
 const LABEL_DATE = "日期";
 const LABEL_NOTE = "備註（選填）";
 const BTN_SAVE = "儲存";
@@ -69,13 +60,12 @@ export default function AddTransferScreen(): React.JSX.Element {
   const isLocked = Boolean(existing?.lockedReason);
 
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [currencyOptions, setCurrencyOptions] = useState<CurrencyOption[]>([]);
+  const [primaryCurrency, setPrimaryCurrency] = useState<string>("TWD");
   const [fromAccountId, setFromAccountId] = useState<string | undefined>();
   const [toAccountId, setToAccountId] = useState<string | undefined>();
   const [dateKey, setDateKey] = useState(selectedDate);
   const [amountFromStr, setAmountFromStr] = useState("");
   const [amountToStr, setAmountToStr] = useState("");
-  const [rateStr, setRateStr] = useState("");
   const [note, setNote] = useState("");
   const [showFromPicker, setShowFromPicker] = useState(false);
   const [showToPicker, setShowToPicker] = useState(false);
@@ -85,7 +75,7 @@ export default function AddTransferScreen(): React.JSX.Element {
   const [linkedTxsPreview, setLinkedTxsPreview] = useState<TransferTemplateLinkedTx[]>([]);
 
   useEffect(() => {
-    getCurrencyOptions().then(setCurrencyOptions);
+    getStoredPrimaryCurrency().then(setPrimaryCurrency);
     getTransferTemplates().then(setTemplates);
   }, []);
 
@@ -120,39 +110,29 @@ export default function AddTransferScreen(): React.JSX.Element {
   const fromCurrency = fromAccount?.currency ?? "TWD";
   const toCurrency = toAccount?.currency ?? "TWD";
 
-  const prefillRateFromApi = useCallback(async () => {
-    if (!fromAccount || !toAccount || fromAccount.id === toAccount.id) return;
-    const primary = await getStoredPrimaryCurrency();
-    const { rates } = await getExchangeRates();
-    const rateFrom = fromCurrency === primary ? 1 : (rates[fromCurrency] ?? 0);
-    const rateTo = toCurrency === primary ? 1 : (rates[toCurrency] ?? 0);
-    if (rateFrom > 0 && rateTo > 0) {
-      // 標籤為「1 轉入幣 = ? 轉出幣」→ 顯示 rateTo/rateFrom（例：1 NZD = 18.58 TWD）
-      const rateToPerFrom = rateTo / rateFrom;
-      setRateStr(String(parseFloat(rateToPerFrom.toFixed(6))));
-    }
-  }, [fromAccount, toAccount, fromCurrency, toCurrency]);
-
-  useEffect(() => {
-    if (fromAccount && toAccount && fromAccount.id !== toAccount.id) {
-      prefillRateFromApi();
-    }
-  }, [fromAccountId, toAccountId, prefillRateFromApi]);
-
   const amountFrom = parseFloat(amountFromStr) || 0;
   const amountTo = parseFloat(amountToStr) || 0;
-  const rate = parseFloat(rateStr) || 0;
 
-  const syncAmountToFromRate = () => {
-    if (rate > 0 && amountFrom > 0) {
-      setAmountToStr(String(parseFloat((amountFrom / rate).toFixed(4))));
+  // 由兩邊金額推算匯率，以主幣別角度顯示
+  const rateDisplayText = useCallback((): string | null => {
+    if (fromCurrency === toCurrency) return null;
+    if (amountFrom <= 0 || amountTo <= 0) return null;
+    const fromIsPrimary = fromCurrency === primaryCurrency;
+    const toIsPrimary = toCurrency === primaryCurrency;
+    if (fromIsPrimary) {
+      // from=TWD, to=USD → 1 USD = amountFrom/amountTo TWD
+      const r = parseFloat((amountFrom / amountTo).toFixed(4));
+      return `1 ${toCurrency} = ${r} ${primaryCurrency}`;
+    } else if (toIsPrimary) {
+      // from=USD, to=TWD → 1 USD = amountTo/amountFrom TWD
+      const r = parseFloat((amountTo / amountFrom).toFixed(4));
+      return `1 ${fromCurrency} = ${r} ${primaryCurrency}`;
+    } else {
+      // 交叉匯率：1 fromCurrency = amountFrom/amountTo toCurrency
+      const r = parseFloat((amountFrom / amountTo).toFixed(4));
+      return `1 ${fromCurrency} = ${r} ${toCurrency}`;
     }
-  };
-  const syncAmountFromFromRate = () => {
-    if (rate > 0 && amountTo > 0) {
-      setAmountFromStr(String(parseFloat((amountTo * rate).toFixed(4))));
-    }
-  };
+  }, [fromCurrency, toCurrency, amountFrom, amountTo, primaryCurrency]);
 
   const canSave =
     !isLocked &&
@@ -273,7 +253,7 @@ export default function AddTransferScreen(): React.JSX.Element {
             onPress={() => setShowFromPicker(true)}
           >
             <Text style={styles.pickerBtnText} numberOfLines={1}>
-              {fromAccount ? `${fromAccount.name} (${getCurrencyLabel(fromCurrency, currencyOptions)})` : "選擇"}
+              {fromAccount ? `${fromAccount.name} (${fromCurrency})` : "選擇"}
             </Text>
           </TouchableOpacity>
         </View>
@@ -285,21 +265,9 @@ export default function AddTransferScreen(): React.JSX.Element {
             onPress={() => setShowToPicker(true)}
           >
             <Text style={styles.pickerBtnText} numberOfLines={1}>
-              {toAccount ? `${toAccount.name} (${getCurrencyLabel(toCurrency, currencyOptions)})` : "選擇"}
+              {toAccount ? `${toAccount.name} (${toCurrency})` : "選擇"}
             </Text>
           </TouchableOpacity>
-        </View>
-
-        <View style={styles.field}>
-          <Text style={styles.label}>{LABEL_RATE}</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="例：30 表示 1 轉入幣 = 30 轉出幣"
-            placeholderTextColor="#9ca3af"
-            keyboardType="decimal-pad"
-            value={rateStr}
-            onChangeText={(t) => setRateStr(formatAmountInput(t))}
-          />
         </View>
 
         <View style={styles.field}>
@@ -310,16 +278,13 @@ export default function AddTransferScreen(): React.JSX.Element {
             placeholderTextColor="#9ca3af"
             keyboardType="decimal-pad"
             value={amountFromStr}
-            onChangeText={(t) => {
-              setAmountFromStr(formatAmountInput(t));
-              if (rate > 0) {
-                const v = parseFloat(t.replace(/[^0-9.-]/g, "")) || 0;
-                if (v > 0) setAmountToStr(String(parseFloat((v / rate).toFixed(4))));
-              }
-            }}
-            onBlur={syncAmountToFromRate}
+            onChangeText={(t) => setAmountFromStr(formatAmountInput(t))}
           />
         </View>
+
+        {rateDisplayText() != null && (
+          <Text style={styles.rateHint}>{rateDisplayText()}</Text>
+        )}
 
         <View style={styles.field}>
           <Text style={styles.label}>{LABEL_AMOUNT_TO} ({toCurrency})</Text>
@@ -329,14 +294,7 @@ export default function AddTransferScreen(): React.JSX.Element {
             placeholderTextColor="#9ca3af"
             keyboardType="decimal-pad"
             value={amountToStr}
-            onChangeText={(t) => {
-              setAmountToStr(formatAmountInput(t));
-              if (rate > 0) {
-                const v = parseFloat(t.replace(/[^0-9.-]/g, "")) || 0;
-                if (v > 0) setAmountFromStr(String(parseFloat((v * rate).toFixed(4))));
-              }
-            }}
-            onBlur={syncAmountFromFromRate}
+            onChangeText={(t) => setAmountToStr(formatAmountInput(t))}
           />
         </View>
 
@@ -380,21 +338,23 @@ export default function AddTransferScreen(): React.JSX.Element {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{LABEL_FROM}</Text>
-            {accounts.map((a) => (
-              <TouchableOpacity
-                key={a.id}
-                style={styles.modalRow}
-                onPress={() => {
-                  setFromAccountId(a.id);
-                  setShowFromPicker(false);
-                }}
-              >
-                <Text style={styles.modalRowText}>
-                  {a.name} ({getCurrencyLabel(a.currency ?? "TWD", currencyOptions)})
-                </Text>
-                {fromAccountId === a.id && <Text style={styles.modalRowCheck}>✓</Text>}
-              </TouchableOpacity>
-            ))}
+            <ScrollView style={styles.modalScroll} bounces={false}>
+              {accounts.map((a) => (
+                <TouchableOpacity
+                  key={a.id}
+                  style={styles.modalRow}
+                  onPress={() => {
+                    setFromAccountId(a.id);
+                    setShowFromPicker(false);
+                  }}
+                >
+                  <Text style={styles.modalRowText}>
+                    {a.name} ({a.currency ?? "TWD"})
+                  </Text>
+                  {fromAccountId === a.id && <Text style={styles.modalRowCheck}>✓</Text>}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
             <TouchableOpacity style={styles.modalClose} onPress={() => setShowFromPicker(false)}>
               <Text style={styles.modalCloseText}>關閉</Text>
             </TouchableOpacity>
@@ -406,21 +366,23 @@ export default function AddTransferScreen(): React.JSX.Element {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{LABEL_TO}</Text>
-            {accounts.map((a) => (
-              <TouchableOpacity
-                key={a.id}
-                style={styles.modalRow}
-                onPress={() => {
-                  setToAccountId(a.id);
-                  setShowToPicker(false);
-                }}
-              >
-                <Text style={styles.modalRowText}>
-                  {a.name} ({getCurrencyLabel(a.currency ?? "TWD", currencyOptions)})
-                </Text>
-                {toAccountId === a.id && <Text style={styles.modalRowCheck}>✓</Text>}
-              </TouchableOpacity>
-            ))}
+            <ScrollView style={styles.modalScroll} bounces={false}>
+              {accounts.map((a) => (
+                <TouchableOpacity
+                  key={a.id}
+                  style={styles.modalRow}
+                  onPress={() => {
+                    setToAccountId(a.id);
+                    setShowToPicker(false);
+                  }}
+                >
+                  <Text style={styles.modalRowText}>
+                    {a.name} ({a.currency ?? "TWD"})
+                  </Text>
+                  {toAccountId === a.id && <Text style={styles.modalRowCheck}>✓</Text>}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
             <TouchableOpacity style={styles.modalClose} onPress={() => setShowToPicker(false)}>
               <Text style={styles.modalCloseText}>關閉</Text>
             </TouchableOpacity>
@@ -520,6 +482,13 @@ const styles = StyleSheet.create({
     color: "#1f2937",
   },
   noteInput: { minHeight: 80, textAlignVertical: "top" },
+  rateHint: {
+    fontSize: 13,
+    color: "#6b7280",
+    textAlign: "center",
+    marginBottom: 20,
+    marginTop: -12,
+  },
   modalOverlay: {
     position: "absolute",
     top: 0,
@@ -538,6 +507,9 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 320,
     maxHeight: "80%",
+  },
+  modalScroll: {
+    maxHeight: 320,
   },
   modalTitle: { fontSize: 18, fontWeight: "600", marginBottom: 12, color: "#1f2937" },
   modalRow: {

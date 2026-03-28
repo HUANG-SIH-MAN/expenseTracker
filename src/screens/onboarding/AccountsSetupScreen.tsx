@@ -37,7 +37,7 @@ type NavProp = NativeStackNavigationProp<OnboardingStackParamList, 'AccountsSetu
 export default function AccountsSetupScreen(): React.JSX.Element {
   const navigation = useNavigation<NavProp>();
   const [accounts, setAccounts] = useState<Account[]>([
-    { id: generateId(), name: '', initialBalance: 0, currency: 'TWD' },
+    { id: generateId(), name: '現金', initialBalance: 0, currency: 'TWD' },
   ]);
   const [currencyOptions, setCurrencyOptions] = useState<CurrencyOption[]>([]);
   const [amountInputs, setAmountInputs] = useState<Record<string, string>>({});
