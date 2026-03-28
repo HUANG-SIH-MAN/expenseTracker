@@ -83,6 +83,12 @@ export interface Transaction {
   toAccountId?: string;
   /** 僅轉帳：轉入端金額（轉入帳戶幣別） */
   transferAmount?: number;
+  /** 系統自動建立（如信用卡自動扣款） */
+  isSystemGenerated?: boolean;
+  /** 系統建立類型 */
+  systemGeneratedType?: "credit_card_autopay";
+  /** 鎖定原因（鎖定後不可編輯/刪除） */
+  lockedReason?: "credit_card_autopay";
   createdAt: string; // ISO 8601
 }
 
@@ -144,4 +150,30 @@ export interface BudgetSettings {
   weekendWeight: number;
   /** 視為「固定/投資」的支出類別 key，這些不計入「日常已花」 */
   fixedExpenseCategoryKeys: string[];
+}
+
+/** 信用卡自動扣款規則 */
+export interface CreditCardAutoPayRule {
+  id: string;
+  creditCardAccountId: string;
+  payFromAccountId: string;
+  statementDay: number;
+  paymentDay: number;
+  createdAt: string; // ISO 8601
+  updatedAt: string; // ISO 8601
+  isEnabled: boolean;
+  deletedAt?: string; // ISO 8601
+  deleteReason?: "source_account_deleted" | "credit_card_account_deleted";
+}
+
+/** 自動扣款執行紀錄 */
+export interface AutoPayExecutionLog {
+  id: string;
+  ruleId: string;
+  scheduledPaymentDate: string; // YYYY-MM-DD
+  status: "created" | "skipped" | "failed";
+  attempt: number;
+  createdTransactionId?: string;
+  detail?: string;
+  executedAt: string; // ISO 8601
 }

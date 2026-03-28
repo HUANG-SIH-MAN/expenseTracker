@@ -30,6 +30,9 @@ export const STORAGE_KEYS = {
   ANNUAL_BUDGET_ENTRIES: "@expense_tracker/annual_budget_entries",
   EXCHANGE_RATES: "@expense_tracker/exchange_rates",
   CUSTOM_CURRENCIES: "@expense_tracker/custom_currencies",
+  CREDIT_CARD_AUTOPAY_RULES: "@expense_tracker/credit_card_autopay_rules",
+  CREDIT_CARD_AUTOPAY_EXECUTION_LOGS:
+    "@expense_tracker/credit_card_autopay_execution_logs",
 } as const;
 
 /** 預設支出類別（之後可改為使用者自訂） */

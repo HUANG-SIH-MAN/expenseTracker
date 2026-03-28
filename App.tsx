@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { OnboardingProvider, useOnboarding } from './src/contexts/OnboardingContext';
 import { TransactionsProvider } from './src/contexts/TransactionsContext';
 import { CategoriesProvider } from './src/contexts/CategoriesContext';
@@ -39,14 +40,16 @@ function RootNavigator(): React.JSX.Element {
 
 export default function App(): React.JSX.Element {
   return (
-    <SafeAreaProvider>
-      <OnboardingProvider>
-        <NavigationContainer>
-          <RootNavigator />
-          <StatusBar style="auto" />
-        </NavigationContainer>
-      </OnboardingProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <OnboardingProvider>
+          <NavigationContainer>
+            <RootNavigator />
+            <StatusBar style="auto" />
+          </NavigationContainer>
+        </OnboardingProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 

@@ -14,7 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import type { NativeStackScreenProps, NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { Account, AnnualBudgetEntry, TransactionType } from '../types';
+import type { Account, AnnualBudgetEntry, Transaction, TransactionType } from '../types';
 import type { MainStackParamList } from '../navigation/MainStack';
 import { generateId } from '../utils/id';
 import { parseAmountInput } from '../utils/amountExpression';
@@ -47,6 +47,17 @@ const BTN_SELECT_ANNUAL = '選擇年度預算項目';
 const ANNUAL_BUDGET_NONE = '不指定';
 const ANNUAL_PICKER_TITLE = '選擇對應的年度預算項目';
 const BACK_ICON_SIZE = 28;
+const AUTOPAY_READONLY_HINT = '此筆交易為系統自動建立的信用卡自動扣款，僅可檢視，無法編輯或刪除。';
+
+function isLockedCreditCardAutopayTransaction(
+  transaction?: Transaction,
+): boolean {
+  if (!transaction) return false;
+  return (
+    transaction.systemGeneratedType === 'credit_card_autopay' ||
+    transaction.lockedReason === 'credit_card_autopay'
+  );
+}
 
 export default function AddTransactionScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
@@ -78,6 +89,7 @@ export default function AddTransactionScreen(): React.JSX.Element {
 
   const isEditMode = Boolean(transactionId);
   const existing = transactionId ? getTransactionById(transactionId) : undefined;
+  const isLockedAutopay = isLockedCreditCardAutopayTransaction(existing);
 
   const prevCategoryRef = useRef<string | null>(null);
   const prevTypeRef = useRef<TransactionType | null>(null);
@@ -203,6 +215,7 @@ export default function AddTransactionScreen(): React.JSX.Element {
   const amountError = amountStr.trim() !== '' && !parsed.valid ? parsed.error : undefined;
 
   const handleSubmit = async () => {
+    if (isLockedAutopay) return;
     if (!parsed.valid || amount <= 0) return;
     if (isEditMode && existing) {
       if (existing.recurringId) {
@@ -241,6 +254,36 @@ export default function AddTransactionScreen(): React.JSX.Element {
   const amountDisplay = amountStr.trim() === '' ? '金額' : amountStr;
 
   const bodyFlex = isNoteFocused ? BODY_FLEX_WHEN_NOTE_FOCUSED : BODY_FLEX_RATIO;
+
+  if (isEditMode && isLockedAutopay) {
+    return (
+      <View style={styles.container}>
+        <ScrollView
+          style={styles.bodyScroll}
+          contentContainerStyle={[
+            styles.bodyContent,
+            {
+              paddingTop: Math.max(16, insets.top),
+              paddingBottom: Math.max(12, insets.bottom),
+            },
+          ]}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          <View style={styles.typeRow}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} hitSlop={12}>
+              <Ionicons name="chevron-back" size={BACK_ICON_SIZE} color="#2563eb" />
+            </TouchableOpacity>
+            <Text style={styles.readOnlyTitle}>唯讀交易</Text>
+            <View style={styles.readOnlyTitleSpacer} />
+          </View>
+          <View style={styles.readOnlyHintBox}>
+            <Text style={styles.readOnlyHintText}>{AUTOPAY_READONLY_HINT}</Text>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -712,5 +755,27 @@ const styles = StyleSheet.create({
   },
   keypadWrap: {
     minHeight: 0,
+  },
+  readOnlyTitle: {
+    fontSize: 17,
+    color: '#1a1a1a',
+    fontWeight: '600',
+  },
+  readOnlyTitleSpacer: {
+    minWidth: 44,
+  },
+  readOnlyHintBox: {
+    marginTop: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  readOnlyHintText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#334155',
   },
 });

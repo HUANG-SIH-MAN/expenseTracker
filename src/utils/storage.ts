@@ -5,11 +5,14 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SQLite from "expo-sqlite";
 import { getDb } from "../db";
 import { STORAGE_KEYS } from "../constants";
+import { syncCreditCardAutopay } from "./creditCardAutopay";
 import type {
   Account,
+  AutoPayExecutionLog,
   AnnualBudgetEntry,
   BudgetSettings,
   CategoryItem,
+  CreditCardAutoPayRule,
   CurrencyCode,
   CurrencyOption,
   MonthlyFixedItem,
@@ -28,6 +31,8 @@ import {
 } from "../constants";
 
 const DEFAULT_PRIMARY_CURRENCY: CurrencyCode = "TWD";
+const SQLITE_TRUE = 1;
+const SQLITE_FALSE = 0;
 const SETTINGS_KEY_ONBOARDING = "hasCompletedOnboarding";
 const SETTINGS_KEY_PRIMARY_CURRENCY = "primaryCurrency";
 const SETTINGS_KEY_MIGRATED = "migratedFromAsyncStorage";
@@ -123,7 +128,7 @@ async function runMigrationFromAsyncStorageIfNeeded(
       if (Array.isArray(list) && list.length > 0) {
         for (const t of list) {
           await db.runAsync(
-            "INSERT OR REPLACE INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, to_account_id, transfer_amount, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, to_account_id, transfer_amount, is_system_generated, system_generated_type, locked_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             t.id,
             t.type,
             t.amount,
@@ -135,6 +140,9 @@ async function runMigrationFromAsyncStorageIfNeeded(
             (t as Transaction).annualBudgetEntryId ?? null,
             (t as Transaction).toAccountId ?? null,
             (t as Transaction).transferAmount ?? null,
+            (t as Transaction).isSystemGenerated === true ? SQLITE_TRUE : SQLITE_FALSE,
+            (t as Transaction).systemGeneratedType ?? null,
+            (t as Transaction).lockedReason ?? null,
             t.createdAt,
           );
         }
@@ -433,6 +441,9 @@ interface TransactionRow {
   annual_budget_entry_id: string | null;
   to_account_id: string | null;
   transfer_amount: number | null;
+  is_system_generated: number;
+  system_generated_type: string | null;
+  locked_reason: string | null;
   created_at: string;
 }
 
@@ -449,8 +460,22 @@ function rowToTransaction(r: TransactionRow): Transaction {
     annualBudgetEntryId: r.annual_budget_entry_id ?? undefined,
     toAccountId: r.to_account_id ?? undefined,
     transferAmount: r.transfer_amount ?? undefined,
+    isSystemGenerated: r.is_system_generated === SQLITE_TRUE,
+    systemGeneratedType:
+      (r.system_generated_type as Transaction["systemGeneratedType"]) ?? undefined,
+    lockedReason: (r.locked_reason as Transaction["lockedReason"]) ?? undefined,
     createdAt: r.created_at,
   };
+}
+
+function isLockedCreditCardAutoPayTransaction(input: {
+  systemGeneratedType?: string | null;
+  lockedReason?: string | null;
+}): boolean {
+  return (
+    input.systemGeneratedType === "credit_card_autopay" ||
+    input.lockedReason === "credit_card_autopay"
+  );
 }
 
 export async function getStoredTransactions(): Promise<Transaction[]> {
@@ -458,7 +483,7 @@ export async function getStoredTransactions(): Promise<Transaction[]> {
   if (db) {
     await ensureMigrationDone(db);
     const rows = await db.getAllAsync<TransactionRow>(
-      "SELECT id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, to_account_id, transfer_amount, created_at FROM transactions ORDER BY date, created_at",
+      "SELECT id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, to_account_id, transfer_amount, is_system_generated, system_generated_type, locked_reason, created_at FROM transactions ORDER BY date, created_at",
     );
     return rows.map(rowToTransaction);
   }
@@ -480,7 +505,7 @@ export async function saveTransactions(
     await db.runAsync("DELETE FROM transactions");
     for (const t of transactions) {
       await db.runAsync(
-        "INSERT INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, to_account_id, transfer_amount, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, to_account_id, transfer_amount, is_system_generated, system_generated_type, locked_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         t.id,
         t.type,
         t.amount,
@@ -492,6 +517,9 @@ export async function saveTransactions(
         t.annualBudgetEntryId ?? null,
         t.toAccountId ?? null,
         t.transferAmount ?? null,
+        t.isSystemGenerated === true ? SQLITE_TRUE : SQLITE_FALSE,
+        t.systemGeneratedType ?? null,
+        t.lockedReason ?? null,
         t.createdAt,
       );
     }
@@ -507,7 +535,7 @@ export async function addTransaction(transaction: Transaction): Promise<void> {
   const db = await getDb();
   if (db) {
     await db.runAsync(
-      "INSERT INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, to_account_id, transfer_amount, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, to_account_id, transfer_amount, is_system_generated, system_generated_type, locked_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       transaction.id,
       transaction.type,
       transaction.amount,
@@ -519,6 +547,9 @@ export async function addTransaction(transaction: Transaction): Promise<void> {
       transaction.annualBudgetEntryId ?? null,
       transaction.toAccountId ?? null,
       transaction.transferAmount ?? null,
+      transaction.isSystemGenerated === true ? SQLITE_TRUE : SQLITE_FALSE,
+      transaction.systemGeneratedType ?? null,
+      transaction.lockedReason ?? null,
       transaction.createdAt,
     );
     return;
@@ -534,7 +565,21 @@ export async function deleteTransaction(id: string): Promise<void> {
     const row = await db.getFirstAsync<{
       recurring_id: string | null;
       date: string;
-    }>("SELECT recurring_id, date FROM transactions WHERE id = ?", id);
+      system_generated_type: string | null;
+      locked_reason: string | null;
+    }>(
+      "SELECT recurring_id, date, system_generated_type, locked_reason FROM transactions WHERE id = ?",
+      id,
+    );
+    if (
+      row != null &&
+      isLockedCreditCardAutoPayTransaction({
+        systemGeneratedType: row.system_generated_type,
+        lockedReason: row.locked_reason,
+      })
+    ) {
+      throw new Error("Locked autopay transaction cannot be deleted");
+    }
     if (row?.recurring_id != null) {
       await addRecurringSkip(row.recurring_id, row.date);
     }
@@ -543,6 +588,15 @@ export async function deleteTransaction(id: string): Promise<void> {
   }
   const list = await getStoredTransactions();
   const found = list.find((t) => t.id === id);
+  if (
+    found != null &&
+    isLockedCreditCardAutoPayTransaction({
+      systemGeneratedType: found.systemGeneratedType,
+      lockedReason: found.lockedReason,
+    })
+  ) {
+    throw new Error("Locked autopay transaction cannot be deleted");
+  }
   if (found?.recurringId) {
     await addRecurringSkip(found.recurringId, found.date);
   }
@@ -553,10 +607,34 @@ export async function deleteTransaction(id: string): Promise<void> {
 export async function updateTransaction(
   transaction: Transaction,
 ): Promise<void> {
+  if (
+    isLockedCreditCardAutoPayTransaction({
+      systemGeneratedType: transaction.systemGeneratedType,
+      lockedReason: transaction.lockedReason,
+    })
+  ) {
+    throw new Error("Locked autopay transaction cannot be updated");
+  }
   const db = await getDb();
   if (db) {
+    const existing = await db.getFirstAsync<{
+      system_generated_type: string | null;
+      locked_reason: string | null;
+    }>(
+      "SELECT system_generated_type, locked_reason FROM transactions WHERE id = ?",
+      transaction.id,
+    );
+    if (
+      existing != null &&
+      isLockedCreditCardAutoPayTransaction({
+        systemGeneratedType: existing.system_generated_type,
+        lockedReason: existing.locked_reason,
+      })
+    ) {
+      throw new Error("Locked autopay transaction cannot be updated");
+    }
     await db.runAsync(
-      "UPDATE transactions SET type = ?, amount = ?, date = ?, category = ?, note = ?, account_id = ?, recurring_id = ?, annual_budget_entry_id = ?, to_account_id = ?, transfer_amount = ?, created_at = ? WHERE id = ?",
+      "UPDATE transactions SET type = ?, amount = ?, date = ?, category = ?, note = ?, account_id = ?, recurring_id = ?, annual_budget_entry_id = ?, to_account_id = ?, transfer_amount = ?, is_system_generated = ?, system_generated_type = ?, locked_reason = ?, created_at = ? WHERE id = ?",
       transaction.type,
       transaction.amount,
       transaction.date,
@@ -567,6 +645,9 @@ export async function updateTransaction(
       transaction.annualBudgetEntryId ?? null,
       transaction.toAccountId ?? null,
       transaction.transferAmount ?? null,
+      transaction.isSystemGenerated === true ? SQLITE_TRUE : SQLITE_FALSE,
+      transaction.systemGeneratedType ?? null,
+      transaction.lockedReason ?? null,
       transaction.createdAt,
       transaction.id,
     );
@@ -575,6 +656,15 @@ export async function updateTransaction(
   const list = await getStoredTransactions();
   const index = list.findIndex((t) => t.id === transaction.id);
   if (index < 0) return;
+  const existing = list[index];
+  if (
+    isLockedCreditCardAutoPayTransaction({
+      systemGeneratedType: existing.systemGeneratedType,
+      lockedReason: existing.lockedReason,
+    })
+  ) {
+    throw new Error("Locked autopay transaction cannot be updated");
+  }
   const next = [...list];
   next[index] = transaction;
   await saveTransactions(next);
@@ -1076,6 +1166,327 @@ export async function saveAnnualBudgetEntries(
   );
 }
 
+// --- 信用卡自動扣款 ---
+
+interface CreditCardAutoPayRuleRow {
+  id: string;
+  credit_card_account_id: string;
+  pay_from_account_id: string;
+  statement_day: number;
+  payment_day: number;
+  created_at: string;
+  updated_at: string;
+  is_enabled: number;
+  deleted_at: string | null;
+  delete_reason: string | null;
+}
+
+interface AutoPayExecutionLogRow {
+  id: string;
+  rule_id: string;
+  scheduled_payment_date: string;
+  status: string;
+  attempt: number;
+  created_transaction_id: string | null;
+  detail: string | null;
+  executed_at: string;
+}
+
+function rowToCreditCardAutoPayRule(
+  row: CreditCardAutoPayRuleRow,
+): CreditCardAutoPayRule {
+  return {
+    id: row.id,
+    creditCardAccountId: row.credit_card_account_id,
+    payFromAccountId: row.pay_from_account_id,
+    statementDay: row.statement_day,
+    paymentDay: row.payment_day,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    isEnabled: row.is_enabled === SQLITE_TRUE,
+    deletedAt: row.deleted_at ?? undefined,
+    deleteReason:
+      (row.delete_reason as CreditCardAutoPayRule["deleteReason"]) ?? undefined,
+  };
+}
+
+function rowToAutoPayExecutionLog(row: AutoPayExecutionLogRow): AutoPayExecutionLog {
+  return {
+    id: row.id,
+    ruleId: row.rule_id,
+    scheduledPaymentDate: row.scheduled_payment_date,
+    status: row.status as AutoPayExecutionLog["status"],
+    attempt: row.attempt,
+    createdTransactionId: row.created_transaction_id ?? undefined,
+    detail: row.detail ?? undefined,
+    executedAt: row.executed_at,
+  };
+}
+
+function assertNoDuplicateActiveAutoPayRules(
+  rules: CreditCardAutoPayRule[],
+): void {
+  const activeCardAccountIdSet = new Set<string>();
+  for (const rule of rules) {
+    if (!rule.isEnabled || rule.deletedAt != null) {
+      continue;
+    }
+    if (activeCardAccountIdSet.has(rule.creditCardAccountId)) {
+      throw new Error(
+        `Duplicate active credit card autopay rule for account: ${rule.creditCardAccountId}`,
+      );
+    }
+    activeCardAccountIdSet.add(rule.creditCardAccountId);
+  }
+}
+
+export async function getCreditCardAutoPayRules(): Promise<
+  CreditCardAutoPayRule[]
+> {
+  const db = await getDb();
+  if (db) {
+    await ensureMigrationDone(db);
+    const rows = await db.getAllAsync<CreditCardAutoPayRuleRow>(
+      "SELECT id, credit_card_account_id, pay_from_account_id, statement_day, payment_day, created_at, updated_at, is_enabled, deleted_at, delete_reason FROM credit_card_autopay_rules ORDER BY created_at, id",
+    );
+    return rows.map(rowToCreditCardAutoPayRule);
+  }
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.CREDIT_CARD_AUTOPAY_RULES);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as CreditCardAutoPayRule[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveCreditCardAutoPayRules(
+  rules: CreditCardAutoPayRule[],
+): Promise<void> {
+  assertNoDuplicateActiveAutoPayRules(rules);
+  const db = await getDb();
+  if (db) {
+    await db.withTransactionAsync(async () => {
+      await db.runAsync("DELETE FROM credit_card_autopay_rules");
+      for (const rule of rules) {
+        await db.runAsync(
+          "INSERT INTO credit_card_autopay_rules (id, credit_card_account_id, pay_from_account_id, statement_day, payment_day, created_at, updated_at, is_enabled, deleted_at, delete_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          rule.id,
+          rule.creditCardAccountId,
+          rule.payFromAccountId,
+          rule.statementDay,
+          rule.paymentDay,
+          rule.createdAt,
+          rule.updatedAt,
+          rule.isEnabled ? SQLITE_TRUE : SQLITE_FALSE,
+          rule.deletedAt ?? null,
+          rule.deleteReason ?? null,
+        );
+      }
+    });
+    return;
+  }
+  await AsyncStorage.setItem(
+    STORAGE_KEYS.CREDIT_CARD_AUTOPAY_RULES,
+    JSON.stringify(rules),
+  );
+}
+
+export async function getCreditCardAutoPayExecutionLogs(): Promise<
+  AutoPayExecutionLog[]
+> {
+  const db = await getDb();
+  if (db) {
+    await ensureMigrationDone(db);
+    const rows = await db.getAllAsync<AutoPayExecutionLogRow>(
+      "SELECT id, rule_id, scheduled_payment_date, status, attempt, created_transaction_id, detail, executed_at FROM credit_card_autopay_execution_logs ORDER BY executed_at, id",
+    );
+    return rows.map(rowToAutoPayExecutionLog);
+  }
+  try {
+    const raw = await AsyncStorage.getItem(
+      STORAGE_KEYS.CREDIT_CARD_AUTOPAY_EXECUTION_LOGS,
+    );
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as AutoPayExecutionLog[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveCreditCardAutoPayExecutionLogs(
+  logs: AutoPayExecutionLog[],
+): Promise<void> {
+  const db = await getDb();
+  if (db) {
+    await db.withTransactionAsync(async () => {
+      await db.runAsync("DELETE FROM credit_card_autopay_execution_logs");
+      for (const log of logs) {
+        await db.runAsync(
+          "INSERT INTO credit_card_autopay_execution_logs (id, rule_id, scheduled_payment_date, status, attempt, created_transaction_id, detail, executed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+          log.id,
+          log.ruleId,
+          log.scheduledPaymentDate,
+          log.status,
+          log.attempt,
+          log.createdTransactionId ?? null,
+          log.detail ?? null,
+          log.executedAt,
+        );
+      }
+    });
+    return;
+  }
+  await AsyncStorage.setItem(
+    STORAGE_KEYS.CREDIT_CARD_AUTOPAY_EXECUTION_LOGS,
+    JSON.stringify(logs),
+  );
+}
+
+export async function addCreditCardAutoPayExecutionLog(
+  log: AutoPayExecutionLog,
+): Promise<void> {
+  const db = await getDb();
+  if (db) {
+    await db.runAsync(
+      "INSERT INTO credit_card_autopay_execution_logs (id, rule_id, scheduled_payment_date, status, attempt, created_transaction_id, detail, executed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      log.id,
+      log.ruleId,
+      log.scheduledPaymentDate,
+      log.status,
+      log.attempt,
+      log.createdTransactionId ?? null,
+      log.detail ?? null,
+      log.executedAt,
+    );
+    return;
+  }
+  const currentLogs = await getCreditCardAutoPayExecutionLogs();
+  const duplicateIndex = currentLogs.findIndex(
+    (item) =>
+      item.ruleId === log.ruleId &&
+      item.scheduledPaymentDate === log.scheduledPaymentDate &&
+      item.attempt === log.attempt,
+  );
+  if (duplicateIndex >= 0) {
+    currentLogs[duplicateIndex] = log;
+  } else {
+    currentLogs.push(log);
+  }
+  await AsyncStorage.setItem(
+    STORAGE_KEYS.CREDIT_CARD_AUTOPAY_EXECUTION_LOGS,
+    JSON.stringify(currentLogs),
+  );
+}
+
+export async function softDeleteCreditCardAutoPayRule(
+  ruleId: string,
+  reason: NonNullable<CreditCardAutoPayRule["deleteReason"]>,
+): Promise<void> {
+  const deletedAt = new Date().toISOString();
+  const db = await getDb();
+  if (db) {
+    await db.runAsync(
+      "UPDATE credit_card_autopay_rules SET is_enabled = ?, deleted_at = ?, delete_reason = ?, updated_at = ? WHERE id = ?",
+      SQLITE_FALSE,
+      deletedAt,
+      reason,
+      deletedAt,
+      ruleId,
+    );
+    return;
+  }
+  const rules = await getCreditCardAutoPayRules();
+  let hasUpdated = false;
+  const nextRules = rules.map((rule) => {
+    if (rule.id !== ruleId) {
+      return rule;
+    }
+    hasUpdated = true;
+    return {
+      ...rule,
+      isEnabled: false,
+      deletedAt,
+      deleteReason: reason,
+      updatedAt: deletedAt,
+    };
+  });
+  if (!hasUpdated) {
+    return;
+  }
+  await AsyncStorage.setItem(
+    STORAGE_KEYS.CREDIT_CARD_AUTOPAY_RULES,
+    JSON.stringify(nextRules),
+  );
+}
+
+export async function syncCreditCardAutopayToTransactions(): Promise<{
+  createdCount: number;
+}> {
+  const { generateId } = await import("./id");
+  const [rules, logs, transactions, accounts] = await Promise.all([
+    getCreditCardAutoPayRules(),
+    getCreditCardAutoPayExecutionLogs(),
+    getStoredTransactions(),
+    getStoredAccounts(),
+  ]);
+  const accountIdSet = new Set(accounts.map((item) => item.id));
+  const nowIso = new Date().toISOString();
+
+  let hasRuleChanges = false;
+  const normalizedRules = rules.map((rule) => {
+    if (!rule.isEnabled || rule.deletedAt != null) {
+      return rule;
+    }
+    const hasSourceAccount = accountIdSet.has(rule.payFromAccountId);
+    const hasCreditCardAccount = accountIdSet.has(rule.creditCardAccountId);
+    if (hasSourceAccount && hasCreditCardAccount) {
+      return rule;
+    }
+    hasRuleChanges = true;
+    return {
+      ...rule,
+      isEnabled: false,
+      deletedAt: nowIso,
+      deleteReason: hasSourceAccount
+        ? "credit_card_account_deleted"
+        : "source_account_deleted",
+      updatedAt: nowIso,
+    };
+  });
+
+  if (hasRuleChanges) {
+    await saveCreditCardAutoPayRules(normalizedRules);
+  }
+
+  const validRules = normalizedRules.filter(
+    (item) => item.isEnabled && item.deletedAt == null,
+  );
+
+  const syncResult = syncCreditCardAutopay({
+    rules: validRules,
+    logs,
+    transactions,
+    now: new Date(),
+    generateId,
+  });
+
+  const hasTransactionChanges =
+    syncResult.transactions.length !== transactions.length;
+  const hasLogChanges = syncResult.logs.length !== logs.length;
+
+  if (hasTransactionChanges || hasLogChanges) {
+    await Promise.all([
+      hasTransactionChanges ? saveTransactions(syncResult.transactions) : null,
+      hasLogChanges ? saveCreditCardAutoPayExecutionLogs(syncResult.logs) : null,
+    ]);
+  }
+
+  return { createdCount: syncResult.createdCount };
+}
+
 /**
  * 清除所有用戶輸入的設定與資料（交易、類別、固定收支、預算、年度預算、帳本／導覽），回到未完成導覽狀態。此操作無法復原。
  */
@@ -1088,6 +1499,8 @@ export async function clearAllData(): Promise<void> {
     await db.runAsync("DELETE FROM recurring");
     await db.runAsync("DELETE FROM monthly_fixed_items");
     await db.runAsync("DELETE FROM annual_budget_entries");
+    await db.runAsync("DELETE FROM credit_card_autopay_execution_logs");
+    await db.runAsync("DELETE FROM credit_card_autopay_rules");
     await db.runAsync("DELETE FROM exchange_rates");
     await db.runAsync("DELETE FROM categories");
     await db.runAsync("DELETE FROM accounts");
@@ -1106,6 +1519,8 @@ export async function clearAllData(): Promise<void> {
   await saveRecurring([]);
   await saveMonthlyFixedItems([]);
   await AsyncStorage.removeItem(STORAGE_KEYS.ANNUAL_BUDGET_ENTRIES);
+  await AsyncStorage.removeItem(STORAGE_KEYS.CREDIT_CARD_AUTOPAY_RULES);
+  await AsyncStorage.removeItem(STORAGE_KEYS.CREDIT_CARD_AUTOPAY_EXECUTION_LOGS);
   await saveBudgetSettings({
     defaultMonthlyIncome: 0,
     weekdayWeight: BUDGET_DEFAULT_WEEKDAY_WEIGHT,

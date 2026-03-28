@@ -8,11 +8,11 @@ import {
   View,
   TextInput,
   TouchableOpacity,
-  KeyboardAvoidingView,
   Platform,
   ScrollView,
   Modal,
   Alert,
+  Keyboard,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -22,19 +22,20 @@ import { generateId } from '../utils/id';
 import { getStoredAccounts, updateStoredAccounts, getCurrencyOptions } from '../utils/storage';
 import type { CurrencyOption } from '../types';
 import type { MainStackParamList } from '../navigation/MainStack';
-import { KEYBOARD_SIGNED_DECIMAL } from '../constants';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { CalculatorKeypad } from '../components';
+import { parseAmountInput } from '../utils/amountExpression';
 
 const TITLE = '新增帳本';
 const LABEL_NAME = '帳戶名稱';
 const LABEL_CURRENCY = '幣別';
 const LABEL_INITIAL_AMOUNT = '初始金額（選填）';
 const PLACEHOLDER_NAME = '例如：現金、外幣錢包、永豐 (台幣)';
-const PLACEHOLDER_AMOUNT = '0';
 const BTN_SAVE = '儲存';
 const BACK_ICON_SIZE = 28;
 const ALERT_TITLE = '儲存失敗';
 const ALERT_MSG = '請重試。';
+const CALC_HEIGHT = 280;
 
 type NavProp = NativeStackNavigationProp<MainStackParamList, 'AddAccount'>;
 
@@ -52,6 +53,7 @@ export default function AddAccountScreen(): React.JSX.Element {
   const [initialAmountStr, setInitialAmountStr] = useState('');
   const [saving, setSaving] = useState(false);
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
+  const [showCalc, setShowCalc] = useState(false);
 
   useEffect(() => {
     getCurrencyOptions().then(setCurrencyOptions);
@@ -61,9 +63,15 @@ export default function AddAccountScreen(): React.JSX.Element {
     const trimmedName = name.trim();
     if (!trimmedName) return;
 
-    const initialBalance = initialAmountStr === ''
+    let amountStr = initialAmountStr;
+    const parsed = parseAmountInput(amountStr);
+    if (parsed.valid) {
+      amountStr = String(parsed.value);
+    }
+
+    const initialBalance = amountStr === ''
       ? 0
-      : parseFloat(initialAmountStr.replace(/[^0-9.-]/g, '')) || 0;
+      : parseFloat(amountStr.replace(/[^0-9.-]/g, '')) || 0;
     if (Number.isNaN(initialBalance)) return;
 
     setSaving(true);
@@ -84,14 +92,20 @@ export default function AddAccountScreen(): React.JSX.Element {
     }
   }, [name, currency, initialAmountStr, navigation]);
 
+  const handleCalcConfirm = useCallback(() => {
+    const parsed = parseAmountInput(initialAmountStr);
+    if (parsed.valid) {
+      setInitialAmountStr(parsed.value === 0 ? '' : String(parsed.value));
+    }
+    setShowCalc(false);
+  }, [initialAmountStr]);
+
   const canSave = name.trim().length > 0;
+  const isAmountPlaceholder = initialAmountStr.trim() === '';
+  const amountDisplayText = isAmountPlaceholder ? '點此輸入金額' : initialAmountStr;
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
-    >
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backBtn}
@@ -114,7 +128,10 @@ export default function AddAccountScreen(): React.JSX.Element {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: showCalc ? CALC_HEIGHT + 24 : insets.bottom + 40 },
+        ]}
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.field}>
@@ -126,6 +143,7 @@ export default function AddAccountScreen(): React.JSX.Element {
             value={name}
             onChangeText={setName}
             autoCapitalize="none"
+            onFocus={() => setShowCalc(false)}
           />
         </View>
 
@@ -133,7 +151,7 @@ export default function AddAccountScreen(): React.JSX.Element {
           <Text style={styles.label}>{LABEL_CURRENCY}</Text>
           <TouchableOpacity
             style={styles.input}
-            onPress={() => setShowCurrencyPicker(true)}
+            onPress={() => { setShowCalc(false); setShowCurrencyPicker(true); }}
           >
             <Text style={styles.currencyButtonText}>
               {getCurrencyLabel(currency, currencyOptions)}
@@ -143,14 +161,16 @@ export default function AddAccountScreen(): React.JSX.Element {
 
         <View style={styles.field}>
           <Text style={styles.label}>{LABEL_INITIAL_AMOUNT}</Text>
-          <TextInput
-            style={styles.input}
-            placeholder={PLACEHOLDER_AMOUNT}
-            placeholderTextColor="#9ca3af"
-            keyboardType={KEYBOARD_SIGNED_DECIMAL}
-            value={initialAmountStr}
-            onChangeText={(t) => setInitialAmountStr(t.replace(/[^0-9.-]/g, ''))}
-          />
+          <TouchableOpacity
+            style={[styles.input, styles.amountTouchable, showCalc && styles.amountTouchableFocused]}
+            onPress={() => { Keyboard.dismiss(); setShowCalc(true); }}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.amountText, isAmountPlaceholder && styles.amountPlaceholder]}>
+              {amountDisplayText}
+            </Text>
+            <Ionicons name="calculator-outline" size={18} color="#9ca3af" />
+          </TouchableOpacity>
         </View>
       </ScrollView>
 
@@ -183,7 +203,31 @@ export default function AddAccountScreen(): React.JSX.Element {
           </View>
         </TouchableOpacity>
       </Modal>
-    </KeyboardAvoidingView>
+
+      {/* 計算機面板（固定在底部） */}
+      {showCalc && (
+        <View
+          style={[
+            styles.calcPanel,
+            { height: CALC_HEIGHT + insets.bottom, paddingBottom: insets.bottom },
+          ]}
+        >
+          <View style={styles.calcHeader}>
+            <Text style={styles.calcExpression} numberOfLines={1}>
+              {initialAmountStr === '' ? '0' : initialAmountStr}
+            </Text>
+            <TouchableOpacity onPress={() => setShowCalc(false)} hitSlop={12}>
+              <Ionicons name="chevron-down" size={22} color="#6b7280" />
+            </TouchableOpacity>
+          </View>
+          <CalculatorKeypad
+            value={initialAmountStr}
+            onValueChange={setInitialAmountStr}
+            onConfirm={handleCalcConfirm}
+          />
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -208,7 +252,7 @@ const styles = StyleSheet.create({
   saveBtnTextDisabled: { color: '#9ca3af' },
   saveBtnDisabled: {},
   scroll: { flex: 1 },
-  scrollContent: { padding: 20, paddingBottom: 40 },
+  scrollContent: { padding: 20 },
   field: { marginBottom: 20 },
   label: { fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 8 },
   input: {
@@ -220,6 +264,22 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 16,
     color: '#1f2937',
+  },
+  amountTouchable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  amountTouchableFocused: {
+    borderColor: '#2563eb',
+  },
+  amountText: {
+    fontSize: 16,
+    color: '#1f2937',
+    flex: 1,
+  },
+  amountPlaceholder: {
+    color: '#9ca3af',
   },
   currencyButtonText: { fontSize: 16, color: '#1f2937' },
   modalOverlay: {
@@ -248,4 +308,41 @@ const styles = StyleSheet.create({
   },
   modalRowText: { fontSize: 16, color: '#374151' },
   modalRowCheck: { fontSize: 16, color: '#2563eb' },
+  calcPanel: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+  },
+  calcHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  calcExpression: {
+    fontSize: 22,
+    fontWeight: '500',
+    color: '#1f2937',
+    flex: 1,
+    marginRight: 8,
+    textAlign: 'right',
+  },
 });

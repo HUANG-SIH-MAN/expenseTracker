@@ -47,8 +47,18 @@ const BOTTOM_LABEL_FONT_SIZE = 11;
 const BUDGET_CARD_TITLE = '本月預算';
 const BUDGET_REMAINING = '剩餘可支配';
 const BUDGET_TODAY_SUGGESTED = '今日建議';
+const AUTOPAY_NOTICE_PREFIX = '已自動補登信用卡扣款';
+const AUTOPAY_NOTICE_SUFFIX = '筆';
+const AUTOPAY_NOTICE_HIDE_MS = 4000;
 
 type NavProp = NativeStackNavigationProp<MainStackParamList, 'Home'>;
+
+function isLockedCreditCardAutopayTransaction(item: Transaction): boolean {
+  return (
+    item.systemGeneratedType === 'credit_card_autopay' ||
+    item.lockedReason === 'credit_card_autopay'
+  );
+}
 
 function getYearMonthFromDateKey(dateKey: string): { year: number; month: number } {
   const [y, m] = dateKey.split('-').map(Number);
@@ -64,12 +74,37 @@ export default function HomeScreen(): React.JSX.Element {
   const navigation = useNavigation<NavProp>();
   const today = getTodayKey();
   const [selectedDate, setSelectedDate] = useState<string>(today);
+  const [autopayCreatedNoticeCount, setAutopayCreatedNoticeCount] = useState<number>(0);
+  const [lastHandledAutopayEventId, setLastHandledAutopayEventId] = useState<number>(0);
 
-  const { getTransactionsByDate, transactions, refreshTransactions, deleteTransaction } = useTransactions();
+  const {
+    getTransactionsByDate,
+    transactions,
+    refreshTransactions,
+    deleteTransaction,
+    latestAutopaySyncEvent,
+  } = useTransactions();
   const [confirmDeleteTransaction, setConfirmDeleteTransaction] = useState<Transaction | null>(null);
+  useEffect(() => {
+    if (autopayCreatedNoticeCount <= 0) return;
+    const timer = setTimeout(() => {
+      setAutopayCreatedNoticeCount(0);
+    }, AUTOPAY_NOTICE_HIDE_MS);
+    return () => clearTimeout(timer);
+  }, [autopayCreatedNoticeCount]);
+
+  useEffect(() => {
+    if (latestAutopaySyncEvent.eventId <= 0) return;
+    if (latestAutopaySyncEvent.eventId === lastHandledAutopayEventId) return;
+    setLastHandledAutopayEventId(latestAutopaySyncEvent.eventId);
+    if (latestAutopaySyncEvent.createdCount > 0) {
+      setAutopayCreatedNoticeCount(latestAutopaySyncEvent.createdCount);
+    }
+  }, [latestAutopaySyncEvent, lastHandledAutopayEventId]);
+
   useFocusEffect(
     useCallback(() => {
-      refreshTransactions();
+      void refreshTransactions();
     }, [refreshTransactions])
   );
   const { getCategoryLabel: getCategoryLabelFromContext, getCategoryIcon: getCategoryIconFromContext } = useCategories();
@@ -172,6 +207,7 @@ export default function HomeScreen(): React.JSX.Element {
 
   const renderItem = ({ item }: { item: Transaction }) => {
     const noteLine = item.note?.trim() ?? '';
+    const isLockedAutopay = isLockedCreditCardAutopayTransaction(item);
     return (
     <View style={styles.recordRow}>
       <View style={styles.recordLeft}>
@@ -217,33 +253,37 @@ export default function HomeScreen(): React.JSX.Element {
               : getAccountName(item.accountId)}
           </Text>
         </View>
-        <TouchableOpacity
-          style={styles.recordMenuBtn}
-          onPress={() =>
-            item.type === 'transfer'
-              ? navigation.navigate('AddTransfer', { selectedDate: item.date })
-              : handleEditTransaction(item)
-          }
-          hitSlop={RECORD_ACTION_HIT_SLOP}
-          accessibilityLabel="編輯"
-        >
-          <Ionicons
-            name="ellipsis-vertical"
-            size={RECORD_ROW_ACTION_ICON_SIZE}
-            color="#6b7280"
-          />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.recordDeleteBtn}
-          onPress={() => askDeleteTransaction(item)}
-          hitSlop={RECORD_ACTION_HIT_SLOP}
-        >
-          <Ionicons
-            name="trash-outline"
-            size={RECORD_ROW_ACTION_ICON_SIZE}
-            color="#dc2626"
-          />
-        </TouchableOpacity>
+        {!isLockedAutopay ? (
+          <>
+            <TouchableOpacity
+              style={styles.recordMenuBtn}
+              onPress={() =>
+                item.type === 'transfer'
+                  ? navigation.navigate('AddTransfer', { selectedDate: item.date })
+                  : handleEditTransaction(item)
+              }
+              hitSlop={RECORD_ACTION_HIT_SLOP}
+              accessibilityLabel="編輯"
+            >
+              <Ionicons
+                name="ellipsis-vertical"
+                size={RECORD_ROW_ACTION_ICON_SIZE}
+                color="#6b7280"
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.recordDeleteBtn}
+              onPress={() => askDeleteTransaction(item)}
+              hitSlop={RECORD_ACTION_HIT_SLOP}
+            >
+              <Ionicons
+                name="trash-outline"
+                size={RECORD_ROW_ACTION_ICON_SIZE}
+                color="#dc2626"
+              />
+            </TouchableOpacity>
+          </>
+        ) : null}
       </View>
     </View>
     );
@@ -292,6 +332,13 @@ export default function HomeScreen(): React.JSX.Element {
             </View>
           </TouchableOpacity>
         )}
+        {autopayCreatedNoticeCount > 0 ? (
+          <View style={styles.autopayNoticeCard}>
+            <Text style={styles.autopayNoticeText}>
+              {AUTOPAY_NOTICE_PREFIX} {autopayCreatedNoticeCount} {AUTOPAY_NOTICE_SUFFIX}
+            </Text>
+          </View>
+        ) : null}
 
         <Calendar
           year={year}
@@ -490,6 +537,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#1e40af',
+  },
+  autopayNoticeCard: {
+    backgroundColor: '#ecfdf5',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#a7f3d0',
+  },
+  autopayNoticeText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#047857',
   },
   bottomBar: {
     flexDirection: 'row',

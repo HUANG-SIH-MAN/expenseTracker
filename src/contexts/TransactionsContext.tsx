@@ -6,54 +6,90 @@ import { AppState, type AppStateStatus } from 'react-native';
 import type { Transaction } from '../types';
 import {
   syncRecurringToTransactions,
+  syncCreditCardAutopayToTransactions,
+  getStoredTransactions,
   addTransaction as addTransactionStorage,
   deleteTransaction as deleteTransactionStorage,
   updateTransaction as updateTransactionStorage,
 } from '../utils/storage';
 
+interface RefreshTransactionsResult {
+  autopayCreatedCount: number;
+}
+
+interface LatestAutopaySyncEvent {
+  eventId: number;
+  createdCount: number;
+}
+
 interface TransactionsContextValue {
   transactions: Transaction[];
-  addTransaction: (t: Transaction) => Promise<void>;
-  deleteTransaction: (id: string) => Promise<void>;
-  updateTransaction: (t: Transaction) => Promise<void>;
+  addTransaction: (t: Transaction) => Promise<RefreshTransactionsResult>;
+  deleteTransaction: (id: string) => Promise<RefreshTransactionsResult>;
+  updateTransaction: (t: Transaction) => Promise<RefreshTransactionsResult>;
   getTransactionsByDate: (date: string) => Transaction[];
   getTransactionById: (id: string) => Transaction | undefined;
   /** 重新同步固定收支並更新列表（如從設定頁新增固定收支後回首頁） */
-  refreshTransactions: () => Promise<void>;
+  refreshTransactions: () => Promise<RefreshTransactionsResult>;
+  latestAutopaySyncEvent: LatestAutopaySyncEvent;
 }
 
 const TransactionsContext = createContext<TransactionsContextValue | null>(null);
 
 export function TransactionsProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [latestAutopaySyncEvent, setLatestAutopaySyncEvent] = useState<LatestAutopaySyncEvent>({
+    eventId: 0,
+    createdCount: 0,
+  });
+
+  const runRefreshFlow = useCallback(async (): Promise<RefreshTransactionsResult> => {
+    await syncRecurringToTransactions();
+    const autopayResult = await syncCreditCardAutopayToTransactions();
+    setLatestAutopaySyncEvent((prev) => {
+      if (autopayResult.createdCount <= 0) {
+        return {
+          ...prev,
+          createdCount: 0,
+        };
+      }
+      return {
+        eventId: prev.eventId + 1,
+        createdCount: autopayResult.createdCount,
+      };
+    });
+    const next = await getStoredTransactions();
+    setTransactions(next);
+    return { autopayCreatedCount: autopayResult.createdCount };
+  }, []);
 
   useEffect(() => {
-    syncRecurringToTransactions().then(setTransactions);
-  }, []);
+    runRefreshFlow();
+  }, [runRefreshFlow]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
       if (nextAppState === 'active') {
-        syncRecurringToTransactions().then(setTransactions);
+        runRefreshFlow();
       }
     });
     return () => subscription.remove();
-  }, []);
+  }, [runRefreshFlow]);
 
   const addTransaction = useCallback(async (t: Transaction) => {
     await addTransactionStorage(t);
-    setTransactions((prev) => [...prev, t]);
-  }, []);
+    return runRefreshFlow();
+  }, [runRefreshFlow]);
 
   const deleteTransaction = useCallback(async (id: string) => {
     await deleteTransactionStorage(id);
-    setTransactions((prev) => prev.filter((x) => x.id !== id));
-  }, []);
+    return runRefreshFlow();
+  }, [runRefreshFlow]);
 
   const updateTransaction = useCallback(async (t: Transaction) => {
     await updateTransactionStorage(t);
-    setTransactions((prev) => prev.map((x) => (x.id === t.id ? t : x)));
-  }, []);
+    return runRefreshFlow();
+  }, [runRefreshFlow]);
 
   const getTransactionById = useCallback(
     (id: string) => transactions.find((t) => t.id === id),
@@ -65,10 +101,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     [transactions]
   );
 
-  const refreshTransactions = useCallback(async () => {
-    const next = await syncRecurringToTransactions();
-    setTransactions(next);
-  }, []);
+  const refreshTransactions = useCallback(async () => runRefreshFlow(), [runRefreshFlow]);
 
   const value: TransactionsContextValue = {
     transactions,
@@ -78,6 +111,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     getTransactionById,
     getTransactionsByDate,
     refreshTransactions,
+    latestAutopaySyncEvent,
   };
 
   return (

@@ -40,7 +40,8 @@ type SettingScreenName =
   | 'ExchangeRates'
   | 'CurrencySettings'
   | 'CategorySettings'
-  | 'RecurringSettings';
+  | 'RecurringSettings'
+  | 'CreditCardAutoPaySettings';
 
 const SETTING_ITEMS: { screen: SettingScreenName; title: string; subtitle?: string }[] = [
   { screen: 'PrimaryCurrency', title: '主要貨幣', subtitle: '記帳與餘額顯示使用的貨幣' },
@@ -48,6 +49,7 @@ const SETTING_ITEMS: { screen: SettingScreenName; title: string; subtitle?: stri
   { screen: 'CurrencySettings', title: '幣別管理', subtitle: '新增或刪除自訂幣別' },
   { screen: 'CategorySettings', title: '類別管理', subtitle: '自訂支出與收入類別、圖示' },
   { screen: 'RecurringSettings', title: '固定收支', subtitle: '週期性固定項目（如月租、薪水）' },
+  { screen: 'CreditCardAutoPaySettings', title: '信用卡自動扣款', subtitle: '設定結帳日與扣款日，自動建立轉帳' },
 ];
 
 type NavProp = NativeStackNavigationProp<MainStackParamList, 'Settings'>;
