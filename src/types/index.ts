@@ -200,6 +200,27 @@ export interface CashTopUpRule {
   updatedAt: string; // ISO 8601
 }
 
+/** 轉帳模板中的附加交易（收入或支出） */
+export interface TransferTemplateLinkedTx {
+  type: 'income' | 'expense';
+  amount: number;
+  category: string;
+  accountId?: string;
+  note?: string;
+}
+
+/** 轉帳模板：儲值時自動帶入轉帳欄位並建立附加交易 */
+export interface TransferTemplate {
+  id: string;
+  name: string;
+  fromAccountId?: string;
+  toAccountId?: string;
+  defaultAmount?: number;
+  linkedTransactions: TransferTemplateLinkedTx[];
+  createdAt: string; // ISO 8601
+  updatedAt: string; // ISO 8601
+}
+
 /** 自動扣款執行紀錄 */
 export interface AutoPayExecutionLog {
   id: string;

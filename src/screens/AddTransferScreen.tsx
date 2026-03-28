@@ -13,15 +13,17 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import type { Account } from "../types";
+import type { Account, TransferTemplate, TransferTemplateLinkedTx } from "../types";
 import { generateId } from "../utils/id";
 import { formatDateWithWeekday } from "../utils/date";
 import { useTransactions } from "../contexts/TransactionsContext";
+import { useCategories } from "../contexts/CategoriesContext";
 import {
   getStoredAccounts,
   getExchangeRates,
   getStoredPrimaryCurrency,
   getCurrencyOptions,
+  getTransferTemplates,
 } from "../utils/storage";
 import type { CurrencyOption } from "../types";
 import type { MainStackParamList } from "../navigation/MainStack";
@@ -57,7 +59,8 @@ export default function AddTransferScreen(): React.JSX.Element {
   const selectedDate =
     (route.params && "selectedDate" in route.params && route.params.selectedDate) ||
     new Date().toISOString().slice(0, 10);
-  const { addTransaction } = useTransactions();
+  const { addTransactions } = useTransactions();
+  const { getCategoryLabel } = useCategories();
 
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [currencyOptions, setCurrencyOptions] = useState<CurrencyOption[]>([]);
@@ -70,9 +73,14 @@ export default function AddTransferScreen(): React.JSX.Element {
   const [note, setNote] = useState("");
   const [showFromPicker, setShowFromPicker] = useState(false);
   const [showToPicker, setShowToPicker] = useState(false);
+  const [templates, setTemplates] = useState<TransferTemplate[]>([]);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [activeTemplateName, setActiveTemplateName] = useState<string | null>(null);
+  const [linkedTxsPreview, setLinkedTxsPreview] = useState<TransferTemplateLinkedTx[]>([]);
 
   useEffect(() => {
     getCurrencyOptions().then(setCurrencyOptions);
+    getTransferTemplates().then(setTemplates);
   }, []);
 
   useEffect(() => {
@@ -132,9 +140,10 @@ export default function AddTransferScreen(): React.JSX.Element {
 
   const handleSave = () => {
     if (!canSave || !fromAccountId || !toAccountId) return;
-    addTransaction({
+    const now = new Date().toISOString();
+    const transferTx = {
       id: generateId(),
-      type: "transfer",
+      type: "transfer" as const,
       amount: amountFrom,
       date: dateKey,
       category: CATEGORY_TRANSFER,
@@ -142,9 +151,20 @@ export default function AddTransferScreen(): React.JSX.Element {
       accountId: fromAccountId,
       toAccountId,
       transferAmount: amountTo,
-      createdAt: new Date().toISOString(),
-    });
-    navigation.goBack();
+      createdAt: now,
+    };
+    const extraTxs = linkedTxsPreview.map((lt) => ({
+      id: generateId(),
+      type: lt.type,
+      amount: lt.amount,
+      date: dateKey,
+      category: lt.category,
+      note: lt.note || undefined,
+      accountId: lt.accountId,
+      createdAt: now,
+    }));
+    addTransactions([transferTx, ...extraTxs]);
+    navigation.popToTop();
   };
 
   return (
@@ -170,6 +190,34 @@ export default function AddTransferScreen(): React.JSX.Element {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
+        {templates.length > 0 && (
+          <View style={styles.field}>
+            {activeTemplateName == null ? (
+              <TouchableOpacity
+                style={styles.templateBtn}
+                onPress={() => setShowTemplatePicker(true)}
+              >
+                <Ionicons name="copy-outline" size={18} color="#2563eb" />
+                <Text style={styles.templateBtnText}>使用模板</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.templateActive}>
+                <Ionicons name="copy" size={16} color="#2563eb" />
+                <Text style={styles.templateActiveName} numberOfLines={1}>模板：{activeTemplateName}</Text>
+                <TouchableOpacity
+                  hitSlop={8}
+                  onPress={() => {
+                    setActiveTemplateName(null);
+                    setLinkedTxsPreview([]);
+                  }}
+                >
+                  <Ionicons name="close-circle" size={18} color="#6b7280" />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
+
         <View style={styles.field}>
           <Text style={styles.label}>{LABEL_DATE}</Text>
           <Text style={styles.dateText}>{formatDateWithWeekday(dateKey)}</Text>
@@ -259,6 +307,30 @@ export default function AddTransferScreen(): React.JSX.Element {
             onChangeText={setNote}
           />
         </View>
+
+        {linkedTxsPreview.length > 0 && (
+          <View style={styles.field}>
+            <Text style={styles.label}>同時建立</Text>
+            <View style={styles.linkedPreviewBlock}>
+              {linkedTxsPreview.map((tx, i) => {
+                const accountName = accounts.find((a) => a.id === tx.accountId)?.name;
+                return (
+                  <View key={i} style={[styles.linkedPreviewRow, i === linkedTxsPreview.length - 1 && styles.linkedPreviewRowLast]}>
+                    <View style={[styles.linkedTypeBadge, { backgroundColor: tx.type === 'income' ? '#dcfce7' : '#fee2e2' }]}>
+                      <Text style={[styles.linkedTypeBadgeText, { color: tx.type === 'income' ? '#166534' : '#991b1b' }]}>
+                        {tx.type === 'income' ? '收入' : '支出'}
+                      </Text>
+                    </View>
+                    <Text style={styles.linkedPreviewAmount}>{tx.amount}</Text>
+                    <Text style={styles.linkedPreviewSub} numberOfLines={1}>
+                      {getCategoryLabel(tx.type, tx.category)}{accountName ? `・${accountName}` : ''}{tx.note ? `・${tx.note}` : ''}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
       </ScrollView>
 
       {showFromPicker && (
@@ -307,6 +379,42 @@ export default function AddTransferScreen(): React.JSX.Element {
               </TouchableOpacity>
             ))}
             <TouchableOpacity style={styles.modalClose} onPress={() => setShowToPicker(false)}>
+              <Text style={styles.modalCloseText}>關閉</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {showTemplatePicker && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>選擇模板</Text>
+            {templates.map((t) => (
+              <TouchableOpacity
+                key={t.id}
+                style={styles.modalRow}
+                onPress={() => {
+                  if (t.fromAccountId) setFromAccountId(t.fromAccountId);
+                  if (t.toAccountId) setToAccountId(t.toAccountId);
+                  if (t.defaultAmount != null) {
+                    setAmountFromStr(String(t.defaultAmount));
+                    setAmountToStr(String(t.defaultAmount));
+                  }
+                  setLinkedTxsPreview(t.linkedTransactions);
+                  setActiveTemplateName(t.name);
+                  setShowTemplatePicker(false);
+                }}
+              >
+                <View style={styles.templateModalRow}>
+                  <Text style={styles.modalRowText}>{t.name}</Text>
+                  {t.linkedTransactions.length > 0 && (
+                    <Text style={styles.templateModalSub}>附加 {t.linkedTransactions.length} 筆</Text>
+                  )}
+                </View>
+                {activeTemplateName === t.name && <Text style={styles.modalRowCheck}>✓</Text>}
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={styles.modalClose} onPress={() => setShowTemplatePicker(false)}>
               <Text style={styles.modalCloseText}>關閉</Text>
             </TouchableOpacity>
           </View>
@@ -394,4 +502,53 @@ const styles = StyleSheet.create({
   modalRowCheck: { fontSize: 16, color: "#2563eb" },
   modalClose: { marginTop: 12, paddingVertical: 12, alignItems: "center" },
   modalCloseText: { fontSize: 16, color: "#2563eb" },
+  templateBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: "#eff6ff",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    borderStyle: "dashed",
+    alignSelf: "flex-start",
+  },
+  templateBtnText: { fontSize: 15, fontWeight: "600", color: "#2563eb" },
+  templateActive: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: "#eff6ff",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+  },
+  templateActiveName: { flex: 1, fontSize: 14, fontWeight: "600", color: "#2563eb" },
+  linkedPreviewBlock: {
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    overflow: "hidden",
+  },
+  linkedPreviewRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f3f4f6",
+  },
+  linkedPreviewRowLast: { borderBottomWidth: 0 },
+  linkedTypeBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 5 },
+  linkedTypeBadgeText: { fontSize: 11, fontWeight: "600" },
+  linkedPreviewAmount: { fontSize: 15, fontWeight: "600", color: "#1f2937", marginRight: 4 },
+  linkedPreviewSub: { flex: 1, fontSize: 13, color: "#6b7280" },
+  templateModalRow: { flex: 1 },
+  templateModalSub: { fontSize: 12, color: "#6b7280", marginTop: 2 },
 });

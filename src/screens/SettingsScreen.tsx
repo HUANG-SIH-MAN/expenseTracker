@@ -42,7 +42,8 @@ type SettingScreenName =
   | 'CategorySettings'
   | 'RecurringSettings'
   | 'CreditCardAutoPaySettings'
-  | 'CashTopUpSettings';
+  | 'CashTopUpSettings'
+  | 'TransferTemplateSettings';
 
 const SETTING_ITEMS: { screen: SettingScreenName; title: string; subtitle?: string }[] = [
   { screen: 'PrimaryCurrency', title: '主要貨幣', subtitle: '記帳與餘額顯示使用的貨幣' },
@@ -52,6 +53,7 @@ const SETTING_ITEMS: { screen: SettingScreenName; title: string; subtitle?: stri
   { screen: 'RecurringSettings', title: '固定收支', subtitle: '週期性固定項目（如月租、薪水）' },
   { screen: 'CreditCardAutoPaySettings', title: '信用卡自動扣款', subtitle: '設定結帳日與扣款日，自動建立轉帳' },
   { screen: 'CashTopUpSettings', title: '現金自動補充', subtitle: '餘額低於門檻時自動記錄補充轉帳' },
+  { screen: 'TransferTemplateSettings', title: '轉帳模板', subtitle: '儲值時自動帶入帳戶與附加收支' },
 ];
 
 type NavProp = NativeStackNavigationProp<MainStackParamList, 'Settings'>;

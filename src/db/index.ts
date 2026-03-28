@@ -132,6 +132,17 @@ CREATE TABLE IF NOT EXISTS cash_topup_rules (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS transfer_templates (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  from_account_id TEXT,
+  to_account_id TEXT,
+  default_amount REAL,
+  linked_transactions TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_annual_budget_entries_year ON annual_budget_entries(year);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_transactions_annual_entry ON transactions(annual_budget_entry_id);
@@ -279,6 +290,20 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase | null> {
     );
   } catch {
     // Column already exists on existing DBs
+  }
+  try {
+    await db.execAsync(`CREATE TABLE IF NOT EXISTS transfer_templates (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      from_account_id TEXT,
+      to_account_id TEXT,
+      default_amount REAL,
+      linked_transactions TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`);
+  } catch {
+    // Table already exists
   }
   dbInstance = db;
   return db;

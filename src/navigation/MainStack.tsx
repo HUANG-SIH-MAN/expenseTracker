@@ -25,6 +25,8 @@ import CreditCardAutoPaySettingsScreen from '../screens/CreditCardAutoPaySetting
 import CreditCardAutoPayEditScreen from '../screens/CreditCardAutoPayEditScreen';
 import CashTopUpSettingsScreen from '../screens/CashTopUpSettingsScreen';
 import CashTopUpEditScreen from '../screens/CashTopUpEditScreen';
+import TransferTemplateSettingsScreen from '../screens/TransferTemplateSettingsScreen';
+import TransferTemplateEditScreen from '../screens/TransferTemplateEditScreen';
 import type { TransactionType } from '../types';
 
 export type MainStackParamList = {
@@ -63,6 +65,8 @@ export type MainStackParamList = {
   CreditCardAutoPayEdit: { ruleId?: string };
   CashTopUpSettings: undefined;
   CashTopUpEdit: { ruleId?: string };
+  TransferTemplateSettings: undefined;
+  TransferTemplateEdit: { templateId?: string };
   BudgetSettings: undefined;
   BudgetFixedEdit: { itemId?: string; linkedRecurringItemId?: string };
   ImportExport: undefined;
@@ -222,6 +226,16 @@ export default function MainStack(): React.JSX.Element {
       <Stack.Screen
         name="CashTopUpEdit"
         component={CashTopUpEditScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="TransferTemplateSettings"
+        component={TransferTemplateSettingsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="TransferTemplateEdit"
+        component={TransferTemplateEditScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>

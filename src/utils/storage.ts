@@ -23,6 +23,7 @@ import type {
   RecurringSkipItem,
   StoredCategories,
   Transaction,
+  TransferTemplate,
 } from "../types";
 import {
   BUDGET_DEFAULT_WEEKDAY_WEIGHT,
@@ -1619,6 +1620,134 @@ export async function syncCashTopUpToTransactions(): Promise<{ createdCount: num
   return { createdCount: syncResult.createdCount };
 }
 
+// ─── 轉帳模板 ──────────────────────────────────────────────────────────────
+
+const TRANSFER_TEMPLATES_ASYNC_KEY = "transfer_templates";
+
+interface TransferTemplateRow {
+  id: string;
+  name: string;
+  from_account_id: string | null;
+  to_account_id: string | null;
+  default_amount: number | null;
+  linked_transactions: string;
+  created_at: string;
+  updated_at: string;
+}
+
+function rowToTransferTemplate(row: TransferTemplateRow): TransferTemplate {
+  let linkedTransactions: TransferTemplate["linkedTransactions"] = [];
+  try {
+    linkedTransactions = JSON.parse(row.linked_transactions);
+  } catch {
+    // ignore parse error, default to empty
+  }
+  return {
+    id: row.id,
+    name: row.name,
+    fromAccountId: row.from_account_id ?? undefined,
+    toAccountId: row.to_account_id ?? undefined,
+    defaultAmount: row.default_amount ?? undefined,
+    linkedTransactions,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function getTransferTemplates(): Promise<TransferTemplate[]> {
+  const db = await getDb();
+  if (db) {
+    await ensureMigrationDone(db);
+    const rows = await db.getAllAsync<TransferTemplateRow>(
+      "SELECT id, name, from_account_id, to_account_id, default_amount, linked_transactions, created_at, updated_at FROM transfer_templates ORDER BY created_at, id",
+    );
+    return rows.map(rowToTransferTemplate);
+  }
+  try {
+    const raw = await AsyncStorage.getItem(TRANSFER_TEMPLATES_ASYNC_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as TransferTemplate[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveTransferTemplate(
+  template: TransferTemplate,
+): Promise<void> {
+  const db = await getDb();
+  if (db) {
+    await db.runAsync(
+      "INSERT OR REPLACE INTO transfer_templates (id, name, from_account_id, to_account_id, default_amount, linked_transactions, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      template.id,
+      template.name,
+      template.fromAccountId ?? null,
+      template.toAccountId ?? null,
+      template.defaultAmount ?? null,
+      JSON.stringify(template.linkedTransactions),
+      template.createdAt,
+      template.updatedAt,
+    );
+    return;
+  }
+  const list = await getTransferTemplates();
+  const idx = list.findIndex((t) => t.id === template.id);
+  if (idx >= 0) {
+    list[idx] = template;
+  } else {
+    list.push(template);
+  }
+  await AsyncStorage.setItem(TRANSFER_TEMPLATES_ASYNC_KEY, JSON.stringify(list));
+}
+
+export async function deleteTransferTemplate(id: string): Promise<void> {
+  const db = await getDb();
+  if (db) {
+    await db.runAsync("DELETE FROM transfer_templates WHERE id = ?", id);
+    return;
+  }
+  const list = await getTransferTemplates();
+  const next = list.filter((t) => t.id !== id);
+  await AsyncStorage.setItem(TRANSFER_TEMPLATES_ASYNC_KEY, JSON.stringify(next));
+}
+
+export async function addTransactionsAtomically(
+  transactions: Transaction[],
+): Promise<void> {
+  const db = await getDb();
+  if (db) {
+    await db.withTransactionAsync(async () => {
+      for (const transaction of transactions) {
+        await db.runAsync(
+          "INSERT INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, monthly_fixed_item_id, to_account_id, transfer_amount, is_system_generated, system_generated_type, locked_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          transaction.id,
+          transaction.type,
+          transaction.amount,
+          transaction.date,
+          transaction.category,
+          transaction.note ?? null,
+          transaction.accountId ?? null,
+          transaction.recurringId ?? null,
+          transaction.annualBudgetEntryId ?? null,
+          transaction.monthlyFixedItemId ?? null,
+          transaction.toAccountId ?? null,
+          transaction.transferAmount ?? null,
+          transaction.isSystemGenerated === true ? SQLITE_TRUE : SQLITE_FALSE,
+          transaction.systemGeneratedType ?? null,
+          transaction.lockedReason ?? null,
+          transaction.createdAt,
+        );
+      }
+    });
+    return;
+  }
+  // Web fallback: sequential writes
+  for (const transaction of transactions) {
+    await addTransaction(transaction);
+  }
+}
+
 /**
  * 清除所有用戶輸入的設定與資料（交易、類別、固定收支、預算、年度預算、帳本／導覽），回到未完成導覽狀態。此操作無法復原。
  */
@@ -1634,6 +1763,7 @@ export async function clearAllData(): Promise<void> {
     await db.runAsync("DELETE FROM credit_card_autopay_execution_logs");
     await db.runAsync("DELETE FROM credit_card_autopay_rules");
     await db.runAsync("DELETE FROM cash_topup_rules");
+    await db.runAsync("DELETE FROM transfer_templates");
     await db.runAsync("DELETE FROM exchange_rates");
     await db.runAsync("DELETE FROM categories");
     await db.runAsync("DELETE FROM accounts");
@@ -1655,6 +1785,7 @@ export async function clearAllData(): Promise<void> {
   await AsyncStorage.removeItem(STORAGE_KEYS.CREDIT_CARD_AUTOPAY_RULES);
   await AsyncStorage.removeItem(STORAGE_KEYS.CREDIT_CARD_AUTOPAY_EXECUTION_LOGS);
   await AsyncStorage.removeItem(STORAGE_KEYS.CASH_TOPUP_RULES);
+  await AsyncStorage.removeItem(TRANSFER_TEMPLATES_ASYNC_KEY);
   await saveBudgetSettings({
     defaultMonthlyIncome: 0,
     weekdayWeight: BUDGET_DEFAULT_WEEKDAY_WEIGHT,

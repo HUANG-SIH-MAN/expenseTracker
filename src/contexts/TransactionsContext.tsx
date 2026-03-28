@@ -12,6 +12,7 @@ import {
   addTransaction as addTransactionStorage,
   deleteTransaction as deleteTransactionStorage,
   updateTransaction as updateTransactionStorage,
+  addTransactionsAtomically,
 } from '../utils/storage';
 
 interface RefreshTransactionsResult {
@@ -26,6 +27,7 @@ interface LatestAutopaySyncEvent {
 interface TransactionsContextValue {
   transactions: Transaction[];
   addTransaction: (t: Transaction) => Promise<RefreshTransactionsResult>;
+  addTransactions: (txs: Transaction[]) => Promise<RefreshTransactionsResult>;
   deleteTransaction: (id: string) => Promise<RefreshTransactionsResult>;
   updateTransaction: (t: Transaction) => Promise<RefreshTransactionsResult>;
   getTransactionsByDate: (date: string) => Transaction[];
@@ -83,6 +85,11 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     return runRefreshFlow();
   }, [runRefreshFlow]);
 
+  const addTransactions = useCallback(async (txs: Transaction[]) => {
+    await addTransactionsAtomically(txs);
+    return runRefreshFlow();
+  }, [runRefreshFlow]);
+
   const deleteTransaction = useCallback(async (id: string) => {
     await deleteTransactionStorage(id);
     return runRefreshFlow();
@@ -108,6 +115,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   const value: TransactionsContextValue = {
     transactions,
     addTransaction,
+    addTransactions,
     deleteTransaction,
     updateTransaction,
     getTransactionById,
