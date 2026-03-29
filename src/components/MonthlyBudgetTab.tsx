@@ -1,5 +1,5 @@
 /**
- * 月預算 Tab：每月固定/預估支出列表 + 預算設定（月收入、權重、固定類別）
+ * 月預算 Tab：每月固定/預估支出列表 + 預算設定（月收入、權重）
  */
 import React, { useState, useCallback } from 'react';
 import {
@@ -15,7 +15,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { MainStackParamList } from '../navigation/MainStack';
 import type { MonthlyFixedItem, RecurringItem } from '../types';
 import { useBudget } from '../contexts/BudgetContext';
-import { useCategories } from '../contexts/CategoriesContext';
 import { useTransactions } from '../contexts/TransactionsContext';
 import { getTodayKey } from '../utils/date';
 import { getStoredRecurring } from '../utils/storage';
@@ -27,8 +26,6 @@ const LABEL_DEFAULT_INCOME = '預設月收入';
 const LABEL_DEFAULT_INCOME_HINT = '未記帳時用於計算可支配額';
 const LABEL_WEEKDAY_WEIGHT = '平日權重';
 const LABEL_WEEKEND_WEIGHT = '假日權重';
-const LABEL_FIXED_CATEGORIES = '固定支出類別';
-const LABEL_FIXED_CATEGORIES_HINT = '勾選的類別不計入「日常已花」';
 const BTN_SAVE_SETTINGS = '儲存設定';
 const EMPTY_HINT = '尚無固定支出項目，可點下方按鈕新增';
 
@@ -62,7 +59,6 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
     saveBudgetSettings,
     saveMonthlyFixedItems,
   } = useBudget();
-  const { expenseCategories, getCategoryLabel } = useCategories();
   const { transactions } = useTransactions();
   const todayKey = getTodayKey();
   const [todayYear, todayMonth] = React.useMemo(() => {
@@ -100,14 +96,12 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
   const [defaultIncomeStr, setDefaultIncomeStr] = useState('');
   const [weekdayWeightStr, setWeekdayWeightStr] = useState('');
   const [weekendWeightStr, setWeekendWeightStr] = useState('');
-  const [fixedKeys, setFixedKeys] = useState<string[]>([]);
   const [settingsDirty, setSettingsDirty] = useState(false);
 
   React.useEffect(() => {
     setDefaultIncomeStr(String(budgetSettings.defaultMonthlyIncome));
     setWeekdayWeightStr(String(budgetSettings.weekdayWeight));
     setWeekendWeightStr(String(budgetSettings.weekendWeight));
-    setFixedKeys(budgetSettings.fixedExpenseCategoryKeys);
   }, [budgetSettings]);
 
   const openAdd = () => {
@@ -136,13 +130,6 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
     setConfirmDeleteItem(null);
   }, [confirmDeleteItem, monthlyFixedItems, saveMonthlyFixedItems]);
 
-  const toggleFixedCategory = (key: string) => {
-    setFixedKeys((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
-    );
-    setSettingsDirty(true);
-  };
-
   const handleSaveSettings = useCallback(async () => {
     const defaultMonthlyIncome = Number(defaultIncomeStr) || 0;
     const weekdayWeight = Number(weekdayWeightStr) || 1;
@@ -151,14 +138,12 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
       defaultMonthlyIncome,
       weekdayWeight,
       weekendWeight,
-      fixedExpenseCategoryKeys: fixedKeys,
     });
     setSettingsDirty(false);
   }, [
     defaultIncomeStr,
     weekdayWeightStr,
     weekendWeightStr,
-    fixedKeys,
     saveBudgetSettings,
   ]);
 
@@ -173,6 +158,29 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.sectionTitle}>{SECTION_FIXED}</Text>
+        {monthlyFixedItems.length > 0 && (() => {
+          const totalTWD = monthlyFixedItems.reduce((sum, item) => sum + item.estimatedAmount, 0);
+          const totalActual = monthlyFixedItems.reduce(
+            (sum, item) => sum + getActualForFixedItem(transactions, item.id, todayYear, todayMonth),
+            0,
+          );
+          return (
+            <View style={styles.summaryCard}>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>每月預估固定花費</Text>
+                <Text style={styles.summaryAmount}>NT${Math.round(totalTWD).toLocaleString()}</Text>
+              </View>
+              {totalActual > 0 && (
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>本月實際已花</Text>
+                  <Text style={[styles.summaryAmount, totalActual > totalTWD && styles.summaryOver]}>
+                    NT${Math.round(totalActual).toLocaleString()}
+                  </Text>
+                </View>
+              )}
+            </View>
+          );
+        })()}
         {monthlyFixedItems.length === 0 ? (
           <Text style={styles.emptyHint}>{EMPTY_HINT}</Text>
         ) : (
@@ -312,32 +320,7 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
               keyboardType="numeric"
             />
           </View>
-          <View style={styles.field}>
-            <Text style={styles.fieldLabel}>{LABEL_FIXED_CATEGORIES}</Text>
-            <Text style={styles.fieldHint}>{LABEL_FIXED_CATEGORIES_HINT}</Text>
-            <View style={styles.checkboxList}>
-              {expenseCategories.map((c) => {
-                const checked = fixedKeys.includes(c.key);
-                return (
-                  <TouchableOpacity
-                    key={c.key}
-                    style={styles.checkboxRow}
-                    onPress={() => toggleFixedCategory(c.key)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons
-                      name={checked ? 'checkbox' : 'square-outline'}
-                      size={22}
-                      color={checked ? '#2563eb' : '#9ca3af'}
-                    />
-                    <Text style={styles.checkboxLabel}>
-                      {getCategoryLabel('expense', c.key)}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
+
           {settingsDirty && (
             <TouchableOpacity
               style={styles.saveSettingsBtn}
@@ -395,6 +378,33 @@ const styles = StyleSheet.create({
   },
   sectionTitleSecond: {
     marginTop: 24,
+  },
+  summaryCard: {
+    backgroundColor: '#eff6ff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 12,
+    gap: 6,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  summaryLabel: {
+    fontSize: 14,
+    color: '#1d4ed8',
+  },
+  summaryAmount: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1d4ed8',
+  },
+  summaryOver: {
+    color: '#dc2626',
   },
   emptyHint: {
     fontSize: 14,
@@ -558,19 +568,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#1f2937',
   },
-  checkboxList: {
-    marginTop: 8,
-  },
-  checkboxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 8,
-  },
-  checkboxLabel: {
-    fontSize: 15,
-    color: '#374151',
-  },
+
   saveSettingsBtn: {
     backgroundColor: '#2563eb',
     paddingVertical: 12,

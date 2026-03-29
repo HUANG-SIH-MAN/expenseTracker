@@ -994,7 +994,6 @@ export async function getBudgetSettings(): Promise<BudgetSettings> {
     defaultMonthlyIncome: 0,
     weekdayWeight: BUDGET_DEFAULT_WEEKDAY_WEIGHT,
     weekendWeight: BUDGET_DEFAULT_WEEKEND_WEIGHT,
-    fixedExpenseCategoryKeys: [] as string[],
   };
   const db = await getDb();
   if (db) {
@@ -1009,9 +1008,6 @@ export async function getBudgetSettings(): Promise<BudgetSettings> {
           Number(parsed.weekdayWeight) || BUDGET_DEFAULT_WEEKDAY_WEIGHT,
         weekendWeight:
           Number(parsed.weekendWeight) || BUDGET_DEFAULT_WEEKEND_WEIGHT,
-        fixedExpenseCategoryKeys: Array.isArray(parsed.fixedExpenseCategoryKeys)
-          ? parsed.fixedExpenseCategoryKeys
-          : [],
       };
     } catch {
       return defaults;
@@ -1027,9 +1023,6 @@ export async function getBudgetSettings(): Promise<BudgetSettings> {
         Number(parsed.weekdayWeight) || BUDGET_DEFAULT_WEEKDAY_WEIGHT,
       weekendWeight:
         Number(parsed.weekendWeight) || BUDGET_DEFAULT_WEEKEND_WEIGHT,
-      fixedExpenseCategoryKeys: Array.isArray(parsed.fixedExpenseCategoryKeys)
-        ? parsed.fixedExpenseCategoryKeys
-        : [],
     };
   } catch {
     return defaults;
@@ -1779,7 +1772,6 @@ export async function clearAllData(): Promise<void> {
       defaultMonthlyIncome: 0,
       weekdayWeight: BUDGET_DEFAULT_WEEKDAY_WEIGHT,
       weekendWeight: BUDGET_DEFAULT_WEEKEND_WEIGHT,
-      fixedExpenseCategoryKeys: [],
     });
     return;
   }

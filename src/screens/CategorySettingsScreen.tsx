@@ -198,6 +198,7 @@ export default function CategorySettingsScreen(): React.JSX.Element {
   const { expenseCategories, incomeCategories, updateCategories } = useCategories();
   const [activeTab, setActiveTab] = useState<TransactionType>('expense');
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [allNonDeletedAccounts, setAllNonDeletedAccounts] = useState<Account[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingItem, setEditingItem] = useState<CategoryItem | null>(null);
   const [editLabel, setEditLabel] = useState('');
@@ -214,6 +215,7 @@ export default function CategorySettingsScreen(): React.JSX.Element {
       setEditingItem(null);
       getStoredAccounts().then((list: Account[]) => {
         setAccounts(list.filter((a) => a.name.trim() !== '' && !a.isHidden && !a.isDeleted));
+        setAllNonDeletedAccounts(list.filter((a) => a.name.trim() !== '' && !a.isDeleted));
       });
     }, [])
   );
@@ -230,7 +232,7 @@ export default function CategorySettingsScreen(): React.JSX.Element {
     setEditingItem(item);
     setEditLabel(item.label);
     setEditIcon(item.icon);
-    const validIds = new Set(accounts.map((a) => a.id));
+    const validIds = new Set(allNonDeletedAccounts.map((a) => a.id));
     setEditDefaultAccountId(resolveEffectiveDefaultAccountId(item, validIds));
     setModalVisible(true);
   };
@@ -312,14 +314,14 @@ export default function CategorySettingsScreen(): React.JSX.Element {
     (item: CategoryItem): string | undefined => {
       const id = item.defaultAccountId;
       if (id == null || id === '') return undefined;
-      const validIds = new Set(accounts.map((a) => a.id));
+      const validIds = new Set(allNonDeletedAccounts.map((a) => a.id));
       if (resolveEffectiveDefaultAccountId(item, validIds)) {
-        const name = accounts.find((a) => a.id === id)?.name?.trim();
+        const name = allNonDeletedAccounts.find((a) => a.id === id)?.name?.trim();
         return name ? `預設：${name}` : undefined;
       }
       return DEFAULT_ACCOUNT_INVALID;
     },
-    [accounts],
+    [allNonDeletedAccounts],
   );
 
   const swapCategories = useCallback((index1: number, index2: number) => {

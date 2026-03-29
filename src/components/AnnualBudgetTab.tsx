@@ -10,6 +10,8 @@ import {
   ScrollView,
   TextInput,
   Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { AnnualBudgetEntry, TransactionType } from '../types';
@@ -403,16 +405,26 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
         animationType="fade"
         onRequestClose={closeModal}
       >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={closeModal}
+        <KeyboardAvoidingView
+          style={styles.keyboardAvoidingView}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <TouchableOpacity
-            style={styles.modalContent}
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={closeModal}
+          >
+          <TouchableOpacity
             activeOpacity={1}
             onPress={(e) => e.stopPropagation()}
+            style={styles.modalContentWrapper}
           >
+            <ScrollView
+              style={styles.modalContent}
+              contentContainerStyle={styles.modalContentInner}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
             <Text style={styles.modalTitle}>
               {editingEntry ? MODAL_TITLE_EDIT : MODAL_TITLE_ADD}
             </Text>
@@ -497,8 +509,10 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
                 <Text style={styles.saveBtnText}>{BTN_SAVE}</Text>
               </TouchableOpacity>
             </View>
+            </ScrollView>
           </TouchableOpacity>
-        </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal
@@ -663,6 +677,9 @@ const styles = StyleSheet.create({
   entryPlanned: { fontSize: 13, color: '#6b7280' },
   entryActual: { fontSize: 13, color: '#059669', fontWeight: '500' },
   entryDelete: { padding: 8 },
+  keyboardAvoidingView: {
+    flex: 1,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -670,12 +687,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
-  modalContent: {
+  modalContentWrapper: {
     backgroundColor: '#fff',
     borderRadius: 16,
-    padding: 20,
     width: '100%',
     maxWidth: 400,
+    maxHeight: '90%',
+  },
+  modalContent: {
+    width: '100%',
+  },
+  modalContentInner: {
+    padding: 20,
   },
   modalTitle: { fontSize: 18, fontWeight: '600', color: '#1f2937', marginBottom: 16 },
   modalField: { marginBottom: 16 },

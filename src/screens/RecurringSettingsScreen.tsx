@@ -131,6 +131,9 @@ export default function RecurringSettingsScreen(): React.JSX.Element {
                     <Text style={styles.rowCategory} numberOfLines={1}>
                       {getCategoryLabel(item.type, item.category)}
                     </Text>
+                    {item.note != null && item.note.trim() !== '' ? (
+                      <Text style={styles.rowNote} numberOfLines={1}>{item.note.trim()}</Text>
+                    ) : null}
                     <Text style={styles.rowRepeat}>{formatRecurringRepeat(item)}</Text>
                   </View>
                 </View>
@@ -272,6 +275,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6b7280',
     marginTop: 2,
+  },
+  rowNote: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 1,
   },
   rowRepeat: {
     fontSize: 12,

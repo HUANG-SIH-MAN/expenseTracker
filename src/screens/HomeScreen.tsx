@@ -44,9 +44,12 @@ const BOTTOM_SETTINGS = '設定';
 const BOTTOM_BAR_HEIGHT = 56;
 const BOTTOM_ICON_SIZE = 24;
 const BOTTOM_LABEL_FONT_SIZE = 11;
-const BUDGET_CARD_TITLE = '本月預算';
+const BUDGET_CARD_TITLE_CURRENT = '本月預算';
 const BUDGET_REMAINING = '剩餘可支配';
-const BUDGET_TODAY_SUGGESTED = '今日建議';
+const BUDGET_SETTLEMENT_REMAINING = '月底剩餘';
+const BUDGET_SETTLEMENT_SPENT = '日常已花';
+const BUDGET_DISPOSABLE = '月可支配';
+const BUDGET_DAILY_ESTIMATE = '每日預估';
 const AUTOPAY_NOTICE_PREFIX = '已自動補登信用卡扣款';
 const AUTOPAY_NOTICE_SUFFIX = '筆';
 const AUTOPAY_NOTICE_HIDE_MS = 4000;
@@ -115,13 +118,30 @@ export default function HomeScreen(): React.JSX.Element {
     getExchangeRates().then(({ rates }) => setRatesToPrimary(rates));
     getStoredRecurring().then(setRecurringItems);
   }, []);
-  const budgetSummary = useMemo(() => {
-    return getBudgetSummary(today, transactions, monthlyFixedItems, budgetSettings, ratesToPrimary, recurringItems);
-  }, [today, transactions, monthlyFixedItems, budgetSettings, ratesToPrimary, recurringItems]);
   const { year, month } = useMemo(
     () => getYearMonthFromDateKey(selectedDate),
     [selectedDate]
   );
+  const todayYM = today.slice(0, 7);
+  const selectedYM = selectedDate.slice(0, 7);
+  const referenceKey = useMemo(() => {
+    if (selectedYM === todayYM) return selectedDate;
+    if (selectedYM < todayYM) {
+      const lastDay = new Date(year, month, 0).getDate();
+      return `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    }
+    return `${year}-${String(month).padStart(2, '0')}-01`;
+  }, [selectedDate, selectedYM, todayYM, year, month]);
+  const budgetMode = useMemo(() => {
+    if (selectedYM < todayYM) return 'past';
+    if (selectedYM > todayYM) return 'future';
+    if (selectedDate > today) return 'current-future';
+    return 'current';
+  }, [selectedDate, today, selectedYM, todayYM]);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const budgetSummary = useMemo(() => {
+    return getBudgetSummary(referenceKey, transactions, monthlyFixedItems, budgetSettings, ratesToPrimary, recurringItems);
+  }, [referenceKey, transactions, monthlyFixedItems, budgetSettings, ratesToPrimary, recurringItems]);
   const datesWithRecords = useMemo(() => {
     const set = new Set<string>();
     for (const t of transactions) {
@@ -317,27 +337,47 @@ export default function HomeScreen(): React.JSX.Element {
           </TouchableOpacity>
         </View>
 
-        {budgetSummary != null && (
-          <TouchableOpacity
-            style={styles.budgetCard}
-            onPress={() => navigation.navigate('BudgetSettings')}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.budgetCardTitle}>{BUDGET_CARD_TITLE}</Text>
-            <View style={styles.budgetCardRow}>
-              <Text style={styles.budgetCardLabel}>{BUDGET_REMAINING}</Text>
-              <Text style={styles.budgetCardAmount}>
-                {Math.round(budgetSummary.remainingDisposable)}
-              </Text>
-            </View>
-            <View style={styles.budgetCardRow}>
-              <Text style={styles.budgetCardLabel}>{BUDGET_TODAY_SUGGESTED}</Text>
-              <Text style={styles.budgetCardAmount}>
-                {Math.round(budgetSummary.todaySuggestedBudget)}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        )}
+        {budgetSummary != null && (() => {
+          const selectedDay = parseInt(selectedDate.slice(8, 10), 10);
+          const cardTitle =
+            budgetMode === 'past' ? `${month}月結算` :
+            budgetMode === 'future' ? `${month}月預算` :
+            BUDGET_CARD_TITLE_CURRENT;
+          const row1Label =
+            budgetMode === 'past' ? BUDGET_SETTLEMENT_REMAINING :
+            budgetMode === 'future' ? BUDGET_DISPOSABLE :
+            BUDGET_REMAINING;
+          const row1Value =
+            budgetMode === 'future'
+              ? Math.round(budgetSummary.monthlyDisposable)
+              : Math.round(budgetSummary.remainingDisposable);
+          const row2Label =
+            budgetMode === 'past' ? BUDGET_SETTLEMENT_SPENT :
+            budgetMode === 'future' ? BUDGET_DAILY_ESTIMATE :
+            budgetMode === 'current-future' ? `${selectedDay}日預估花費` :
+            `${selectedDay}日建議花費`;
+          const row2Value =
+            budgetMode === 'past' ? Math.round(budgetSummary.dailyExpenseSoFar) :
+            budgetMode === 'future' ? Math.round(budgetSummary.monthlyDisposable / daysInMonth) :
+            Math.round(budgetSummary.todaySuggestedBudget);
+          return (
+            <TouchableOpacity
+              style={styles.budgetCard}
+              onPress={() => navigation.navigate('BudgetSettings')}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.budgetCardTitle}>{cardTitle}</Text>
+              <View style={styles.budgetCardRow}>
+                <Text style={styles.budgetCardLabel}>{row1Label}</Text>
+                <Text style={styles.budgetCardAmount}>{row1Value}</Text>
+              </View>
+              <View style={styles.budgetCardRow}>
+                <Text style={styles.budgetCardLabel}>{row2Label}</Text>
+                <Text style={styles.budgetCardAmount}>{row2Value}</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })()}
         {autopayCreatedNoticeCount > 0 ? (
           <View style={styles.autopayNoticeCard}>
             <Text style={styles.autopayNoticeText}>

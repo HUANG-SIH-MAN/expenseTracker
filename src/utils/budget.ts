@@ -128,16 +128,14 @@ export function getFixedEstimatedTotal(
 }
 
 /**
- * 當月至今「日常」已支出（排除固定支出類別與對應年度預算的交易）
+ * 當月至今「日常」已支出（排除已連結月預算或年度預算的交易）
  */
 export function getDailyExpenseSoFar(
   transactions: Transaction[],
   year: number,
   month: number,
   upToDateKey: string,
-  fixedExpenseCategoryKeys: string[]
 ): number {
-  const fixedSet = new Set(fixedExpenseCategoryKeys);
   const list = filterTransactionsByPeriod(
     transactions,
     PERIOD_MONTH,
@@ -148,7 +146,6 @@ export function getDailyExpenseSoFar(
   for (const t of list) {
     if (t.type !== 'expense') continue;
     if (t.date > upToDateKey) continue;
-    if (fixedSet.has(t.category)) continue;
     if (t.annualBudgetEntryId != null) continue;
     if (t.monthlyFixedItemId != null) continue;
     sum += t.amount;
@@ -198,7 +195,7 @@ export function getMonthIncome(
     month
   );
   const transactionTotal = list
-    .filter((t) => t.type === 'income')
+    .filter((t) => t.type === 'income' && t.annualBudgetEntryId == null)
     .reduce((sum, t) => sum + t.amount, 0);
   if (transactionTotal > 0) return transactionTotal;
 
@@ -253,7 +250,6 @@ export function getBudgetSummary(
     year,
     month,
     todayKey,
-    settings.fixedExpenseCategoryKeys
   );
   const remainingDisposable = getRemainingDisposable(
     monthlyDisposable,

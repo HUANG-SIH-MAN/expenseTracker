@@ -164,8 +164,6 @@ export interface BudgetSettings {
   weekdayWeight: number;
   /** 假日權重（週六日等） */
   weekendWeight: number;
-  /** 視為「固定/投資」的支出類別 key，這些不計入「日常已花」 */
-  fixedExpenseCategoryKeys: string[];
 }
 
 /** 遇假日（週末）時的日期調整方式 */

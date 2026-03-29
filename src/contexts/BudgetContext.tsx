@@ -43,7 +43,6 @@ export function BudgetProvider({
       defaultMonthlyIncome: 0,
       weekdayWeight: BUDGET_DEFAULT_WEEKDAY_WEIGHT,
       weekendWeight: BUDGET_DEFAULT_WEEKEND_WEIGHT,
-      fixedExpenseCategoryKeys: [],
     });
 
   const refreshBudget = useCallback(async () => {

@@ -10,9 +10,17 @@ import { CategoriesProvider } from './src/contexts/CategoriesContext';
 import { BudgetProvider } from './src/contexts/BudgetContext';
 import OnboardingStack from './src/navigation/OnboardingStack';
 import MainStack from './src/navigation/MainStack';
+import { fetchRatesToPrimary } from './src/utils/exchangeRate';
+import { saveExchangeRates } from './src/utils/storage';
 
 function RootNavigator(): React.JSX.Element {
   const { isLoading, hasCompletedOnboarding } = useOnboarding();
+
+  React.useEffect(() => {
+    fetchRatesToPrimary('TWD').then((rates) => {
+      if (rates) saveExchangeRates(rates);
+    });
+  }, []);
 
   if (isLoading) {
     return (
