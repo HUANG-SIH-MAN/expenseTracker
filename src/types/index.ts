@@ -99,6 +99,11 @@ export interface Transaction {
   systemGeneratedType?: "credit_card_autopay" | "cash_topup";
   /** 鎖定原因（鎖定後不可編輯/刪除） */
   lockedReason?: "credit_card_autopay" | "cash_topup";
+  /**
+   * 年費分攤月數；有值時此交易金額在預算計算中平均分攤到 N 個月。
+   * 付款當月為第一個月（含餘數），後續 N-1 個月各為 floor(amount/N)。
+   */
+  amortizationMonths?: number;
   createdAt: string; // ISO 8601
 }
 

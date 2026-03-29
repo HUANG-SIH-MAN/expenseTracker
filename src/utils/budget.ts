@@ -128,7 +128,7 @@ export function getFixedEstimatedTotal(
 }
 
 /**
- * 當月至今「日常」已支出（排除已連結月預算或年度預算的交易）
+ * 當月至今「日常」已支出（排除已連結月預算或年度預算或年費分攤的交易）
  */
 export function getDailyExpenseSoFar(
   transactions: Transaction[],
@@ -148,9 +148,83 @@ export function getDailyExpenseSoFar(
     if (t.date > upToDateKey) continue;
     if (t.annualBudgetEntryId != null) continue;
     if (t.monthlyFixedItemId != null) continue;
+    if (t.amortizationMonths != null) continue;
     sum += t.amount;
   }
   return sum;
+}
+
+/**
+ * 單筆分攤交易在指定月份的分攤金額：
+ * - 付款月（第一個月）= floor(amount/N) + remainder
+ * - 後續各月 = floor(amount/N)
+ * - 不在覆蓋範圍內回傳 0
+ */
+function getAmortizedAmountForMonth(
+  t: Transaction,
+  year: number,
+  month: number
+): number {
+  const n = t.amortizationMonths!;
+  const [py, pm] = t.date.split('-').map(Number);
+  // 計算目標月份距付款月的偏移
+  const offset = (year - py) * 12 + (month - pm);
+  if (offset < 0 || offset >= n) return 0;
+  const base = Math.floor(t.amount / n);
+  const remainder = t.amount - base * n;
+  return offset === 0 ? base + remainder : base;
+}
+
+/**
+ * 當月所有分攤交易的合計扣除額
+ */
+export function getAmortizedExpenseForMonth(
+  transactions: Transaction[],
+  year: number,
+  month: number
+): number {
+  let sum = 0;
+  for (const t of transactions) {
+    if (t.type !== 'expense') continue;
+    if (t.amortizationMonths == null) continue;
+    sum += getAmortizedAmountForMonth(t, year, month);
+  }
+  return sum;
+}
+
+/**
+ * 當月有分攤的交易明細（供 UI 顯示清單）
+ */
+export interface AmortizedItem {
+  transactionId: string;
+  note: string;
+  monthlyAmount: number;
+  totalAmount: number;
+  amortizationMonths: number;
+  paymentDate: string;
+}
+
+export function getAmortizedItemsForMonth(
+  transactions: Transaction[],
+  year: number,
+  month: number
+): AmortizedItem[] {
+  const result: AmortizedItem[] = [];
+  for (const t of transactions) {
+    if (t.type !== 'expense') continue;
+    if (t.amortizationMonths == null) continue;
+    const monthlyAmount = getAmortizedAmountForMonth(t, year, month);
+    if (monthlyAmount <= 0) continue;
+    result.push({
+      transactionId: t.id,
+      note: t.note ?? t.category,
+      monthlyAmount,
+      totalAmount: t.amount,
+      amortizationMonths: t.amortizationMonths,
+      paymentDate: t.date,
+    });
+  }
+  return result;
 }
 
 /**
@@ -215,6 +289,8 @@ export function getMonthIncome(
 export interface BudgetSummary {
   monthlyIncome: number;
   fixedEstimatedTotal: number;
+  /** 當月年費分攤合計（已含在 fixedEstimatedTotal 內） */
+  amortizedTotal: number;
   monthlyDisposable: number;
   dailyExpenseSoFar: number;
   remainingDisposable: number;
@@ -240,7 +316,9 @@ export function getBudgetSummary(
     settings.defaultMonthlyIncome,
     recurringItems
   );
-  const fixedEstimatedTotal = getFixedEstimatedTotal(monthlyFixedItems, ratesToPrimary, recurringItems);
+  const fixedItemsTotal = getFixedEstimatedTotal(monthlyFixedItems, ratesToPrimary, recurringItems);
+  const amortizedTotal = getAmortizedExpenseForMonth(transactions, year, month);
+  const fixedEstimatedTotal = fixedItemsTotal + amortizedTotal;
   const monthlyDisposable = getMonthlyDisposable(
     monthIncome,
     fixedEstimatedTotal
@@ -268,6 +346,7 @@ export function getBudgetSummary(
   return {
     monthlyIncome: monthIncome,
     fixedEstimatedTotal,
+    amortizedTotal,
     monthlyDisposable,
     dailyExpenseSoFar,
     remainingDisposable,

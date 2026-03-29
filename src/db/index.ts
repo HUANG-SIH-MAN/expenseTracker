@@ -312,6 +312,13 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase | null> {
   } catch {
     // Table already exists
   }
+  try {
+    await db.runAsync(
+      "ALTER TABLE transactions ADD COLUMN amortization_months INTEGER"
+    );
+  } catch {
+    // Column already exists on existing DBs
+  }
   dbInstance = db;
   return db;
 }

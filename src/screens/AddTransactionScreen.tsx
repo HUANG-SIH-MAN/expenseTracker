@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -81,6 +82,8 @@ export default function AddTransactionScreen(): React.JSX.Element {
   const [accountId, setAccountId] = useState<string | undefined>(undefined);
   const [annualBudgetEntryId, setAnnualBudgetEntryId] = useState<string | undefined>(undefined);
   const [monthlyFixedItemId, setMonthlyFixedItemId] = useState<string | undefined>(undefined);
+  const [amortizationEnabled, setAmortizationEnabled] = useState(false);
+  const [amortizationMonthsStr, setAmortizationMonthsStr] = useState('12');
   const [isNoteFocused, setIsNoteFocused] = useState(false);
 
   const isEditMode = Boolean(transactionId);
@@ -158,6 +161,13 @@ export default function AddTransactionScreen(): React.JSX.Element {
     setAccountId(existing.accountId);
     setAnnualBudgetEntryId(existing.annualBudgetEntryId);
     setMonthlyFixedItemId(existing.monthlyFixedItemId);
+    if (existing.amortizationMonths != null) {
+      setAmortizationEnabled(true);
+      setAmortizationMonthsStr(String(existing.amortizationMonths));
+    } else {
+      setAmortizationEnabled(false);
+      setAmortizationMonthsStr('12');
+    }
     skipCategoryAccountApplyRef.current = true;
   }, [existing?.id]);
 
@@ -198,6 +208,15 @@ export default function AddTransactionScreen(): React.JSX.Element {
   const parsed = parseAmountInput(amountStr);
   const amount = parsed.value;
   const canSubmit = parsed.valid && amount > 0;
+  const amortizationMonthsParsed = parseInt(amortizationMonthsStr, 10);
+  const amortizationMonthsValue =
+    type === 'expense' && amortizationEnabled && amortizationMonthsParsed >= 2
+      ? amortizationMonthsParsed
+      : undefined;
+  const amortizationPreview =
+    amortizationMonthsValue != null && amount > 0
+      ? `付款月 $${Math.floor(amount / amortizationMonthsValue) + (amount - Math.floor(amount / amortizationMonthsValue) * amortizationMonthsValue)}，其後每月 $${Math.floor(amount / amortizationMonthsValue)}`
+      : null;
   const amountError = amountStr.trim() !== '' && !parsed.valid ? parsed.error : undefined;
 
   const handleSubmit = async () => {
@@ -218,6 +237,7 @@ export default function AddTransactionScreen(): React.JSX.Element {
         recurringId: undefined,
         annualBudgetEntryId,
         monthlyFixedItemId,
+        amortizationMonths: amortizationMonthsValue,
       });
     } else {
       addTransaction({
@@ -230,6 +250,7 @@ export default function AddTransactionScreen(): React.JSX.Element {
         accountId: accountId || undefined,
         annualBudgetEntryId,
         monthlyFixedItemId,
+        amortizationMonths: amortizationMonthsValue,
         createdAt: new Date().toISOString(),
       });
     }
@@ -411,6 +432,39 @@ export default function AddTransactionScreen(): React.JSX.Element {
           </View>
         </TouchableOpacity>
 
+        {type === 'expense' ? (
+          <View style={styles.amortizationSection}>
+            <View style={styles.amortizationRow}>
+              <Text style={styles.selectorLabel}>年費分攤</Text>
+              <Switch
+                value={amortizationEnabled}
+                onValueChange={setAmortizationEnabled}
+                trackColor={{ false: '#e5e7eb', true: '#0a84ff' }}
+                thumbColor="#fff"
+              />
+            </View>
+            {amortizationEnabled ? (
+              <View style={styles.amortizationDetail}>
+                <View style={styles.amortizationMonthsRow}>
+                  <Text style={styles.amortizationMonthsLabel}>分攤月數</Text>
+                  <TextInput
+                    style={styles.amortizationMonthsInput}
+                    keyboardType="number-pad"
+                    value={amortizationMonthsStr}
+                    onChangeText={setAmortizationMonthsStr}
+                    maxLength={3}
+                    selectTextOnFocus
+                  />
+                  <Text style={styles.amortizationMonthsUnit}>個月</Text>
+                </View>
+                {amortizationPreview != null ? (
+                  <Text style={styles.amortizationPreview}>{amortizationPreview}</Text>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
         <View style={styles.noteSection}>
           <Text style={styles.noteSectionLabel}>備註（選填）</Text>
           <TextInput
@@ -579,6 +633,53 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'right',
     flexShrink: 1,
+  },
+  amortizationSection: {
+    marginBottom: FORM_SECTION_GAP,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e5e7eb',
+  },
+  amortizationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 2,
+  },
+  amortizationDetail: {
+    paddingBottom: 10,
+    paddingHorizontal: 2,
+    gap: 8,
+  },
+  amortizationMonthsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  amortizationMonthsLabel: {
+    fontSize: 14,
+    color: '#6b7280',
+    flex: 1,
+  },
+  amortizationMonthsInput: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#d1d5db',
+    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    fontSize: 15,
+    color: '#1a1a1a',
+    width: 64,
+    textAlign: 'center',
+  },
+  amortizationMonthsUnit: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  amortizationPreview: {
+    fontSize: 13,
+    color: '#0a84ff',
+    marginTop: 2,
   },
   noteSection: {
     marginTop: 4,

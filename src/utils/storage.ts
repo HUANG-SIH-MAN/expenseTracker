@@ -134,7 +134,7 @@ async function runMigrationFromAsyncStorageIfNeeded(
       if (Array.isArray(list) && list.length > 0) {
         for (const t of list) {
           await db.runAsync(
-            "INSERT OR REPLACE INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, monthly_fixed_item_id, to_account_id, transfer_amount, is_system_generated, system_generated_type, locked_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, monthly_fixed_item_id, to_account_id, transfer_amount, is_system_generated, system_generated_type, locked_reason, amortization_months, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             t.id,
             t.type,
             t.amount,
@@ -150,6 +150,7 @@ async function runMigrationFromAsyncStorageIfNeeded(
             (t as Transaction).isSystemGenerated === true ? SQLITE_TRUE : SQLITE_FALSE,
             (t as Transaction).systemGeneratedType ?? null,
             (t as Transaction).lockedReason ?? null,
+            (t as Transaction).amortizationMonths ?? null,
             t.createdAt,
           );
         }
@@ -461,6 +462,7 @@ interface TransactionRow {
   is_system_generated: number;
   system_generated_type: string | null;
   locked_reason: string | null;
+  amortization_months: number | null;
   created_at: string;
 }
 
@@ -482,6 +484,7 @@ function rowToTransaction(r: TransactionRow): Transaction {
     systemGeneratedType:
       (r.system_generated_type as Transaction["systemGeneratedType"]) ?? undefined,
     lockedReason: (r.locked_reason as Transaction["lockedReason"]) ?? undefined,
+    amortizationMonths: r.amortization_months ?? undefined,
     createdAt: r.created_at,
   };
 }
@@ -501,7 +504,7 @@ export async function getStoredTransactions(): Promise<Transaction[]> {
   if (db) {
     await ensureMigrationDone(db);
     const rows = await db.getAllAsync<TransactionRow>(
-      "SELECT id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, monthly_fixed_item_id, to_account_id, transfer_amount, is_system_generated, system_generated_type, locked_reason, created_at FROM transactions ORDER BY date, created_at",
+      "SELECT id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, monthly_fixed_item_id, to_account_id, transfer_amount, is_system_generated, system_generated_type, locked_reason, amortization_months, created_at FROM transactions ORDER BY date, created_at",
     );
     return rows.map(rowToTransaction);
   }
@@ -523,7 +526,7 @@ export async function saveTransactions(
     await db.runAsync("DELETE FROM transactions");
     for (const t of transactions) {
       await db.runAsync(
-        "INSERT INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, monthly_fixed_item_id, to_account_id, transfer_amount, is_system_generated, system_generated_type, locked_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, monthly_fixed_item_id, to_account_id, transfer_amount, is_system_generated, system_generated_type, locked_reason, amortization_months, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         t.id,
         t.type,
         t.amount,
@@ -539,6 +542,7 @@ export async function saveTransactions(
         t.isSystemGenerated === true ? SQLITE_TRUE : SQLITE_FALSE,
         t.systemGeneratedType ?? null,
         t.lockedReason ?? null,
+        t.amortizationMonths ?? null,
         t.createdAt,
       );
     }
@@ -554,7 +558,7 @@ export async function addTransaction(transaction: Transaction): Promise<void> {
   const db = await getDb();
   if (db) {
     await db.runAsync(
-      "INSERT INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, monthly_fixed_item_id, to_account_id, transfer_amount, is_system_generated, system_generated_type, locked_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, monthly_fixed_item_id, to_account_id, transfer_amount, is_system_generated, system_generated_type, locked_reason, amortization_months, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       transaction.id,
       transaction.type,
       transaction.amount,
@@ -570,6 +574,7 @@ export async function addTransaction(transaction: Transaction): Promise<void> {
       transaction.isSystemGenerated === true ? SQLITE_TRUE : SQLITE_FALSE,
       transaction.systemGeneratedType ?? null,
       transaction.lockedReason ?? null,
+      transaction.amortizationMonths ?? null,
       transaction.createdAt,
     );
     return;
@@ -654,7 +659,7 @@ export async function updateTransaction(
       throw new Error("Locked autopay transaction cannot be updated");
     }
     await db.runAsync(
-      "UPDATE transactions SET type = ?, amount = ?, date = ?, category = ?, note = ?, account_id = ?, recurring_id = ?, annual_budget_entry_id = ?, monthly_fixed_item_id = ?, to_account_id = ?, transfer_amount = ?, is_system_generated = ?, system_generated_type = ?, locked_reason = ?, created_at = ? WHERE id = ?",
+      "UPDATE transactions SET type = ?, amount = ?, date = ?, category = ?, note = ?, account_id = ?, recurring_id = ?, annual_budget_entry_id = ?, monthly_fixed_item_id = ?, to_account_id = ?, transfer_amount = ?, is_system_generated = ?, system_generated_type = ?, locked_reason = ?, amortization_months = ?, created_at = ? WHERE id = ?",
       transaction.type,
       transaction.amount,
       transaction.date,
@@ -669,6 +674,7 @@ export async function updateTransaction(
       transaction.isSystemGenerated === true ? SQLITE_TRUE : SQLITE_FALSE,
       transaction.systemGeneratedType ?? null,
       transaction.lockedReason ?? null,
+      transaction.amortizationMonths ?? null,
       transaction.createdAt,
       transaction.id,
     );
@@ -1719,7 +1725,7 @@ export async function addTransactionsAtomically(
     await db.withTransactionAsync(async () => {
       for (const transaction of transactions) {
         await db.runAsync(
-          "INSERT INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, monthly_fixed_item_id, to_account_id, transfer_amount, is_system_generated, system_generated_type, locked_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO transactions (id, type, amount, date, category, note, account_id, recurring_id, annual_budget_entry_id, monthly_fixed_item_id, to_account_id, transfer_amount, is_system_generated, system_generated_type, locked_reason, amortization_months, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
           transaction.id,
           transaction.type,
           transaction.amount,
@@ -1735,6 +1741,7 @@ export async function addTransactionsAtomically(
           transaction.isSystemGenerated === true ? SQLITE_TRUE : SQLITE_FALSE,
           transaction.systemGeneratedType ?? null,
           transaction.lockedReason ?? null,
+          transaction.amortizationMonths ?? null,
           transaction.createdAt,
         );
       }
