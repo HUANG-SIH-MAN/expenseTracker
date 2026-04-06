@@ -27,6 +27,10 @@ import CashTopUpSettingsScreen from '../screens/CashTopUpSettingsScreen';
 import CashTopUpEditScreen from '../screens/CashTopUpEditScreen';
 import TransferTemplateSettingsScreen from '../screens/TransferTemplateSettingsScreen';
 import TransferTemplateEditScreen from '../screens/TransferTemplateEditScreen';
+import PortfolioScreen from '../screens/PortfolioScreen';
+import StockDetailScreen from '../screens/StockDetailScreen';
+import AddStockTransactionScreen from '../screens/AddStockTransactionScreen';
+import ImportStockScreen from '../screens/ImportStockScreen';
 import type { TransactionType } from '../types';
 
 export type MainStackParamList = {
@@ -83,6 +87,10 @@ export type MainStackParamList = {
     returnTransactionId?: string;
     returnToRouteKey?: string;
   };
+  Portfolio: undefined;
+  StockDetail: { ticker: string };
+  AddStockTransaction: { ticker?: string };
+  ImportStock: undefined;
   SelectBudgetLink: {
     transactionType: string;
     dateKey: string;
@@ -240,6 +248,26 @@ export default function MainStack(): React.JSX.Element {
       <Stack.Screen
         name="TransferTemplateEdit"
         component={TransferTemplateEditScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="Portfolio"
+        component={PortfolioScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="StockDetail"
+        component={StockDetailScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="AddStockTransaction"
+        component={AddStockTransactionScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="ImportStock"
+        component={ImportStockScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>

@@ -8,6 +8,7 @@ import { OnboardingProvider, useOnboarding } from './src/contexts/OnboardingCont
 import { TransactionsProvider } from './src/contexts/TransactionsContext';
 import { CategoriesProvider } from './src/contexts/CategoriesContext';
 import { BudgetProvider } from './src/contexts/BudgetContext';
+import { InvestmentProvider } from './src/contexts/InvestmentContext';
 import OnboardingStack from './src/navigation/OnboardingStack';
 import MainStack from './src/navigation/MainStack';
 import { fetchRatesToPrimary } from './src/utils/exchangeRate';
@@ -39,7 +40,9 @@ function RootNavigator(): React.JSX.Element {
     <TransactionsProvider>
       <CategoriesProvider>
         <BudgetProvider>
-          <MainStack />
+          <InvestmentProvider>
+            <MainStack />
+          </InvestmentProvider>
         </BudgetProvider>
       </CategoriesProvider>
     </TransactionsProvider>

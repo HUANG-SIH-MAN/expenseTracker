@@ -40,10 +40,11 @@ const BOTTOM_LEDGER = '帳本';
 const BOTTOM_STATS = '統計';
 const BOTTOM_ADD_LABEL = '記一筆';
 const BOTTOM_BUDGET = '預算';
+const BOTTOM_INVEST = '投資';
 const BOTTOM_SETTINGS = '設定';
 const BOTTOM_BAR_HEIGHT = 56;
-const BOTTOM_ICON_SIZE = 24;
-const BOTTOM_LABEL_FONT_SIZE = 11;
+const BOTTOM_ICON_SIZE = 22;
+const BOTTOM_LABEL_FONT_SIZE = 10;
 const BUDGET_CARD_TITLE_CURRENT = '本月預算';
 const BUDGET_REMAINING = '剩餘可支配';
 const BUDGET_SETTLEMENT_REMAINING = '月底剩餘';
@@ -476,6 +477,18 @@ export default function HomeScreen(): React.JSX.Element {
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.bottomBarItem}
+          onPress={() => navigation.navigate('Portfolio')}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="trending-up-outline"
+            size={BOTTOM_ICON_SIZE}
+            color="#6b7280"
+          />
+          <Text style={styles.bottomBarLabel}>{BOTTOM_INVEST}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.bottomBarItem}
           onPress={() => navigation.navigate('Settings')}
           activeOpacity={0.7}
         >
@@ -603,7 +616,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     minHeight: BOTTOM_BAR_HEIGHT,
-    paddingHorizontal: 16,
+    paddingHorizontal: 4,
     paddingTop: 8,
     backgroundColor: '#fff',
     borderTopWidth: 1,

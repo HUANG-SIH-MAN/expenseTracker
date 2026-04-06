@@ -156,6 +156,41 @@ CREATE INDEX IF NOT EXISTS idx_cc_autopay_logs_rule_scheduled
 ON credit_card_autopay_execution_logs(rule_id, scheduled_payment_date);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_cc_autopay_logs_rule_date_attempt
 ON credit_card_autopay_execution_logs(rule_id, scheduled_payment_date, attempt);
+
+CREATE TABLE IF NOT EXISTS stock_transactions (
+  id TEXT PRIMARY KEY,
+  ticker TEXT NOT NULL,
+  name TEXT NOT NULL,
+  date TEXT NOT NULL,
+  type TEXT NOT NULL,
+  shares REAL NOT NULL,
+  price_native REAL NOT NULL,
+  usd_cost REAL,
+  twd_cost REAL NOT NULL,
+  exchange_rate REAL,
+  note TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS stock_prices_cache (
+  ticker TEXT PRIMARY KEY,
+  price REAL NOT NULL,
+  currency TEXT NOT NULL,
+  last_updated TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS etf_holdings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  etf_ticker TEXT NOT NULL,
+  rank INTEGER NOT NULL,
+  company_name TEXT NOT NULL,
+  weight_pct REAL NOT NULL,
+  last_updated TEXT NOT NULL,
+  UNIQUE(etf_ticker, rank)
+);
+
+CREATE INDEX IF NOT EXISTS idx_stock_transactions_ticker ON stock_transactions(ticker);
+CREATE INDEX IF NOT EXISTS idx_stock_transactions_date ON stock_transactions(date);
 `.trim();
 }
 
@@ -318,6 +353,47 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase | null> {
     );
   } catch {
     // Column already exists on existing DBs
+  }
+  try {
+    await db.execAsync(`CREATE TABLE IF NOT EXISTS stock_transactions (
+      id TEXT PRIMARY KEY,
+      ticker TEXT NOT NULL,
+      name TEXT NOT NULL,
+      date TEXT NOT NULL,
+      type TEXT NOT NULL,
+      shares REAL NOT NULL,
+      price_native REAL NOT NULL,
+      usd_cost REAL,
+      twd_cost REAL NOT NULL,
+      exchange_rate REAL,
+      note TEXT,
+      created_at TEXT NOT NULL
+    )`);
+  } catch {
+    // Table already exists
+  }
+  try {
+    await db.execAsync(`CREATE TABLE IF NOT EXISTS stock_prices_cache (
+      ticker TEXT PRIMARY KEY,
+      price REAL NOT NULL,
+      currency TEXT NOT NULL,
+      last_updated TEXT NOT NULL
+    )`);
+  } catch {
+    // Table already exists
+  }
+  try {
+    await db.execAsync(`CREATE TABLE IF NOT EXISTS etf_holdings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      etf_ticker TEXT NOT NULL,
+      rank INTEGER NOT NULL,
+      company_name TEXT NOT NULL,
+      weight_pct REAL NOT NULL,
+      last_updated TEXT NOT NULL,
+      UNIQUE(etf_ticker, rank)
+    )`);
+  } catch {
+    // Table already exists
   }
   dbInstance = db;
   return db;

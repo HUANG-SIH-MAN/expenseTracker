@@ -230,6 +230,49 @@ export interface TransferTemplate {
   updatedAt: string; // ISO 8601
 }
 
+/** 股票交易類型 */
+export type StockTransactionType = 'buy' | 'sell';
+
+/** 股票幣別 */
+export type StockCurrency = 'TWD' | 'USD';
+
+/** 單筆股票買賣交易 */
+export interface StockTransaction {
+  id: string;
+  ticker: string;
+  name: string;
+  date: string; // YYYY-MM-DD
+  type: StockTransactionType;
+  shares: number;
+  /** 原幣報價（台股=TWD、美股=USD） */
+  priceNative: number;
+  /** 美股才有：USD 成本 */
+  usdCost?: number;
+  /** 台幣成本（所有標的皆有） */
+  twdCost: number;
+  /** 美股才有：換匯匯率 */
+  exchangeRate?: number;
+  note?: string;
+  createdAt: string; // ISO 8601
+}
+
+/** 股價快取 */
+export interface StockPriceCache {
+  ticker: string;
+  price: number;
+  currency: StockCurrency;
+  lastUpdated: string; // ISO 8601
+}
+
+/** ETF 成分股（單筆持股） */
+export interface ETFHolding {
+  etfTicker: string;
+  rank: number;
+  companyName: string;
+  weightPct: number;
+  lastUpdated: string; // ISO 8601
+}
+
 /** 自動扣款執行紀錄 */
 export interface AutoPayExecutionLog {
   id: string;
