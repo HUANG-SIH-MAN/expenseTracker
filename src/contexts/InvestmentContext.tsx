@@ -44,8 +44,8 @@ interface InvestmentContextValue {
   usdTwdRate: number;
   isLoading: boolean;
   isRefreshingPrices: boolean;
-  reload: () => Promise<void>;
-  refreshPrices: () => Promise<void>;
+  reload: (andRefreshPrices?: boolean) => Promise<void>;
+  refreshPrices: (ignoreCache?: boolean, txList?: StockTransaction[]) => Promise<void>;
   addTransaction: (tx: StockTransaction) => Promise<void>;
   importTransactions: (txs: StockTransaction[]) => Promise<void>;
   removeTransaction: (id: string) => Promise<void>;
@@ -68,7 +68,37 @@ export function InvestmentProvider({ children }: { children: React.ReactNode }) 
     return () => { mountedRef.current = false; };
   }, []);
 
-  const reload = useCallback(async () => {
+  // 使用 Ref 追蹤最新交易列表，避免 callback 因 transactions 變動而變動導致無限循環
+  const transactionsRef = useRef<StockTransaction[]>(transactions);
+  useEffect(() => {
+    transactionsRef.current = transactions;
+  }, [transactions]);
+
+  const refreshPrices = useCallback(async (ignoreCache = false, txList?: StockTransaction[]) => {
+    setIsRefreshingPrices(true);
+    try {
+      const targetTxs = txList || transactionsRef.current;
+      const tickers = Array.from(new Set(targetTxs.map(t => t.ticker)));
+      if (tickers.length === 0) return;
+
+      const stocksToFetch = tickers.map(ticker => ({
+        ticker,
+        currency: STOCK_CURRENCIES[ticker] ?? 'USD',
+      }));
+      stocksToFetch.push({ ticker: 'USDTWD=X', currency: 'USD' });
+
+      const newPrices = await getMultipleStockPrices(stocksToFetch, ignoreCache);
+      const rate = await getUSDTWDRate();
+
+      if (!mountedRef.current) return;
+      setPrices(prev => ({ ...prev, ...newPrices }));
+      if (rate != null) setUsdTwdRate(rate);
+    } finally {
+      if (mountedRef.current) setIsRefreshingPrices(false);
+    }
+  }, []); // 不依賴 transactions
+
+  const reload = useCallback(async (andRefreshPrices = false) => {
     setIsLoading(true);
     try {
       const [txs, cachedPrices] = await Promise.all([
@@ -81,59 +111,48 @@ export function InvestmentProvider({ children }: { children: React.ReactNode }) 
       for (const p of cachedPrices) priceMap[p.ticker] = p;
       setPrices(priceMap);
       setPositions(calculatePositions(txs));
+
+      if (andRefreshPrices) {
+        // 直接傳入剛抓到的 txs
+        refreshPrices(false, txs);
+      }
     } finally {
       if (mountedRef.current) setIsLoading(false);
     }
-  }, []);
-
-  const refreshPrices = useCallback(async () => {
-    setIsRefreshingPrices(true);
-    try {
-      // 只抓有持倉的股票
-      const tickers = Array.from(
-        new Set(transactions.map(t => t.ticker))
-      );
-      const stocksToFetch = tickers.map(ticker => ({
-        ticker,
-        currency: STOCK_CURRENCIES[ticker] ?? 'USD',
-      }));
-      // 加入 USDTWD 匯率
-      stocksToFetch.push({ ticker: 'USDTWD=X', currency: 'USD' });
-
-      const newPrices = await getMultipleStockPrices(stocksToFetch);
-      const rate = await getUSDTWDRate();
-
-      if (!mountedRef.current) return;
-      setPrices(prev => ({ ...prev, ...newPrices }));
-      if (rate != null) setUsdTwdRate(rate);
-    } finally {
-      if (mountedRef.current) setIsRefreshingPrices(false);
-    }
-  }, [transactions]);
+  }, [refreshPrices]);
 
   const addTransaction = useCallback(async (tx: StockTransaction) => {
     await saveStockTransaction(tx);
-    const updated = [...transactions, tx].sort((a, b) => a.date.localeCompare(b.date));
-    setTransactions(updated);
-    setPositions(calculatePositions(updated));
-  }, [transactions]);
+    setTransactions(prev => {
+      const updated = [...prev, tx].sort((a, b) => a.date.localeCompare(b.date));
+      setPositions(calculatePositions(updated));
+      // 異步刷新
+      refreshPrices(true, updated);
+      return updated;
+    });
+  }, [refreshPrices]);
 
   const importTransactions = useCallback(async (txs: StockTransaction[]) => {
     await saveStockTransactions(txs);
-    const updated = [...transactions, ...txs].sort((a, b) => a.date.localeCompare(b.date));
-    setTransactions(updated);
-    setPositions(calculatePositions(updated));
-  }, [transactions]);
+    setTransactions(prev => {
+      const updated = [...prev, ...txs].sort((a, b) => a.date.localeCompare(b.date));
+      setPositions(calculatePositions(updated));
+      refreshPrices(true, updated);
+      return updated;
+    });
+  }, [refreshPrices]);
 
   const removeTransaction = useCallback(async (id: string) => {
     await deleteStockTransaction(id);
-    const updated = transactions.filter(t => t.id !== id);
-    setTransactions(updated);
-    setPositions(calculatePositions(updated));
-  }, [transactions]);
+    setTransactions(prev => {
+      const updated = prev.filter(t => t.id !== id);
+      setPositions(calculatePositions(updated));
+      return updated;
+    });
+  }, []);
 
   useEffect(() => {
-    reload();
+    reload(true);
   }, [reload]);
 
   return (

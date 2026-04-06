@@ -20,6 +20,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useInvestment, getPriceTWD } from '../contexts/InvestmentContext';
+import { BottomBar } from '../components';
 import { calcUnrealizedGain } from '../utils/stockCalculations';
 import type { MainStackParamList } from '../navigation/MainStack';
 
@@ -60,7 +61,7 @@ export default function PortfolioScreen(): React.JSX.Element {
   const gainColor = totalGainTWD >= 0 ? '#16a34a' : '#dc2626';
 
   const handleRefresh = useCallback(() => {
-    refreshPrices();
+    refreshPrices(true);
   }, [refreshPrices]);
 
   if (isLoading) {
@@ -93,7 +94,7 @@ export default function PortfolioScreen(): React.JSX.Element {
       </View>
 
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 24 }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 80 }]}
         refreshControl={
           <RefreshControl refreshing={isRefreshingPrices} onRefresh={handleRefresh} />
         }
@@ -177,6 +178,7 @@ export default function PortfolioScreen(): React.JSX.Element {
           );
         })}
       </ScrollView>
+      <BottomBar />
     </View>
   );
 }

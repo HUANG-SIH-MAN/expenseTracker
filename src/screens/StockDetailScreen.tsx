@@ -13,6 +13,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -43,7 +44,15 @@ export default function StockDetailScreen(): React.JSX.Element {
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
   const { ticker } = route.params;
-  const { transactions, positions, prices, usdTwdRate, removeTransaction } = useInvestment();
+  const {
+    transactions,
+    positions,
+    prices,
+    usdTwdRate,
+    removeTransaction,
+    refreshPrices,
+    isRefreshingPrices,
+  } = useInvestment();
 
   const pos = positions.get(ticker);
   const txList = useMemo(
@@ -105,12 +114,27 @@ export default function StockDetailScreen(): React.JSX.Element {
           <Text style={styles.headerTicker}>{ticker}</Text>
           <Text style={styles.headerName}>{pos?.name ?? ticker}</Text>
         </View>
-        <TouchableOpacity
-          style={styles.addBtn}
-          onPress={() => navigation.navigate('AddStockTransaction', { ticker })}
-        >
-          <Ionicons name="add" size={24} color="#2563eb" />
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            style={styles.headerBtn}
+            onPress={async () => {
+              await refreshPrices(true);
+            }}
+            disabled={isRefreshingPrices}
+          >
+            {isRefreshingPrices ? (
+              <ActivityIndicator size="small" color="#2563eb" />
+            ) : (
+              <Ionicons name="refresh" size={22} color="#2563eb" />
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerBtn}
+            onPress={() => navigation.navigate('AddStockTransaction', { ticker })}
+          >
+            <Ionicons name="add" size={24} color="#2563eb" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 24 }]}>
@@ -244,7 +268,8 @@ const styles = StyleSheet.create({
   backBtn: { padding: 4 },
   headerTicker: { fontSize: 18, fontWeight: '700', color: '#111827' },
   headerName: { fontSize: 12, color: '#6b7280' },
-  addBtn: { marginLeft: 'auto', padding: 4 },
+  headerRight: { marginLeft: 'auto', flexDirection: 'row', gap: 8, alignItems: 'center' },
+  headerBtn: { padding: 4 },
   scroll: { padding: 16, gap: 16 },
   summaryCard: {
     backgroundColor: '#fff',

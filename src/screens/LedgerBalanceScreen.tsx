@@ -26,13 +26,9 @@ import { useTransactions } from '../contexts/TransactionsContext';
 import { getAccountBalancesWithPrimary, getTotalAssetsInPrimary } from '../utils/balance';
 import { fetchRatesToPrimary } from '../utils/exchangeRate';
 import type { CurrencyOption } from '../types';
-
-function getCurrencyLabel(code: string, options: CurrencyOption[]): string {
-  const o = options.find((x) => x.code === code);
-  return o?.label ?? code;
-}
 import type { MainStackParamList } from '../navigation/MainStack';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { BottomBar } from '../components';
 
 const TITLE = '帳本餘額';
 const BACK_ICON_SIZE = 28;
@@ -50,6 +46,11 @@ function formatAmount(n: number): string {
   return n.toFixed(2);
 }
 
+function getCurrencyLabel(code: string, options: CurrencyOption[]): string {
+  const o = options.find((x) => x.code === code);
+  return o?.label ?? code;
+}
+
 type NavProp = NativeStackNavigationProp<MainStackParamList, 'LedgerBalance'>;
 
 export default function LedgerBalanceScreen(): React.JSX.Element {
@@ -60,7 +61,6 @@ export default function LedgerBalanceScreen(): React.JSX.Element {
   const [currencyOptions, setCurrencyOptions] = useState<CurrencyOption[]>([]);
   const [primaryCurrency, setPrimaryCurrency] = useState<string>('TWD');
   const [ratesToPrimary, setRatesToPrimary] = useState<Record<string, number>>({});
-  const [ratesUpdatedAt, setRatesUpdatedAt] = useState<string>('');
   const [refreshing, setRefreshing] = useState(false);
   const [updatingRates, setUpdatingRates] = useState(false);
 
@@ -75,7 +75,6 @@ export default function LedgerBalanceScreen(): React.JSX.Element {
       setCurrencyOptions(options);
       setPrimaryCurrency(primary);
       setRatesToPrimary(ratesData.rates ?? {});
-      setRatesUpdatedAt(ratesData.updatedAt ?? '');
     });
   }, []);
 
@@ -98,7 +97,6 @@ export default function LedgerBalanceScreen(): React.JSX.Element {
     if (rates != null) {
       await saveExchangeRates(rates);
       setRatesToPrimary(rates);
-      setRatesUpdatedAt(new Date().toISOString());
     }
     setUpdatingRates(false);
   }, [primaryCurrency, currencyOptions]);
@@ -119,7 +117,7 @@ export default function LedgerBalanceScreen(): React.JSX.Element {
   const hasRates = Object.keys(ratesToPrimary).length > 0;
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backBtn}
@@ -134,7 +132,7 @@ export default function LedgerBalanceScreen(): React.JSX.Element {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 80 }]}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -226,6 +224,7 @@ export default function LedgerBalanceScreen(): React.JSX.Element {
           </>
         )}
       </ScrollView>
+      <BottomBar />
     </View>
   );
 }

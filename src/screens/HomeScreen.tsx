@@ -15,7 +15,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Transaction, Account, RecurringItem } from '../types';
-import { Calendar } from '../components';
+import { Calendar, BottomBar } from '../components';
 import { useTransactions } from '../contexts/TransactionsContext';
 import { useCategories } from '../contexts/CategoriesContext';
 import { useBudget } from '../contexts/BudgetContext';
@@ -36,15 +36,7 @@ const RECORD_ROW_ACTION_ICON_SIZE = 16;
 const RECORD_ACTIONS_GAP = 4;
 const RECORD_ACTION_BTN_PADDING = 2;
 const RECORD_ACTION_HIT_SLOP = 10;
-const BOTTOM_LEDGER = '帳本';
-const BOTTOM_STATS = '統計';
-const BOTTOM_ADD_LABEL = '記一筆';
-const BOTTOM_BUDGET = '預算';
-const BOTTOM_INVEST = '投資';
-const BOTTOM_SETTINGS = '設定';
-const BOTTOM_BAR_HEIGHT = 56;
-const BOTTOM_ICON_SIZE = 22;
-const BOTTOM_LABEL_FONT_SIZE = 10;
+const AUTOPAY_NOTICE_HIDE_MS = 4000;
 const BUDGET_CARD_TITLE_CURRENT = '本月預算';
 const BUDGET_REMAINING = '剩餘可支配';
 const BUDGET_SETTLEMENT_REMAINING = '月底剩餘';
@@ -53,7 +45,7 @@ const BUDGET_DISPOSABLE = '月可支配';
 const BUDGET_DAILY_ESTIMATE = '每日預估';
 const AUTOPAY_NOTICE_PREFIX = '已自動補登信用卡扣款';
 const AUTOPAY_NOTICE_SUFFIX = '筆';
-const AUTOPAY_NOTICE_HIDE_MS = 4000;
+const BOTTOM_BAR_HEIGHT = 56;
 
 type NavProp = NativeStackNavigationProp<MainStackParamList, 'Home'>;
 
@@ -419,87 +411,7 @@ export default function HomeScreen(): React.JSX.Element {
         </View>
       </ScrollView>
 
-      <View
-        style={[
-          styles.bottomBar,
-          { paddingBottom: insets.bottom, minHeight: bottomBarPadding },
-        ]}
-      >
-        <TouchableOpacity
-          style={styles.bottomBarItem}
-          onPress={() => navigation.navigate('LedgerBalance')}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name="book-outline"
-            size={BOTTOM_ICON_SIZE}
-            color="#6b7280"
-          />
-          <Text style={styles.bottomBarLabel}>{BOTTOM_LEDGER}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.bottomBarItem}
-          onPress={() => navigation.navigate('Statistics')}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name="stats-chart-outline"
-            size={BOTTOM_ICON_SIZE}
-            color="#6b7280"
-          />
-          <Text style={styles.bottomBarLabel}>{BOTTOM_STATS}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.bottomBarItem, styles.bottomBarCenter]}
-          onPress={() => navigation.navigate('AddTransaction', { selectedDate })}
-          activeOpacity={0.8}
-        >
-          <View style={styles.bottomBarCenterIconWrap}>
-            <Ionicons
-              name="add"
-              size={BOTTOM_ICON_SIZE + 4}
-              color="#fff"
-            />
-          </View>
-          <Text style={styles.bottomBarCenterLabel}>{BOTTOM_ADD_LABEL}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.bottomBarItem}
-          onPress={() => navigation.navigate('BudgetSettings')}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name="wallet-outline"
-            size={BOTTOM_ICON_SIZE}
-            color="#6b7280"
-          />
-          <Text style={styles.bottomBarLabel}>{BOTTOM_BUDGET}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.bottomBarItem}
-          onPress={() => navigation.navigate('Portfolio')}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name="trending-up-outline"
-            size={BOTTOM_ICON_SIZE}
-            color="#6b7280"
-          />
-          <Text style={styles.bottomBarLabel}>{BOTTOM_INVEST}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.bottomBarItem}
-          onPress={() => navigation.navigate('Settings')}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name="settings-outline"
-            size={BOTTOM_ICON_SIZE}
-            color="#6b7280"
-          />
-          <Text style={styles.bottomBarLabel}>{BOTTOM_SETTINGS}</Text>
-        </TouchableOpacity>
-      </View>
+      <BottomBar selectedDate={selectedDate} />
 
       {confirmDeleteTransaction != null ? (
         <View
@@ -611,44 +523,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: '#047857',
   },
-  bottomBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: BOTTOM_BAR_HEIGHT,
-    paddingHorizontal: 4,
-    paddingTop: 8,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-  },
-  bottomBarItem: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    gap: 4,
-  },
-  bottomBarLabel: {
-    fontSize: BOTTOM_LABEL_FONT_SIZE,
-    color: '#6b7280',
-    fontWeight: '500',
-  },
-  bottomBarCenter: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bottomBarCenterIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#2563eb',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   bottomBarCenterLabel: {
-    fontSize: BOTTOM_LABEL_FONT_SIZE,
+    fontSize: 10,
     color: '#2563eb',
     fontWeight: '600',
     marginTop: 4,

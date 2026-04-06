@@ -1803,6 +1803,9 @@ export async function clearAllData(): Promise<void> {
   await AsyncStorage.removeItem(STORAGE_KEYS.ONBOARDING);
   await AsyncStorage.removeItem(STORAGE_KEYS.CATEGORIES);
   await AsyncStorage.removeItem(STORAGE_KEYS.CUSTOM_CURRENCIES);
+  await AsyncStorage.removeItem(STORAGE_KEYS.STOCK_TRANSACTIONS);
+  await AsyncStorage.removeItem(STORAGE_KEYS.STOCK_PRICES_CACHE);
+  await AsyncStorage.removeItem(STORAGE_KEYS.ETF_HOLDINGS);
 }
 
 const MIN_DAY = 1;
@@ -1924,42 +1927,38 @@ function rowToStockTransaction(row: Record<string, unknown>): StockTransaction {
 
 export async function getStockTransactions(): Promise<StockTransaction[]> {
   const db = await getDb();
-  if (!db) return [];
-  const rows = await db.getAllAsync<Record<string, unknown>>(
-    'SELECT * FROM stock_transactions ORDER BY date ASC, created_at ASC'
-  );
-  return rows.map(rowToStockTransaction);
+  if (db) {
+    const rows = await db.getAllAsync<Record<string, unknown>>(
+      'SELECT * FROM stock_transactions ORDER BY date ASC, created_at ASC'
+    );
+    return rows.map(rowToStockTransaction);
+  }
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.STOCK_TRANSACTIONS);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as StockTransaction[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 export async function getStockTransactionsByTicker(ticker: string): Promise<StockTransaction[]> {
   const db = await getDb();
-  if (!db) return [];
-  const rows = await db.getAllAsync<Record<string, unknown>>(
-    'SELECT * FROM stock_transactions WHERE ticker = ? ORDER BY date ASC',
-    [ticker]
-  );
-  return rows.map(rowToStockTransaction);
+  if (db) {
+    const rows = await db.getAllAsync<Record<string, unknown>>(
+      'SELECT * FROM stock_transactions WHERE ticker = ? ORDER BY date ASC',
+      [ticker]
+    );
+    return rows.map(rowToStockTransaction);
+  }
+  const all = await getStockTransactions();
+  return all.filter(t => t.ticker === ticker).sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export async function saveStockTransaction(tx: StockTransaction): Promise<void> {
   const db = await getDb();
-  if (!db) return;
-  await db.runAsync(
-    `INSERT OR REPLACE INTO stock_transactions
-      (id, ticker, name, date, type, shares, price_native, usd_cost, twd_cost, exchange_rate, note, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      tx.id, tx.ticker, tx.name, tx.date, tx.type, tx.shares,
-      tx.priceNative, tx.usdCost ?? null, tx.twdCost,
-      tx.exchangeRate ?? null, tx.note ?? null, tx.createdAt,
-    ]
-  );
-}
-
-export async function saveStockTransactions(txs: StockTransaction[]): Promise<void> {
-  const db = await getDb();
-  if (!db) return;
-  for (const tx of txs) {
+  if (db) {
     await db.runAsync(
       `INSERT OR REPLACE INTO stock_transactions
         (id, ticker, name, date, type, shares, price_native, usd_cost, twd_cost, exchange_rate, note, created_at)
@@ -1970,13 +1969,44 @@ export async function saveStockTransactions(txs: StockTransaction[]): Promise<vo
         tx.exchangeRate ?? null, tx.note ?? null, tx.createdAt,
       ]
     );
+    return;
   }
+  const all = await getStockTransactions();
+  const idx = all.findIndex(t => t.id === tx.id);
+  if (idx >= 0) all[idx] = tx;
+  else all.push(tx);
+  await AsyncStorage.setItem(STORAGE_KEYS.STOCK_TRANSACTIONS, JSON.stringify(all));
+}
+
+export async function saveStockTransactions(txs: StockTransaction[]): Promise<void> {
+  const db = await getDb();
+  if (db) {
+    for (const tx of txs) {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO stock_transactions
+          (id, ticker, name, date, type, shares, price_native, usd_cost, twd_cost, exchange_rate, note, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          tx.id, tx.ticker, tx.name, tx.date, tx.type, tx.shares,
+          tx.priceNative, tx.usdCost ?? null, tx.twdCost,
+          tx.exchangeRate ?? null, tx.note ?? null, tx.createdAt,
+        ]
+      );
+    }
+    return;
+  }
+  await AsyncStorage.setItem(STORAGE_KEYS.STOCK_TRANSACTIONS, JSON.stringify(txs));
 }
 
 export async function deleteStockTransaction(id: string): Promise<void> {
   const db = await getDb();
-  if (!db) return;
-  await db.runAsync('DELETE FROM stock_transactions WHERE id = ?', [id]);
+  if (db) {
+    await db.runAsync('DELETE FROM stock_transactions WHERE id = ?', [id]);
+    return;
+  }
+  const all = await getStockTransactions();
+  const next = all.filter(t => t.id !== id);
+  await AsyncStorage.setItem(STORAGE_KEYS.STOCK_TRANSACTIONS, JSON.stringify(next));
 }
 
 // ─────────────────────────────────────────────
@@ -1985,42 +2015,61 @@ export async function deleteStockTransaction(id: string): Promise<void> {
 
 export async function getStockPriceCache(ticker: string): Promise<StockPriceCache | null> {
   const db = await getDb();
-  if (!db) return null;
-  const row = await db.getFirstAsync<Record<string, unknown>>(
-    'SELECT * FROM stock_prices_cache WHERE ticker = ?',
-    [ticker]
-  );
-  if (!row) return null;
-  return {
-    ticker: row.ticker as string,
-    price: row.price as number,
-    currency: row.currency as 'TWD' | 'USD',
-    lastUpdated: row.last_updated as string,
-  };
+  if (db) {
+    const row = await db.getFirstAsync<Record<string, unknown>>(
+      'SELECT * FROM stock_prices_cache WHERE ticker = ?',
+      [ticker]
+    );
+    if (!row) return null;
+    return {
+      ticker: row.ticker as string,
+      price: row.price as number,
+      currency: row.currency as 'TWD' | 'USD',
+      lastUpdated: row.last_updated as string,
+    };
+  }
+  const all = await getAllStockPricesCache();
+  return all.find(p => p.ticker === ticker) ?? null;
 }
 
 export async function setStockPriceCache(cache: StockPriceCache): Promise<void> {
   const db = await getDb();
-  if (!db) return;
-  await db.runAsync(
-    `INSERT OR REPLACE INTO stock_prices_cache (ticker, price, currency, last_updated)
-     VALUES (?, ?, ?, ?)`,
-    [cache.ticker, cache.price, cache.currency, cache.lastUpdated]
-  );
+  if (db) {
+    await db.runAsync(
+      `INSERT OR REPLACE INTO stock_prices_cache (ticker, price, currency, last_updated)
+       VALUES (?, ?, ?, ?)`,
+      [cache.ticker, cache.price, cache.currency, cache.lastUpdated]
+    );
+    return;
+  }
+  const all = await getAllStockPricesCache();
+  const idx = all.findIndex(p => p.ticker === cache.ticker);
+  if (idx >= 0) all[idx] = cache;
+  else all.push(cache);
+  await AsyncStorage.setItem(STORAGE_KEYS.STOCK_PRICES_CACHE, JSON.stringify(all));
 }
 
 export async function getAllStockPricesCache(): Promise<StockPriceCache[]> {
   const db = await getDb();
-  if (!db) return [];
-  const rows = await db.getAllAsync<Record<string, unknown>>(
-    'SELECT * FROM stock_prices_cache'
-  );
-  return rows.map(r => ({
-    ticker: r.ticker as string,
-    price: r.price as number,
-    currency: r.currency as 'TWD' | 'USD',
-    lastUpdated: r.last_updated as string,
-  }));
+  if (db) {
+    const rows = await db.getAllAsync<Record<string, unknown>>(
+      'SELECT * FROM stock_prices_cache'
+    );
+    return rows.map(r => ({
+      ticker: r.ticker as string,
+      price: r.price as number,
+      currency: r.currency as 'TWD' | 'USD',
+      lastUpdated: r.last_updated as string,
+    }));
+  }
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.STOCK_PRICES_CACHE);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as StockPriceCache[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -2029,31 +2078,54 @@ export async function getAllStockPricesCache(): Promise<StockPriceCache[]> {
 
 export async function getETFHoldings(etfTicker: string): Promise<ETFHolding[]> {
   const db = await getDb();
-  if (!db) return [];
-  const rows = await db.getAllAsync<Record<string, unknown>>(
-    'SELECT * FROM etf_holdings WHERE etf_ticker = ? ORDER BY rank ASC',
-    [etfTicker]
-  );
-  return rows.map(r => ({
-    etfTicker: r.etf_ticker as string,
-    rank: r.rank as number,
-    companyName: r.company_name as string,
-    weightPct: r.weight_pct as number,
-    lastUpdated: r.last_updated as string,
-  }));
+  if (db) {
+    const rows = await db.getAllAsync<Record<string, unknown>>(
+      'SELECT * FROM etf_holdings WHERE etf_ticker = ? ORDER BY rank ASC',
+      [etfTicker]
+    );
+    return rows.map(r => ({
+      etfTicker: r.etf_ticker as string,
+      rank: r.rank as number,
+      companyName: r.company_name as string,
+      weightPct: r.weight_pct as number,
+      lastUpdated: r.last_updated as string,
+    }));
+  }
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.ETF_HOLDINGS);
+    if (!raw) return [];
+    const all = JSON.parse(raw) as ETFHolding[];
+    return all.filter(h => h.etfTicker === etfTicker).sort((a, b) => a.rank - b.rank);
+  } catch {
+    return [];
+  }
 }
 
 export async function saveETFHoldings(holdings: ETFHolding[]): Promise<void> {
   const db = await getDb();
-  if (!db) return;
-  if (holdings.length === 0) return;
-  const etfTicker = holdings[0].etfTicker;
-  await db.runAsync('DELETE FROM etf_holdings WHERE etf_ticker = ?', [etfTicker]);
-  for (const h of holdings) {
-    await db.runAsync(
-      `INSERT INTO etf_holdings (etf_ticker, rank, company_name, weight_pct, last_updated)
-       VALUES (?, ?, ?, ?, ?)`,
-      [h.etfTicker, h.rank, h.companyName, h.weightPct, h.lastUpdated]
-    );
+  if (db) {
+    if (holdings.length === 0) return;
+    const etfTicker = holdings[0].etfTicker;
+    await db.runAsync('DELETE FROM etf_holdings WHERE etf_ticker = ?', [etfTicker]);
+    for (const h of holdings) {
+      await db.runAsync(
+        `INSERT INTO etf_holdings (etf_ticker, rank, company_name, weight_pct, last_updated)
+         VALUES (?, ?, ?, ?, ?)`,
+        [h.etfTicker, h.rank, h.companyName, h.weightPct, h.lastUpdated]
+      );
+    }
+    return;
+  }
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.ETF_HOLDINGS);
+    let all = raw ? (JSON.parse(raw) as ETFHolding[]) : [];
+    if (holdings.length > 0) {
+      const etfTicker = holdings[0].etfTicker;
+      all = all.filter(h => h.etfTicker !== etfTicker);
+      all.push(...holdings);
+    }
+    await AsyncStorage.setItem(STORAGE_KEYS.ETF_HOLDINGS, JSON.stringify(all));
+  } catch {
+    // ignore
   }
 }

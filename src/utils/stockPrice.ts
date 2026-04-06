@@ -41,34 +41,44 @@ async function fetchUSStockPrice(ticker: string): Promise<number | null> {
  * 回傳 TWD 現價，失敗時回傳 null
  */
 async function fetchTWStockPrice(stockNo: string): Promise<number | null> {
-  try {
-    const today = new Date();
-    const yyyymmdd = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
-    const url = `https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?stockNo=${encodeURIComponent(stockNo)}&date=${yyyymmdd}&response=json`;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const json = await res.json();
-    // 取最後一筆（最新交易日）
-    const rows: string[][] = json?.data ?? [];
-    if (rows.length === 0) return null;
-    const lastRow = rows[rows.length - 1];
-    // 欄位 6 = 收盤價（格式：'171.60' 或 '1,234.00'）
-    const closeStr = lastRow[6]?.replace(/,/g, '');
-    const close = parseFloat(closeStr);
-    return isNaN(close) ? null : close;
-  } catch {
-    return null;
-  }
+  const getDailyPrice = async (date: Date): Promise<number | null> => {
+    try {
+      const yyyymmdd = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
+      const url = `https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?stockNo=${encodeURIComponent(stockNo)}&date=${yyyymmdd}&response=json`;
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const json = await res.json();
+      const rows: string[][] = json?.data ?? [];
+      if (rows.length === 0) return null;
+      const lastRow = rows[rows.length - 1];
+      const closeStr = lastRow[6]?.replace(/,/g, '');
+      const close = parseFloat(closeStr);
+      return isNaN(close) ? null : close;
+    } catch {
+      return null;
+    }
+  };
+
+  // 1. Try current month
+  let price = await getDailyPrice(new Date());
+  if (price != null) return price;
+
+  // 2. If empty (maybe beginning of month), try previous month
+  const lastMonth = new Date();
+  lastMonth.setMonth(lastMonth.getMonth() - 1);
+  price = await getDailyPrice(lastMonth);
+  return price;
 }
 
 /** 取得單一股票現價（優先使用快取） */
 export async function getStockPrice(
   ticker: string,
-  currency: 'TWD' | 'USD'
+  currency: 'TWD' | 'USD',
+  ignoreCache = false
 ): Promise<StockPriceCache | null> {
-  // 先查快取
+  // 1. 先查快取
   const cached = await getStockPriceCache(ticker);
-  if (cached && isCacheValid(cached.lastUpdated)) {
+  if (!ignoreCache && cached && isCacheValid(cached.lastUpdated)) {
     return cached;
   }
 
@@ -97,12 +107,13 @@ export async function getStockPrice(
 
 /** 批次取得多支股票現價 */
 export async function getMultipleStockPrices(
-  stocks: Array<{ ticker: string; currency: 'TWD' | 'USD' }>
+  stocks: Array<{ ticker: string; currency: 'TWD' | 'USD' }>,
+  ignoreCache = false
 ): Promise<Record<string, StockPriceCache>> {
   const results: Record<string, StockPriceCache> = {};
   await Promise.all(
     stocks.map(async ({ ticker, currency }) => {
-      const result = await getStockPrice(ticker, currency);
+      const result = await getStockPrice(ticker, currency, ignoreCache);
       if (result) {
         results[ticker] = result;
       }

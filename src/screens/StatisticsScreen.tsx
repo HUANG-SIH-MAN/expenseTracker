@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { PieChart } from '../components';
+import { PieChart, BottomBar } from '../components';
 import type { TransactionType } from '../types';
 import { useTransactions } from '../contexts/TransactionsContext';
 import { useCategories } from '../contexts/CategoriesContext';
@@ -182,7 +182,7 @@ export default function StatisticsScreen(): React.JSX.Element {
   );
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backBtn}
@@ -198,7 +198,7 @@ export default function StatisticsScreen(): React.JSX.Element {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 80 }]}
         showsVerticalScrollIndicator={false}
       >
         {/* 期選擇：月 / 年 */}
@@ -373,6 +373,7 @@ export default function StatisticsScreen(): React.JSX.Element {
           </>
         )}
       </ScrollView>
+      <BottomBar />
     </View>
   );
 }

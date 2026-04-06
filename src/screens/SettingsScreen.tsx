@@ -20,6 +20,7 @@ import { useTransactions } from '../contexts/TransactionsContext';
 import { useBudget } from '../contexts/BudgetContext';
 import { useOnboarding } from '../contexts/OnboardingContext';
 import { clearAllData } from '../utils/storage';
+import { BottomBar } from '../components';
 
 const TITLE = '設定';
 const BACK_ICON_SIZE = 28;
@@ -112,7 +113,7 @@ export default function SettingsScreen(): React.JSX.Element {
   }, [performClear]);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backBtn}
@@ -126,7 +127,7 @@ export default function SettingsScreen(): React.JSX.Element {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 24 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 80 }]}
       >
         <View style={styles.list}>
           {SETTING_ITEMS.map((item) => (
@@ -176,6 +177,7 @@ export default function SettingsScreen(): React.JSX.Element {
           <Ionicons name="trash-outline" size={20} color="#dc2626" />
         </TouchableOpacity>
       </ScrollView>
+      <BottomBar />
     </View>
   );
 }

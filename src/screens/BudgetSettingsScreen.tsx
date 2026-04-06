@@ -7,18 +7,14 @@ import {
   Text,
   View,
   TouchableOpacity,
-  ScrollView,
-  TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { MainStackParamList } from '../navigation/MainStack';
-import type { MonthlyFixedItem } from '../types';
 import { useBudget } from '../contexts/BudgetContext';
-import { useCategories } from '../contexts/CategoriesContext';
-import { MonthlyBudgetTab, AnnualBudgetTab } from '../components';
+import { MonthlyBudgetTab, AnnualBudgetTab, BottomBar } from '../components';
 
 const TITLE = '預算規劃';
 const TAB_MONTHLY = '月預算';
@@ -48,7 +44,7 @@ export default function BudgetSettingsScreen(): React.JSX.Element {
     <View
       style={[
         styles.container,
-        { paddingTop: insets.top, paddingBottom: insets.bottom },
+        { paddingTop: insets.top },
       ]}
     >
       <View style={styles.header}>
@@ -88,6 +84,8 @@ export default function BudgetSettingsScreen(): React.JSX.Element {
       ) : (
         <AnnualBudgetTab insets={insets} />
       )}
+
+      <BottomBar />
     </View>
   );
 }

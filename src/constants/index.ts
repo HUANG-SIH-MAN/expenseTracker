@@ -34,6 +34,9 @@ export const STORAGE_KEYS = {
   CREDIT_CARD_AUTOPAY_EXECUTION_LOGS:
     "@expense_tracker/credit_card_autopay_execution_logs",
   CASH_TOPUP_RULES: "@expense_tracker/cash_topup_rules",
+  STOCK_TRANSACTIONS: "@expense_tracker/stock_transactions",
+  STOCK_PRICES_CACHE: "@expense_tracker/stock_prices_cache",
+  ETF_HOLDINGS: "@expense_tracker/etf_holdings",
 } as const;
 
 /** 預設支出類別（之後可改為使用者自訂） */
