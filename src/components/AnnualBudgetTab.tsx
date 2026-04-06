@@ -17,8 +17,9 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { AnnualBudgetEntry, TransactionType } from '../types';
 import { useCategories } from '../contexts/CategoriesContext';
 import { useTransactions } from '../contexts/TransactionsContext';
-import { getAnnualBudgetEntries, saveAnnualBudgetEntries } from '../utils/storage';
+import { getAnnualBudgetEntries, saveAnnualBudgetEntries, getStoredAccounts } from '../utils/storage';
 import { generateId } from '../utils/id';
+import type { Account } from '../types';
 
 const MONTHS = 12;
 const YEAR_RANGE_PAST = 10;
@@ -78,6 +79,8 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
   const [formCategoryKey, setFormCategoryKey] = useState('');
   const [formLabel, setFormLabel] = useState('');
   const [formAmountStr, setFormAmountStr] = useState('');
+  const [formAccountId, setFormAccountId] = useState<string>('');
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [confirmDelete, setConfirmDelete] = useState<AnnualBudgetEntry | null>(null);
   const [yearPickerVisible, setYearPickerVisible] = useState(false);
   const [copyModalVisible, setCopyModalVisible] = useState(false);
@@ -94,6 +97,7 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
 
   useEffect(() => {
     loadEntries();
+    getStoredAccounts().then(list => setAccounts(list.filter(a => !a.isDeleted)));
   }, [loadEntries]);
 
   useEffect(() => {
@@ -111,6 +115,7 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
     setFormCategoryKey(expenseCategories[0]?.key ?? '');
     setFormLabel('');
     setFormAmountStr('');
+    setFormAccountId('');
     setModalVisible(true);
   };
 
@@ -121,6 +126,7 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
     setFormCategoryKey(entry.categoryKey);
     setFormLabel(entry.label ?? '');
     setFormAmountStr(String(entry.estimatedAmount));
+    setFormAccountId(entry.accountId ?? '');
     setModalVisible(true);
   };
 
@@ -142,6 +148,7 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
           month: formMonth,
           type: formType,
           categoryKey: formCategoryKey,
+          accountId: formAccountId === '' ? undefined : formAccountId,
           label: labelTrimmed,
           estimatedAmount: amount,
         };
@@ -154,6 +161,7 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
         month: formMonth,
         type: formType,
         categoryKey: formCategoryKey,
+        accountId: formAccountId === '' ? undefined : formAccountId,
         label: labelTrimmed,
         estimatedAmount: amount,
         sortOrder: maxOrder + 1,
@@ -209,7 +217,7 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
 
   const sortedEntries = React.useMemo(() => {
     return [...entries]
-      .filter((e) => e.month >= 1 && e.month <= MONTHS)
+      .filter((e) => e.month >= 0 && e.month <= MONTHS)
       .sort((a, b) => a.month - b.month || a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
   }, [entries]);
 
@@ -373,7 +381,7 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
                       activeOpacity={0.7}
                     >
                       <Text style={styles.entryLabel} numberOfLines={1}>
-                        {entry.month}月 · {entry.type === 'income' ? INCOME_LABEL : EXPENSE_LABEL} · {displayName}
+                        {entry.month === 0 ? '全年度' : `${entry.month}月`} · {entry.type === 'income' ? INCOME_LABEL : EXPENSE_LABEL} · {displayName}
                       </Text>
                       <View style={styles.entryAmounts}>
                         <Text style={styles.entryPlanned}>
@@ -432,13 +440,13 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
               <Text style={styles.modalLabel}>{LABEL_MONTH}</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={styles.monthChips}>
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => (
+                  {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => (
                     <TouchableOpacity
                       key={m}
                       style={[styles.chip, formMonth === m && styles.chipActive]}
                       onPress={() => setFormMonth(m)}
                     >
-                      <Text style={[styles.chipText, formMonth === m && styles.chipTextActive]}>{m} 月</Text>
+                      <Text style={[styles.chipText, formMonth === m && styles.chipTextActive]}>{m === 0 ? '不限月份 / 全年' : `${m} 月`}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -497,6 +505,28 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
                 placeholderTextColor="#9ca3af"
                 keyboardType="numeric"
               />
+            </View>
+            <View style={styles.modalField}>
+              <Text style={styles.modalLabel}>綁定帳戶（選填）</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={styles.monthChips}>
+                  <TouchableOpacity
+                    style={[styles.chip, formAccountId === '' && styles.chipActive]}
+                    onPress={() => setFormAccountId('')}
+                  >
+                    <Text style={[styles.chipText, formAccountId === '' && styles.chipTextActive]}>不綁定</Text>
+                  </TouchableOpacity>
+                  {accounts.map((a) => (
+                    <TouchableOpacity
+                      key={a.id}
+                      style={[styles.chip, formAccountId === a.id && styles.chipActive]}
+                      onPress={() => setFormAccountId(a.id)}
+                    >
+                      <Text style={[styles.chipText, formAccountId === a.id && styles.chipTextActive]}>{a.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
             </View>
             <View style={styles.modalActions}>
               <TouchableOpacity style={styles.cancelBtn} onPress={closeModal}>

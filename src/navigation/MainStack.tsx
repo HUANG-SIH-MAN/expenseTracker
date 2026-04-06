@@ -91,6 +91,9 @@ export type MainStackParamList = {
     returnDate: string;
     returnTransactionId?: string;
     transactionAmount?: number;
+    transactionNote?: string;
+    transactionCategory?: string;
+    transactionAccountId?: string;
   };
 };
 

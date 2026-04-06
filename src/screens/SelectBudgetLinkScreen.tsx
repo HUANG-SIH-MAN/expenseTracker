@@ -19,9 +19,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { MainStackParamList } from '../navigation/MainStack';
 import { useBudget } from '../contexts/BudgetContext';
 import { useCategories } from '../contexts/CategoriesContext';
-import { getAnnualBudgetEntries, saveAnnualBudgetEntries } from '../utils/storage';
+import { getAnnualBudgetEntries, saveAnnualBudgetEntries, getStoredAccounts } from '../utils/storage';
 import { generateId } from '../utils/id';
-import type { AnnualBudgetEntry, TransactionType } from '../types';
+import type { AnnualBudgetEntry, TransactionType, Account } from '../types';
 
 type Props = NativeStackScreenProps<MainStackParamList, 'SelectBudgetLink'>;
 
@@ -40,6 +40,9 @@ export default function SelectBudgetLinkScreen(): React.JSX.Element {
     returnDate,
     returnTransactionId,
     transactionAmount,
+    transactionNote,
+    transactionCategory,
+    transactionAccountId,
   } = route.params;
 
   const { monthlyFixedItems } = useBudget();
@@ -55,6 +58,8 @@ export default function SelectBudgetLinkScreen(): React.JSX.Element {
   const [showNewForm, setShowNewForm] = useState(false);
   const [newLabel, setNewLabel] = useState('');
   const [newAmountStr, setNewAmountStr] = useState('');
+  const [newAccountId, setNewAccountId] = useState<string>('');
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const categories = transactionType === 'income' ? incomeCategories : expenseCategories;
   const [newCategoryKey, setNewCategoryKey] = useState<string>(categories[0]?.key ?? '');
 
@@ -62,7 +67,7 @@ export default function SelectBudgetLinkScreen(): React.JSX.Element {
     getAnnualBudgetEntries(year).then((list) => {
       setAnnualEntries(
         list
-          .filter((e) => e.month === month && e.type === (transactionType as TransactionType))
+          .filter((e) => (e.month === month || e.month === 0) && e.type === (transactionType as TransactionType))
           .map((e) => ({
             id: e.id,
             month: e.month,
@@ -72,6 +77,7 @@ export default function SelectBudgetLinkScreen(): React.JSX.Element {
           }))
       );
     });
+    getStoredAccounts().then(list => setAccounts(list.filter(a => !a.isDeleted)));
   }, [year, month, transactionType]);
 
   const pick = (monthlyId: string | undefined, annualId: string | undefined) => {
@@ -89,9 +95,10 @@ export default function SelectBudgetLinkScreen(): React.JSX.Element {
   };
 
   const openNewForm = () => {
-    setNewLabel('');
+    setNewLabel(transactionNote || '');
     setNewAmountStr(transactionAmount != null && transactionAmount > 0 ? String(transactionAmount) : '');
-    setNewCategoryKey(categories[0]?.key ?? '');
+    setNewCategoryKey(transactionCategory || (categories[0]?.key ?? ''));
+    setNewAccountId(transactionAccountId || '');
     setShowNewForm(true);
   };
 
@@ -107,13 +114,14 @@ export default function SelectBudgetLinkScreen(): React.JSX.Element {
       month,
       type: transactionType as TransactionType,
       categoryKey: newCategoryKey,
+      accountId: newAccountId || undefined,
       label: newLabel.trim() || undefined,
       estimatedAmount: amount,
       sortOrder: maxOrder + 1,
     };
     await saveAnnualBudgetEntries(year, [...existing, newEntry]);
     pick(undefined, newEntry.id);
-  }, [year, month, transactionType, newCategoryKey, newLabel, newAmountStr]);
+  }, [year, month, transactionType, newCategoryKey, newLabel, newAmountStr, newAccountId]);
 
   const hasMonthly = transactionType === 'expense' && monthlyFixedItems.length > 0;
   const hasAnnual = annualEntries.length > 0;
@@ -195,9 +203,7 @@ export default function SelectBudgetLinkScreen(): React.JSX.Element {
           {hasAnnual
             ? annualEntries.map((e) => {
                 const isSelected = currentAnnualBudgetEntryId === e.id;
-                const displayName = e.label
-                  ? `${e.month}月 ${e.label}（${getCategoryLabel(transactionType as TransactionType, e.categoryKey)}）`
-                  : `${e.month}月 ${getCategoryLabel(transactionType as TransactionType, e.categoryKey)}`;
+                // Removed redundant displayName calculation to use inline display
                 return (
                   <TouchableOpacity
                     key={e.id}
@@ -210,7 +216,7 @@ export default function SelectBudgetLinkScreen(): React.JSX.Element {
                         style={[styles.rowLabel, isSelected && styles.rowLabelSelected]}
                         numberOfLines={1}
                       >
-                        {displayName}
+                        {e.month === 0 ? '全年度' : `${e.month}月`} {e.label || getCategoryLabel(transactionType as TransactionType, e.categoryKey)}
                       </Text>
                       <Text style={styles.rowSub}>計劃 NT${e.estimatedAmount.toLocaleString()}</Text>
                     </View>
@@ -265,7 +271,6 @@ export default function SelectBudgetLinkScreen(): React.JSX.Element {
                 placeholder="例：年終獎金 / 所得稅"
                 placeholderTextColor="#9ca3af"
               />
-
               <Text style={styles.newFormLabel}>金額</Text>
               <TextInput
                 style={styles.input}
@@ -275,6 +280,38 @@ export default function SelectBudgetLinkScreen(): React.JSX.Element {
                 placeholderTextColor="#9ca3af"
                 keyboardType="numeric"
               />
+
+              <Text style={styles.newFormLabel}>帳戶（選填）</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.categoryScroll}
+                keyboardShouldPersistTaps="handled"
+              >
+                <View style={styles.categoryChips}>
+                  <TouchableOpacity
+                    style={[styles.chip, newAccountId === '' && styles.chipSelected]}
+                    onPress={() => setNewAccountId('')}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.chipText, newAccountId === '' && styles.chipTextSelected]}>
+                      不綁定
+                    </Text>
+                  </TouchableOpacity>
+                  {accounts.map((a) => (
+                    <TouchableOpacity
+                      key={a.id}
+                      style={[styles.chip, newAccountId === a.id && styles.chipSelected]}
+                      onPress={() => setNewAccountId(a.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.chipText, newAccountId === a.id && styles.chipTextSelected]}>
+                        {a.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
 
               <View style={styles.newFormActions}>
                 <TouchableOpacity

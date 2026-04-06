@@ -137,6 +137,8 @@ export interface MonthlyFixedItem {
   label: string;
   /** 選填，綁定支出類別以計算「預估 vs 當月已發生」 */
   categoryKey?: string;
+  /** 選填，綁定收支帳戶 */
+  accountId?: string;
   /** 當月預估金額（主幣別 TWD） */
   estimatedAmount: number;
   /** 原始幣別（預設 TWD；設為 USD 時以 originalAmount 換算） */
@@ -152,9 +154,11 @@ export interface MonthlyFixedItem {
 export interface AnnualBudgetEntry {
   id: string;
   year: number;
-  month: number; // 1-12
+  month: number; // 1-12, 0 as unspecified/whole year
   type: TransactionType;
   categoryKey: string;
+  /** 選填，綁定收支帳戶 */
+  accountId?: string;
   /** 選填，區分同類別不同項目，如「汽車保養」「年終獎金」 */
   label?: string;
   estimatedAmount: number;

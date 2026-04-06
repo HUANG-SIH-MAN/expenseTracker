@@ -18,11 +18,11 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { MainStackParamList } from '../navigation/MainStack';
-import type { MonthlyFixedItem, RecurringItem } from '../types';
+import type { MonthlyFixedItem, RecurringItem, Account } from '../types';
 import { useBudget } from '../contexts/BudgetContext';
 import { useCategories } from '../contexts/CategoriesContext';
 import { generateId } from '../utils/id';
-import { getExchangeRates, getStoredRecurring } from '../utils/storage';
+import { getExchangeRates, getStoredRecurring, getStoredAccounts } from '../utils/storage';
 import { fetchRatesToPrimary } from '../utils/exchangeRate';
 
 const BACK_ICON_SIZE = 28;
@@ -61,6 +61,8 @@ export default function BudgetFixedEditScreen(): React.JSX.Element {
   const [amountStr, setAmountStr] = useState('');
   const [currency, setCurrency] = useState<SupportedCurrency>('TWD');
   const [categoryKey, setCategoryKey] = useState<string>(CATEGORY_NONE);
+  const [accountId, setAccountId] = useState<string>('');
+  const [accounts, setAccounts] = useState<Account[]>([]);
 
   const [recurringItemId, setRecurringItemId] = useState<string>(RECURRING_NONE);
   const [recurringItems, setRecurringItems] = useState<RecurringItem[]>([]);
@@ -83,6 +85,9 @@ export default function BudgetFixedEditScreen(): React.JSX.Element {
         setRecurringItemId(linkedRecurringItemIdParam);
       }
     });
+    getStoredAccounts().then((list) => {
+      setAccounts(list.filter((a) => !a.isDeleted));
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -100,6 +105,7 @@ export default function BudgetFixedEditScreen(): React.JSX.Element {
           setAmountStr(String(item.estimatedAmount));
         }
         setCategoryKey(item.categoryKey ?? CATEGORY_NONE);
+        setAccountId(item.accountId ?? '');
       }
     }
   }, [itemId, monthlyFixedItems]);
@@ -113,6 +119,7 @@ export default function BudgetFixedEditScreen(): React.JSX.Element {
     setAmountStr(String(rec.amount));
     setCurrency('TWD');
     setCategoryKey(rec.category);
+    setAccountId(rec.accountId ?? '');
   }, [recurringItemId, recurringItems, isLinked]);
 
   // 載入已儲存的匯率
@@ -173,6 +180,7 @@ export default function BudgetFixedEditScreen(): React.JSX.Element {
               estimatedAmount,
               categoryKey:
                 categoryKey === CATEGORY_NONE ? undefined : categoryKey,
+              accountId: accountId === '' ? undefined : accountId,
               ...extraFields,
             }
           : x
@@ -185,6 +193,7 @@ export default function BudgetFixedEditScreen(): React.JSX.Element {
         estimatedAmount,
         categoryKey:
           categoryKey === CATEGORY_NONE ? undefined : categoryKey,
+        accountId: accountId === '' ? undefined : accountId,
         sortOrder: monthlyFixedItems.length,
         ...extraFields,
       };
@@ -200,6 +209,7 @@ export default function BudgetFixedEditScreen(): React.JSX.Element {
     originalAmount,
     twdAmount,
     categoryKey,
+    accountId,
     isLinked,
     recurringItemId,
     monthlyFixedItems,
@@ -410,51 +420,99 @@ export default function BudgetFixedEditScreen(): React.JSX.Element {
         )}
 
         {!isLinked && (
-          <View style={styles.field}>
-            <Text style={styles.fieldLabel}>{LABEL_CATEGORY}</Text>
-            <View style={styles.categoryWrap}>
-              <TouchableOpacity
-                style={[
-                  styles.categoryChip,
-                  categoryKey === CATEGORY_NONE && styles.categoryChipSelected,
-                ]}
-                onPress={() => setCategoryKey(CATEGORY_NONE)}
-                activeOpacity={0.7}
-              >
-                <Text
+          <>
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>{LABEL_CATEGORY}</Text>
+              <View style={styles.categoryWrap}>
+                <TouchableOpacity
                   style={[
-                    styles.categoryChipText,
-                    categoryKey === CATEGORY_NONE && styles.categoryChipTextSelected,
+                    styles.categoryChip,
+                    categoryKey === CATEGORY_NONE && styles.categoryChipSelected,
                   ]}
+                  onPress={() => setCategoryKey(CATEGORY_NONE)}
+                  activeOpacity={0.7}
                 >
-                  不綁定
-                </Text>
-              </TouchableOpacity>
-              {expenseCategories.map((c) => {
-                const selected = categoryKey === c.key;
-                return (
-                  <TouchableOpacity
-                    key={c.key}
+                  <Text
                     style={[
-                      styles.categoryChip,
-                      selected && styles.categoryChipSelected,
+                      styles.categoryChipText,
+                      categoryKey === CATEGORY_NONE && styles.categoryChipTextSelected,
                     ]}
-                    onPress={() => setCategoryKey(c.key)}
-                    activeOpacity={0.7}
                   >
-                    <Text
+                    不綁定
+                  </Text>
+                </TouchableOpacity>
+                {expenseCategories.map((c) => {
+                  const selected = categoryKey === c.key;
+                  return (
+                    <TouchableOpacity
+                      key={c.key}
                       style={[
-                        styles.categoryChipText,
-                        selected && styles.categoryChipTextSelected,
+                        styles.categoryChip,
+                        selected && styles.categoryChipSelected,
                       ]}
+                      onPress={() => setCategoryKey(c.key)}
+                      activeOpacity={0.7}
                     >
-                      {c.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+                      <Text
+                        style={[
+                          styles.categoryChipText,
+                          selected && styles.categoryChipTextSelected,
+                        ]}
+                      >
+                        {c.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
-          </View>
+
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>綁定帳戶（選填）</Text>
+              <View style={styles.categoryWrap}>
+                <TouchableOpacity
+                  style={[
+                    styles.categoryChip,
+                    accountId === '' && styles.categoryChipSelected,
+                  ]}
+                  onPress={() => setAccountId('')}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    style={[
+                      styles.categoryChipText,
+                      accountId === '' && styles.categoryChipTextSelected,
+                    ]}
+                  >
+                    不綁定
+                  </Text>
+                </TouchableOpacity>
+                {accounts.map((a) => {
+                  const selected = accountId === a.id;
+                  return (
+                    <TouchableOpacity
+                      key={a.id}
+                      style={[
+                        styles.categoryChip,
+                        selected && styles.categoryChipSelected,
+                      ]}
+                      onPress={() => setAccountId(a.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.categoryChipText,
+                          selected && styles.categoryChipTextSelected,
+                        ]}
+                      >
+                        {a.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          </>
         )}
 
         <TouchableOpacity

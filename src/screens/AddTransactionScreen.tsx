@@ -23,7 +23,7 @@ import { formatDateWithWeekday } from '../utils/date';
 import { useTransactions } from '../contexts/TransactionsContext';
 import { useCategories } from '../contexts/CategoriesContext';
 import { useBudget } from '../contexts/BudgetContext';
-import { getStoredAccounts, addRecurringSkip } from '../utils/storage';
+import { getStoredAccounts, addRecurringSkip, getAnnualBudgetEntries } from '../utils/storage';
 import { resolveEffectiveDefaultAccountId } from '../utils/categoryDefaultAccount';
 import { CalculatorKeypad } from '../components';
 import Calendar from '../components/Calendar';
@@ -145,15 +145,49 @@ export default function AddTransactionScreen(): React.JSX.Element {
     const mid = route.params.pickedMonthlyFixedItemId;
     if (mid === undefined) return;
     setMonthlyFixedItemId(mid ?? undefined);
+    
+    if (mid) {
+      const selectedItem = monthlyFixedItems.find(x => x.id === mid);
+      if (selectedItem) {
+        if (selectedItem.categoryKey) {
+          setCategory(selectedItem.categoryKey);
+          skipCategoryAccountApplyRef.current = true;
+        }
+        if (selectedItem.accountId) {
+          setAccountId(selectedItem.accountId);
+        }
+      }
+    }
+    
     navigation.setParams({ pickedMonthlyFixedItemId: undefined });
-  }, [route.params.pickedMonthlyFixedItemId, navigation]);
+  }, [route.params.pickedMonthlyFixedItemId, navigation, monthlyFixedItems]);
 
   useEffect(() => {
     const aid = route.params.pickedAnnualBudgetEntryId;
     if (aid === undefined) return;
     setAnnualBudgetEntryId(aid ?? undefined);
+
+    if (aid) {
+      const year = parseInt(dateKey.slice(0, 4));
+      getAnnualBudgetEntries(year).then((list) => {
+        const entry = list.find((e) => e.id === aid);
+        if (entry) {
+          if (entry.categoryKey) {
+            setCategory(entry.categoryKey);
+            skipCategoryAccountApplyRef.current = true;
+          }
+          if (entry.accountId) {
+            setAccountId(entry.accountId);
+          }
+          if (entry.label) {
+            setNote(entry.label);
+          }
+        }
+      });
+    }
+
     navigation.setParams({ pickedAnnualBudgetEntryId: undefined });
-  }, [route.params.pickedAnnualBudgetEntryId, navigation]);
+  }, [route.params.pickedAnnualBudgetEntryId, navigation, dateKey]);
 
   useEffect(() => {
     if (!existing) return;
@@ -440,6 +474,9 @@ export default function AddTransactionScreen(): React.JSX.Element {
               returnDate: dateKey,
               returnTransactionId: transactionId,
               transactionAmount: amount > 0 ? amount : undefined,
+              transactionNote: note.trim() || undefined,
+              transactionCategory: category || undefined,
+              transactionAccountId: accountId || undefined,
             })
           }
           activeOpacity={0.7}
