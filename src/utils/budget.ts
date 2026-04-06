@@ -202,6 +202,8 @@ export interface AmortizedItem {
   totalAmount: number;
   amortizationMonths: number;
   paymentDate: string;
+  /** 分攤到期月份，格式 YYYY-MM */
+  endYearMonth: string;
 }
 
 export function getAmortizedItemsForMonth(
@@ -215,6 +217,11 @@ export function getAmortizedItemsForMonth(
     if (t.amortizationMonths == null) continue;
     const monthlyAmount = getAmortizedAmountForMonth(t, year, month);
     if (monthlyAmount <= 0) continue;
+    const [py, pm] = t.date.split('-').map(Number);
+    const endTotalMonths = pm + t.amortizationMonths - 1;
+    const endYear = py + Math.floor((endTotalMonths - 1) / 12);
+    const endMonth = ((endTotalMonths - 1) % 12) + 1;
+    const endYearMonth = `${endYear}-${String(endMonth).padStart(2, '0')}`;
     result.push({
       transactionId: t.id,
       note: t.note ?? t.category,
@@ -222,6 +229,7 @@ export function getAmortizedItemsForMonth(
       totalAmount: t.amount,
       amortizationMonths: t.amortizationMonths,
       paymentDate: t.date,
+      endYearMonth,
     });
   }
   return result;

@@ -1,8 +1,9 @@
 /**
  * 新增/編輯單筆收入/支出 — 表單 + 底部計算機鍵盤
  */
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
+  Modal,
   StyleSheet,
   Switch,
   Text,
@@ -25,6 +26,7 @@ import { useBudget } from '../contexts/BudgetContext';
 import { getStoredAccounts, addRecurringSkip } from '../utils/storage';
 import { resolveEffectiveDefaultAccountId } from '../utils/categoryDefaultAccount';
 import { CalculatorKeypad } from '../components';
+import Calendar from '../components/Calendar';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
 type RouteProps = NativeStackScreenProps<MainStackParamList, 'AddTransaction'>['route'];
@@ -68,8 +70,12 @@ export default function AddTransactionScreen(): React.JSX.Element {
   const { monthlyFixedItems } = useBudget();
 
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const allAccountsRef = useRef<Account[]>([]);
   const [type, setType] = useState<TransactionType>('expense');
   const [dateKey, setDateKey] = useState(selectedDate);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [datePickerYear, setDatePickerYear] = useState(() => parseInt(selectedDate.slice(0, 4)));
+  const [datePickerMonth, setDatePickerMonth] = useState(() => parseInt(selectedDate.slice(5, 7)));
   const [amountStr, setAmountStr] = useState('');
   const categoryList = type === 'expense' ? expenseCategories : incomeCategories;
   const categoryKeys = categoryList.map((c) => c.key);
@@ -104,10 +110,10 @@ export default function AddTransactionScreen(): React.JSX.Element {
 
   useEffect(() => {
     getStoredAccounts().then((list: Account[]) => {
-      const valid = list.filter((a: Account) =>
-        a.name.trim() !== '' &&
-        !a.isDeleted &&
-        (!a.isHidden || a.id === accountId || a.id === existing?.accountId)
+      const all = list.filter((a: Account) => a.name.trim() !== '' && !a.isDeleted);
+      allAccountsRef.current = all;
+      const valid = all.filter(
+        (a) => !a.isHidden || a.id === accountId || a.id === existing?.accountId,
       );
       setAccounts(valid);
       if (valid.length > 0 && !transactionId) {
@@ -172,8 +178,7 @@ export default function AddTransactionScreen(): React.JSX.Element {
   }, [existing?.id]);
 
   useEffect(() => {
-    if (accounts.length === 0) return;
-    const validIds = new Set(accounts.map((a) => a.id));
+    if (allAccountsRef.current.length === 0) return;
     if (skipCategoryAccountApplyRef.current) {
       skipCategoryAccountApplyRef.current = false;
       prevCategoryRef.current = category;
@@ -192,11 +197,12 @@ export default function AddTransactionScreen(): React.JSX.Element {
     prevTypeRef.current = type;
     const list = type === 'expense' ? expenseCategories : incomeCategories;
     const item = list.find((c) => c.key === category);
-    const resolved = resolveEffectiveDefaultAccountId(item, validIds);
+    const allIds = new Set(allAccountsRef.current.map((a) => a.id));
+    const resolved = resolveEffectiveDefaultAccountId(item, allIds);
     if (resolved) {
       setAccountId(resolved);
     }
-  }, [category, type, expenseCategories, incomeCategories, accounts]);
+  }, [category, type, expenseCategories, incomeCategories]);
 
   const handleTypeChange = (t: TransactionType) => {
     setType(t);
@@ -257,7 +263,14 @@ export default function AddTransactionScreen(): React.JSX.Element {
     navigation.popToTop();
   };
 
-  const selectedAccount = accounts.find((a) => a.id === accountId);
+  // 顯示用帳戶列表：可見帳戶 + 若當前選的是隱藏帳戶也加入
+  const displayedAccounts = useMemo(() => {
+    if (!accountId || accounts.some((a) => a.id === accountId)) return accounts;
+    const hidden = allAccountsRef.current.find((a) => a.id === accountId);
+    return hidden ? [...accounts, hidden] : accounts;
+  }, [accounts, accountId]);
+
+  const selectedAccount = displayedAccounts.find((a) => a.id === accountId);
   const accountCurrency = selectedAccount?.currency ?? 'TWD';
   const currencyCodeDisplay = accountCurrency.trim().toUpperCase();
   const amountDisplay = amountStr.trim() === '' ? '金額' : amountStr;
@@ -342,10 +355,21 @@ export default function AddTransactionScreen(): React.JSX.Element {
           </TouchableOpacity>
         </View>
 
-        <View style={[styles.fieldRow, styles.fieldRowFirst]}>
+        <TouchableOpacity
+          style={[styles.fieldRow, styles.fieldRowFirst]}
+          onPress={() => {
+            setDatePickerYear(parseInt(dateKey.slice(0, 4)));
+            setDatePickerMonth(parseInt(dateKey.slice(5, 7)));
+            setShowDatePicker(true);
+          }}
+          activeOpacity={0.7}
+        >
           <Text style={styles.fieldLabel}>日期</Text>
-          <Text style={styles.fieldValue}>{formatDateWithWeekday(dateKey)}</Text>
-        </View>
+          <View style={styles.dateValueRow}>
+            <Text style={styles.fieldValue}>{formatDateWithWeekday(dateKey)}</Text>
+            <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+          </View>
+        </TouchableOpacity>
 
         <View style={styles.amountSection}>
           <View style={styles.amountRow}>
@@ -382,7 +406,7 @@ export default function AddTransactionScreen(): React.JSX.Element {
           </View>
         </TouchableOpacity>
 
-        {accounts.length > 0 ? (
+        {displayedAccounts.length > 0 ? (
           <TouchableOpacity
             style={styles.selectorRow}
             onPress={() =>
@@ -415,6 +439,7 @@ export default function AddTransactionScreen(): React.JSX.Element {
               currentAnnualBudgetEntryId: annualBudgetEntryId,
               returnDate: dateKey,
               returnTransactionId: transactionId,
+              transactionAmount: amount > 0 ? amount : undefined,
             })
           }
           activeOpacity={0.7}
@@ -496,6 +521,49 @@ export default function AddTransactionScreen(): React.JSX.Element {
           />
         </View>
       ) : null}
+
+      <Modal visible={showDatePicker} transparent animationType="fade">
+        <TouchableOpacity
+          style={styles.dateModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowDatePicker(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.dateModalCard}>
+            <View style={styles.dateModalHeader}>
+              <TouchableOpacity
+                onPress={() => {
+                  const d = new Date(datePickerYear, datePickerMonth - 2, 1);
+                  setDatePickerYear(d.getFullYear());
+                  setDatePickerMonth(d.getMonth() + 1);
+                }}
+                style={styles.dateModalNavBtn}
+              >
+                <Ionicons name="chevron-back" size={20} color="#1a1a1a" />
+              </TouchableOpacity>
+              <Text style={styles.dateModalTitle}>{datePickerYear} 年 {datePickerMonth} 月</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  const d = new Date(datePickerYear, datePickerMonth, 1);
+                  setDatePickerYear(d.getFullYear());
+                  setDatePickerMonth(d.getMonth() + 1);
+                }}
+                style={styles.dateModalNavBtn}
+              >
+                <Ionicons name="chevron-forward" size={20} color="#1a1a1a" />
+              </TouchableOpacity>
+            </View>
+            <Calendar
+              year={datePickerYear}
+              month={datePickerMonth}
+              selectedDate={dateKey}
+              onSelectDate={(d) => {
+                setDateKey(d);
+                setShowDatePicker(false);
+              }}
+            />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -725,5 +793,36 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: '#334155',
+  },
+  dateValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  dateModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dateModalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    width: 320,
+  },
+  dateModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  dateModalNavBtn: {
+    padding: 6,
+  },
+  dateModalTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1a1a1a',
   },
 });

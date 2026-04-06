@@ -39,6 +39,7 @@ export default function SelectBudgetLinkScreen(): React.JSX.Element {
     currentAnnualBudgetEntryId,
     returnDate,
     returnTransactionId,
+    transactionAmount,
   } = route.params;
 
   const { monthlyFixedItems } = useBudget();
@@ -89,7 +90,7 @@ export default function SelectBudgetLinkScreen(): React.JSX.Element {
 
   const openNewForm = () => {
     setNewLabel('');
-    setNewAmountStr('');
+    setNewAmountStr(transactionAmount != null && transactionAmount > 0 ? String(transactionAmount) : '');
     setNewCategoryKey(categories[0]?.key ?? '');
     setShowNewForm(true);
   };

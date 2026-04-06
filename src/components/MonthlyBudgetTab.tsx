@@ -18,6 +18,7 @@ import { useBudget } from '../contexts/BudgetContext';
 import { useTransactions } from '../contexts/TransactionsContext';
 import { getTodayKey } from '../utils/date';
 import { getStoredRecurring } from '../utils/storage';
+import { getAmortizedItemsForMonth } from '../utils/budget';
 
 const SECTION_FIXED = '每月固定/預估支出';
 const SECTION_SETTINGS = '預算設定';
@@ -65,6 +66,11 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
     const [y, m] = todayKey.split('-').map(Number);
     return [y, m];
   }, [todayKey]);
+
+  const amortizedItems = React.useMemo(
+    () => getAmortizedItemsForMonth(transactions, todayYear, todayMonth),
+    [transactions, todayYear, todayMonth],
+  );
 
   const [recurringItems, setRecurringItems] = useState<RecurringItem[]>([]);
   React.useEffect(() => {
@@ -158,8 +164,10 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.sectionTitle}>{SECTION_FIXED}</Text>
-        {monthlyFixedItems.length > 0 && (() => {
-          const totalTWD = monthlyFixedItems.reduce((sum, item) => sum + item.estimatedAmount, 0);
+        {(monthlyFixedItems.length > 0 || amortizedItems.length > 0) && (() => {
+          const fixedTotal = monthlyFixedItems.reduce((sum, item) => sum + item.estimatedAmount, 0);
+          const amortizedTotal = amortizedItems.reduce((sum, item) => sum + item.monthlyAmount, 0);
+          const totalTWD = fixedTotal + amortizedTotal;
           const totalActual = monthlyFixedItems.reduce(
             (sum, item) => sum + getActualForFixedItem(transactions, item.id, todayYear, todayMonth),
             0,
@@ -234,6 +242,38 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
             ))}
           </View>
         )}
+        {amortizedItems.length > 0 ? (
+          <View style={styles.listBlock}>
+            {amortizedItems.map((item, index) => (
+              <View
+                key={item.transactionId}
+                style={[
+                  styles.row,
+                  styles.rowAmortized,
+                  index === amortizedItems.length - 1 && styles.rowLast,
+                ]}
+              >
+                <View style={styles.rowMain}>
+                  <View style={styles.amortizedLabelRow}>
+                    <Text style={styles.rowLabel} numberOfLines={1}>{item.note}</Text>
+                    <View style={styles.amortizedBadge}>
+                      <Text style={styles.amortizedBadgeText}>分期</Text>
+                    </View>
+                  </View>
+                  <View style={styles.rowAmountRow}>
+                    <Text style={styles.rowAmount}>
+                      本月 {Math.round(item.monthlyAmount).toLocaleString()}
+                    </Text>
+                    <Text style={styles.amortizedEndDate}>
+                      到期 {item.endYearMonth.replace('-', '/')}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
         <TouchableOpacity
           style={styles.addBtn}
           onPress={openAdd}
@@ -444,9 +484,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   rowAmountRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 2,
     marginTop: 2,
   },
   rowAmount: {
@@ -624,5 +664,29 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
+  },
+  rowAmortized: {
+    backgroundColor: '#f8fafc',
+  },
+  amortizedLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  amortizedBadge: {
+    backgroundColor: '#dbeafe',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  amortizedBadgeText: {
+    fontSize: 11,
+    color: '#2563eb',
+    fontWeight: '600',
+  },
+  amortizedEndDate: {
+    fontSize: 13,
+    color: '#9ca3af',
   },
 });

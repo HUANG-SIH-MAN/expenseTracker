@@ -90,6 +90,7 @@ export type MainStackParamList = {
     currentAnnualBudgetEntryId?: string;
     returnDate: string;
     returnTransactionId?: string;
+    transactionAmount?: number;
   };
 };
 

@@ -21,7 +21,7 @@ import { useCategories } from '../contexts/CategoriesContext';
 import { useBudget } from '../contexts/BudgetContext';
 import { getTodayKey } from '../utils/date';
 import { getStoredAccounts, getExchangeRates, getStoredRecurring } from '../utils/storage';
-import { getBudgetSummary, getAmortizedItemsForMonth } from '../utils/budget';
+import { getBudgetSummary } from '../utils/budget';
 import type { MainStackParamList } from '../navigation/MainStack';
 
 const MONTH_PREV = '‹';
@@ -142,9 +142,6 @@ export default function HomeScreen(): React.JSX.Element {
   const budgetSummary = useMemo(() => {
     return getBudgetSummary(referenceKey, transactions, monthlyFixedItems, budgetSettings, ratesToPrimary, recurringItems);
   }, [referenceKey, transactions, monthlyFixedItems, budgetSettings, ratesToPrimary, recurringItems]);
-  const amortizedItems = useMemo(() => {
-    return getAmortizedItemsForMonth(transactions, year, month);
-  }, [transactions, year, month]);
   const datesWithRecords = useMemo(() => {
     const set = new Set<string>();
     for (const t of transactions) {
@@ -378,17 +375,6 @@ export default function HomeScreen(): React.JSX.Element {
                 <Text style={styles.budgetCardLabel}>{row2Label}</Text>
                 <Text style={styles.budgetCardAmount}>{row2Value}</Text>
               </View>
-              {amortizedItems.length > 0 ? (
-                <View style={styles.budgetCardAmortizedSection}>
-                  <Text style={styles.budgetCardAmortizedTitle}>年費分攤</Text>
-                  {amortizedItems.map((item) => (
-                    <View key={item.transactionId} style={styles.budgetCardAmortizedRow}>
-                      <Text style={styles.budgetCardAmortizedNote} numberOfLines={1}>{item.note}</Text>
-                      <Text style={styles.budgetCardAmortizedAmount}>-{Math.round(item.monthlyAmount)}</Text>
-                    </View>
-                  ))}
-                </View>
-              ) : null}
             </TouchableOpacity>
           );
         })()}
@@ -597,34 +583,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#1e40af',
-  },
-  budgetCardAmortizedSection: {
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#bfdbfe',
-    gap: 3,
-  },
-  budgetCardAmortizedTitle: {
-    fontSize: 11,
-    color: '#6b7280',
-    marginBottom: 2,
-  },
-  budgetCardAmortizedRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  budgetCardAmortizedNote: {
-    fontSize: 12,
-    color: '#374151',
-    flex: 1,
-    marginRight: 8,
-  },
-  budgetCardAmortizedAmount: {
-    fontSize: 12,
-    color: '#dc2626',
-    fontWeight: '500',
   },
   autopayNoticeCard: {
     backgroundColor: '#ecfdf5',

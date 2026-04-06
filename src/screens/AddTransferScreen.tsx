@@ -3,6 +3,7 @@
  */
 import React, { useState, useCallback, useEffect } from "react";
 import {
+  Modal,
   StyleSheet,
   Text,
   TextInput,
@@ -24,6 +25,7 @@ import {
   getTransferTemplates,
 } from "../utils/storage";
 import type { MainStackParamList } from "../navigation/MainStack";
+import Calendar from "../components/Calendar";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 const BACK_ICON_SIZE = 28;
@@ -64,6 +66,9 @@ export default function AddTransferScreen(): React.JSX.Element {
   const [fromAccountId, setFromAccountId] = useState<string | undefined>();
   const [toAccountId, setToAccountId] = useState<string | undefined>();
   const [dateKey, setDateKey] = useState(selectedDate);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [datePickerYear, setDatePickerYear] = useState(() => parseInt(selectedDate.slice(0, 4)));
+  const [datePickerMonth, setDatePickerMonth] = useState(() => parseInt(selectedDate.slice(5, 7)));
   const [amountFromStr, setAmountFromStr] = useState("");
   const [amountToStr, setAmountToStr] = useState("");
   const [note, setNote] = useState("");
@@ -241,10 +246,21 @@ export default function AddTransferScreen(): React.JSX.Element {
           </View>
         )}
 
-        <View style={styles.field}>
+        <TouchableOpacity
+          style={styles.field}
+          onPress={() => {
+            setDatePickerYear(parseInt(dateKey.slice(0, 4)));
+            setDatePickerMonth(parseInt(dateKey.slice(5, 7)));
+            setShowDatePicker(true);
+          }}
+          activeOpacity={0.7}
+        >
           <Text style={styles.label}>{LABEL_DATE}</Text>
-          <Text style={styles.dateText}>{formatDateWithWeekday(dateKey)}</Text>
-        </View>
+          <View style={styles.dateValueRow}>
+            <Text style={styles.dateText}>{formatDateWithWeekday(dateKey)}</Text>
+            <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+          </View>
+        </TouchableOpacity>
 
         <View style={styles.field}>
           <Text style={styles.label}>{LABEL_FROM}</Text>
@@ -425,6 +441,49 @@ export default function AddTransferScreen(): React.JSX.Element {
           </View>
         </View>
       )}
+
+      <Modal visible={showDatePicker} transparent animationType="fade">
+        <TouchableOpacity
+          style={styles.dateModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowDatePicker(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.dateModalCard}>
+            <View style={styles.dateModalHeader}>
+              <TouchableOpacity
+                onPress={() => {
+                  const d = new Date(datePickerYear, datePickerMonth - 2, 1);
+                  setDatePickerYear(d.getFullYear());
+                  setDatePickerMonth(d.getMonth() + 1);
+                }}
+                style={styles.dateModalNavBtn}
+              >
+                <Ionicons name="chevron-back" size={20} color="#1a1a1a" />
+              </TouchableOpacity>
+              <Text style={styles.dateModalTitle}>{datePickerYear} 年 {datePickerMonth} 月</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  const d = new Date(datePickerYear, datePickerMonth, 1);
+                  setDatePickerYear(d.getFullYear());
+                  setDatePickerMonth(d.getMonth() + 1);
+                }}
+                style={styles.dateModalNavBtn}
+              >
+                <Ionicons name="chevron-forward" size={20} color="#1a1a1a" />
+              </TouchableOpacity>
+            </View>
+            <Calendar
+              year={datePickerYear}
+              month={datePickerMonth}
+              selectedDate={dateKey}
+              onSelectDate={(d) => {
+                setDateKey(d);
+                setShowDatePicker(false);
+              }}
+            />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -574,4 +633,25 @@ const styles = StyleSheet.create({
   linkedPreviewSub: { flex: 1, fontSize: 13, color: "#6b7280" },
   templateModalRow: { flex: 1 },
   templateModalSub: { fontSize: 12, color: "#6b7280", marginTop: 2 },
+  dateValueRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  dateModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  dateModalCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 16,
+    width: 320,
+  },
+  dateModalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  dateModalNavBtn: { padding: 6 },
+  dateModalTitle: { fontSize: 16, fontWeight: "600", color: "#1a1a1a" },
 });
