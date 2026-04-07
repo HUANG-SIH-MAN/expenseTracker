@@ -5,6 +5,7 @@
  *
  * 快取策略：30 分鐘內不重新抓取（寫入 SQLite stock_prices_cache）
  */
+import { Platform } from 'react-native';
 import { getStockPriceCache, setStockPriceCache } from './storage';
 import type { StockPriceCache } from '../types';
 
@@ -16,22 +17,40 @@ function isCacheValid(lastUpdated: string): boolean {
 }
 
 /**
+ * 輔助函數：處理 Web CORS 的 fetch
+ */
+async function fetchWithCORS(url: string, headers?: any): Promise<Response> {
+  if (Platform.OS === 'web') {
+    // Web 使用 allorigins 代理解決 CORS
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+    const res = await fetch(proxyUrl);
+    if (!res.ok) throw new Error('Fetch failed');
+    const json = await res.json();
+    return {
+      ok: true,
+      json: async () => JSON.parse(json.contents),
+    } as Response;
+  }
+  return fetch(url, headers);
+}
+
+/**
  * 抓取美股報價（Yahoo Finance 非官方端點）
  * 回傳 USD 現價，失敗時回傳 null
  */
 async function fetchUSStockPrice(ticker: string): Promise<number | null> {
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`;
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0' },
-    });
-    if (!res.ok) return null;
+    const originalUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`;
+    // Web 不允許手動設 User-Agent，Native 則建議帶上以免被擋
+    const headers = Platform.OS === 'web' ? {} : { headers: { 'User-Agent': 'Mozilla/5.0' } };
+    const res = await fetchWithCORS(originalUrl, headers);
     const json = await res.json();
     const meta = json?.chart?.result?.[0]?.meta;
     const price: number | undefined =
       meta?.regularMarketPrice ?? meta?.chartPreviousClose;
     return price != null ? price : null;
-  } catch {
+  } catch (err) {
+    console.error('fetchUSStockPrice error:', err);
     return null;
   }
 }
@@ -44,9 +63,8 @@ async function fetchTWStockPrice(stockNo: string): Promise<number | null> {
   const getDailyPrice = async (date: Date): Promise<number | null> => {
     try {
       const yyyymmdd = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
-      const url = `https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?stockNo=${encodeURIComponent(stockNo)}&date=${yyyymmdd}&response=json`;
-      const res = await fetch(url);
-      if (!res.ok) return null;
+      const originalUrl = `https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?stockNo=${encodeURIComponent(stockNo)}&date=${yyyymmdd}&response=json`;
+      const res = await fetchWithCORS(originalUrl);
       const json = await res.json();
       const rows: string[][] = json?.data ?? [];
       if (rows.length === 0) return null;
@@ -127,3 +145,4 @@ export async function getUSDTWDRate(): Promise<number | null> {
   const result = await getStockPrice('USDTWD=X', 'USD');
   return result?.price ?? null;
 }
+

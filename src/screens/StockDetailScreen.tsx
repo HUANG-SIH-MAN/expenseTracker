@@ -236,9 +236,14 @@ export default function StockDetailScreen(): React.JSX.Element {
                 {tx.usdCost != null && (
                   <Text style={styles.txCostSub}>${tx.usdCost.toFixed(2)}</Text>
                 )}
-                <TouchableOpacity onPress={() => handleDelete(tx.id, tx.date, tx.shares)}>
-                  <Ionicons name="trash-outline" size={16} color="#9ca3af" />
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <TouchableOpacity onPress={() => navigation.navigate('AddStockTransaction', { transaction: tx })}>
+                    <Ionicons name="pencil-outline" size={16} color="#9ca3af" />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleDelete(tx.id, tx.date, tx.shares)}>
+                    <Ionicons name="trash-outline" size={16} color="#9ca3af" />
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           ))}

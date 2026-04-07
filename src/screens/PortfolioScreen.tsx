@@ -80,6 +80,17 @@ export default function PortfolioScreen(): React.JSX.Element {
         <View style={styles.headerRight}>
           <TouchableOpacity
             style={styles.headerBtn}
+            onPress={() => refreshPrices(true)}
+            disabled={isRefreshingPrices}
+          >
+            {isRefreshingPrices ? (
+              <ActivityIndicator size="small" color="#2563eb" />
+            ) : (
+              <Ionicons name="refresh" size={22} color="#2563eb" />
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerBtn}
             onPress={() => navigation.navigate('ImportStock')}
           >
             <Ionicons name="download-outline" size={22} color="#2563eb" />

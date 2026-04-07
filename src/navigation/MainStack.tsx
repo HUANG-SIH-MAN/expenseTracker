@@ -31,7 +31,7 @@ import PortfolioScreen from '../screens/PortfolioScreen';
 import StockDetailScreen from '../screens/StockDetailScreen';
 import AddStockTransactionScreen from '../screens/AddStockTransactionScreen';
 import ImportStockScreen from '../screens/ImportStockScreen';
-import type { TransactionType } from '../types';
+import type { TransactionType, StockTransaction } from '../types';
 
 export type MainStackParamList = {
   Home: undefined;
@@ -89,7 +89,7 @@ export type MainStackParamList = {
   };
   Portfolio: undefined;
   StockDetail: { ticker: string };
-  AddStockTransaction: { ticker?: string };
+  AddStockTransaction: { ticker?: string; transaction?: StockTransaction };
   ImportStock: undefined;
   SelectBudgetLink: {
     transactionType: string;

@@ -47,6 +47,7 @@ interface InvestmentContextValue {
   reload: (andRefreshPrices?: boolean) => Promise<void>;
   refreshPrices: (ignoreCache?: boolean, txList?: StockTransaction[]) => Promise<void>;
   addTransaction: (tx: StockTransaction) => Promise<void>;
+  updateTransaction: (tx: StockTransaction) => Promise<void>;
   importTransactions: (txs: StockTransaction[]) => Promise<void>;
   removeTransaction: (id: string) => Promise<void>;
 }
@@ -132,6 +133,16 @@ export function InvestmentProvider({ children }: { children: React.ReactNode }) 
     });
   }, [refreshPrices]);
 
+  const updateTransaction = useCallback(async (tx: StockTransaction) => {
+    await saveStockTransaction(tx);
+    setTransactions(prev => {
+      const updated = prev.map(t => (t.id === tx.id ? tx : t)).sort((a, b) => a.date.localeCompare(b.date));
+      setPositions(calculatePositions(updated));
+      refreshPrices(true, updated);
+      return updated;
+    });
+  }, [refreshPrices]);
+
   const importTransactions = useCallback(async (txs: StockTransaction[]) => {
     await saveStockTransactions(txs);
     setTransactions(prev => {
@@ -167,6 +178,7 @@ export function InvestmentProvider({ children }: { children: React.ReactNode }) 
         reload,
         refreshPrices,
         addTransaction,
+        updateTransaction,
         importTransactions,
         removeTransaction,
       }}

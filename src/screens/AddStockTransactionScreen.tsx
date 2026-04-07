@@ -52,20 +52,42 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<Nav>();
   const route = useRoute<Route>();
-  const { addTransaction } = useInvestment();
+  const editingTx = route.params?.transaction;
+  const isEdit = !!editingTx;
 
-  const [txType, setTxType] = useState<'buy' | 'sell'>('buy');
-  const [ticker, setTicker] = useState(route.params?.ticker ?? '006208');
-  const [date, setDate] = useState(todayISO());
-  const [shares, setShares] = useState('');
-  const [priceNative, setPriceNative] = useState('');
-  const [twdCost, setTwdCost] = useState('');
-  const [usdCost, setUsdCost] = useState('');
-  const [exchangeRate, setExchangeRate] = useState('');
-  const [note, setNote] = useState('');
+  const [txType, setTxType] = useState<'buy' | 'sell'>(editingTx?.type ?? 'buy');
+  const [ticker, setTicker] = useState(editingTx?.ticker ?? route.params?.ticker ?? '006208');
+  const [date, setDate] = useState(editingTx?.date ?? todayISO());
+  const [shares, setShares] = useState(editingTx?.shares.toString() ?? '');
+  const [priceNative, setPriceNative] = useState(editingTx?.priceNative.toString() ?? '');
+  const [twdCost, setTwdCost] = useState(editingTx?.twdCost.toString() ?? '');
+  const [usdCost, setUsdCost] = useState(editingTx?.usdCost?.toString() ?? '');
+  const [exchangeRate, setExchangeRate] = useState(editingTx?.exchangeRate?.toString() ?? '');
+  const [note, setNote] = useState(editingTx?.note ?? '');
   const [saving, setSaving] = useState(false);
+  const { addTransaction, updateTransaction } = useInvestment();
 
   const isUS = US_TICKERS.includes(ticker);
+
+  // 當股數、股價變更時，若為美股則更新預填 USD 成本
+  React.useEffect(() => {
+    if (!isUS || isEdit) return; // 編輯模式或非美股不自動改
+    const s = parseFloat(shares);
+    const p = parseFloat(priceNative);
+    if (!isNaN(s) && !isNaN(p)) {
+      setUsdCost((s * p).toFixed(2));
+    }
+  }, [shares, priceNative, isUS, isEdit]);
+
+  // 當台幣成本、USD 成本變更時，自動更新匯率提示
+  React.useEffect(() => {
+    if (!isUS) return;
+    const twd = parseFloat(twdCost);
+    const usd = parseFloat(usdCost);
+    if (!isNaN(twd) && !isNaN(usd) && usd !== 0) {
+      setExchangeRate((twd / usd).toFixed(4));
+    }
+  }, [twdCost, usdCost, isUS]);
 
   async function handleSave() {
     const sharesNum = parseFloat(shares);
@@ -76,26 +98,40 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
     if (isNaN(sharesNum) || sharesNum <= 0) return Alert.alert('請輸入有效股數');
     if (isNaN(priceNum) || priceNum <= 0) return Alert.alert('請輸入有效股價');
     if (isNaN(twdNum) || twdNum <= 0) return Alert.alert('請輸入台幣成本');
+
+    let usdNum = undefined;
+    let rateNum = undefined;
+    if (isUS) {
+      usdNum = parseFloat(usdCost);
+      rateNum = parseFloat(exchangeRate);
+      if (isNaN(usdNum) || usdNum <= 0) return Alert.alert('請輸入有效 USD 成本');
+      if (isNaN(rateNum) || rateNum <= 0) return Alert.alert('請輸入有效換匯匯率');
+    }
+
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return Alert.alert('日期格式應為 YYYY-MM-DD');
 
     const tx: StockTransaction = {
-      id: generateId(),
+      id: editingTx?.id ?? generateId(),
       ticker,
       name: TICKER_NAMES[ticker] ?? ticker,
       date,
       type: txType,
       shares: sharesNum,
       priceNative: priceNum,
-      usdCost: isUS && usdCost ? parseFloat(usdCost) : undefined,
+      usdCost: usdNum,
       twdCost: twdNum,
-      exchangeRate: isUS && exchangeRate ? parseFloat(exchangeRate) : undefined,
+      exchangeRate: rateNum,
       note: note.trim() || undefined,
-      createdAt: new Date().toISOString(),
+      createdAt: editingTx?.createdAt ?? new Date().toISOString(),
     };
 
     setSaving(true);
     try {
-      await addTransaction(tx);
+      if (isEdit) {
+        await updateTransaction(tx);
+      } else {
+        await addTransaction(tx);
+      }
       navigation.goBack();
     } finally {
       setSaving(false);
@@ -113,7 +149,7 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
             <Ionicons name="chevron-back" size={24} color="#111827" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>新增交易</Text>
+          <Text style={styles.headerTitle}>{isEdit ? '編輯交易' : '新增交易'}</Text>
           <TouchableOpacity onPress={handleSave} disabled={saving} style={styles.saveBtn}>
             <Text style={[styles.saveBtnText, saving && { opacity: 0.4 }]}>儲存</Text>
           </TouchableOpacity>
@@ -165,7 +201,7 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
               value={date}
               onChangeText={setDate}
               placeholder="2024-01-15"
-              keyboardType="numbers-and-punctuation"
+              placeholderTextColor="#9ca3af"
             />
           </View>
 
@@ -177,6 +213,7 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
               value={shares}
               onChangeText={setShares}
               placeholder={isUS ? '1.5' : '100'}
+              placeholderTextColor="#9ca3af"
               keyboardType="decimal-pad"
             />
           </View>
@@ -191,6 +228,7 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
               value={priceNative}
               onChangeText={setPriceNative}
               placeholder={isUS ? '584.98' : '171.6'}
+              placeholderTextColor="#9ca3af"
               keyboardType="decimal-pad"
             />
           </View>
@@ -203,6 +241,7 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
               value={twdCost}
               onChangeText={setTwdCost}
               placeholder="30000"
+              placeholderTextColor="#9ca3af"
               keyboardType="decimal-pad"
             />
           </View>
@@ -211,22 +250,24 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
           {isUS && (
             <>
               <View style={styles.field}>
-                <Text style={styles.label}>USD 成本（選填）</Text>
+                <Text style={styles.label}>USD 成本</Text>
                 <TextInput
                   style={styles.input}
                   value={usdCost}
                   onChangeText={setUsdCost}
                   placeholder="1000.00"
+                  placeholderTextColor="#9ca3af"
                   keyboardType="decimal-pad"
                 />
               </View>
               <View style={styles.field}>
-                <Text style={styles.label}>換匯匯率（選填，如 32.5）</Text>
+                <Text style={styles.label}>換匯匯率（如 32.5）</Text>
                 <TextInput
                   style={styles.input}
                   value={exchangeRate}
                   onChangeText={setExchangeRate}
                   placeholder="32.50"
+                  placeholderTextColor="#9ca3af"
                   keyboardType="decimal-pad"
                 />
               </View>
@@ -241,6 +282,7 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
               value={note}
               onChangeText={setNote}
               placeholder="定期定額"
+              placeholderTextColor="#9ca3af"
               multiline
             />
           </View>
