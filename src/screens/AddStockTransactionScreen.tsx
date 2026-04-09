@@ -1,7 +1,7 @@
 /**
  * 手動新增股票買賣紀錄
  */
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,32 +12,22 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useInvestment } from '../contexts/InvestmentContext';
-import type { StockTransaction } from '../types';
+import { getStockWatchlist } from '../utils/storage';
+import { getStockPrice } from '../utils/stockPrice';
+import type { StockTransaction, StockWatchlistItem, StockCurrency } from '../types';
 import type { MainStackParamList } from '../navigation/MainStack';
 
 type Nav = NativeStackNavigationProp<MainStackParamList>;
 type Route = RouteProp<MainStackParamList, 'AddStockTransaction'>;
-
-const US_TICKERS = ['NVDA', 'QQQ', 'SMH', 'GLD', 'IBIT', 'ARKK'];
-const TW_TICKERS = ['006208'];
-const ALL_TICKERS = [...TW_TICKERS, ...US_TICKERS];
-
-const TICKER_NAMES: Record<string, string> = {
-  '006208': '富邦台灣優質高息 ETF',
-  NVDA: 'NVIDIA',
-  QQQ: 'Invesco QQQ ETF',
-  SMH: 'VanEck Semiconductor ETF',
-  GLD: 'SPDR Gold Shares ETF',
-  IBIT: 'iShares Bitcoin Trust ETF',
-  ARKK: 'ARK Innovation ETF',
-};
+type PickerMode = 'watchlist' | 'custom';
 
 function generateId(): string {
   return `stock_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -55,8 +45,21 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
   const editingTx = route.params?.transaction;
   const isEdit = !!editingTx;
 
+  // ── 股票選擇狀態 ──────────────────────────────
+  const [pickerMode, setPickerMode] = useState<PickerMode>('watchlist');
+  const [watchlist, setWatchlist] = useState<StockWatchlistItem[]>([]);
+  const [ticker, setTicker] = useState(editingTx?.ticker ?? route.params?.ticker ?? '');
+  const [tickerName, setTickerName] = useState(editingTx?.name ?? '');
+  const [tickerCurrency, setTickerCurrency] = useState<StockCurrency>(
+    editingTx ? (editingTx.usdCost != null ? 'USD' : 'TWD') : 'USD'
+  );
+  // 自行輸入模式的暫存值
+  const [customInput, setCustomInput] = useState('');
+  const [customCurrency, setCustomCurrency] = useState<StockCurrency>('USD');
+  const [validating, setValidating] = useState(false);
+
+  // ── 交易資料 ──────────────────────────────────
   const [txType, setTxType] = useState<'buy' | 'sell'>(editingTx?.type ?? 'buy');
-  const [ticker, setTicker] = useState(editingTx?.ticker ?? route.params?.ticker ?? '006208');
   const [date, setDate] = useState(editingTx?.date ?? todayISO());
   const [shares, setShares] = useState(editingTx?.shares.toString() ?? '');
   const [priceNative, setPriceNative] = useState(editingTx?.priceNative.toString() ?? '');
@@ -67,11 +70,27 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
   const [saving, setSaving] = useState(false);
   const { addTransaction, updateTransaction } = useInvestment();
 
-  const isUS = US_TICKERS.includes(ticker);
+  const isUS = tickerCurrency === 'USD';
 
-  // 當股數、股價變更時，若為美股則更新預填 USD 成本
+  // 載入自選股清單
+  useFocusEffect(
+    useCallback(() => {
+      getStockWatchlist().then(items => {
+        setWatchlist(items);
+        // 編輯模式：直接沿用 ticker，不需重選
+        if (!isEdit && !ticker && items.length > 0) {
+          const first = items[0];
+          setTicker(first.ticker);
+          setTickerName(first.name);
+          setTickerCurrency(first.currency);
+        }
+      });
+    }, [isEdit, ticker])
+  );
+
+  // 自動計算 USD 成本
   React.useEffect(() => {
-    if (!isUS || isEdit) return; // 編輯模式或非美股不自動改
+    if (!isUS || isEdit) return;
     const s = parseFloat(shares);
     const p = parseFloat(priceNative);
     if (!isNaN(s) && !isNaN(p)) {
@@ -79,7 +98,7 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
     }
   }, [shares, priceNative, isUS, isEdit]);
 
-  // 當台幣成本、USD 成本變更時，自動更新匯率提示
+  // 自動計算匯率
   React.useEffect(() => {
     if (!isUS) return;
     const twd = parseFloat(twdCost);
@@ -89,18 +108,45 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
     }
   }, [twdCost, usdCost, isUS]);
 
+  // 選取常用清單中的股票
+  function selectFromWatchlist(item: StockWatchlistItem) {
+    setTicker(item.ticker);
+    setTickerName(item.name);
+    setTickerCurrency(item.currency);
+  }
+
+  // 自行輸入：驗證並確認
+  async function handleValidateCustom() {
+    const t = customInput.trim().toUpperCase();
+    if (!t) return Alert.alert('請輸入股票代號');
+    setValidating(true);
+    try {
+      const result = await getStockPrice(t, customCurrency, true);
+      if (result == null) {
+        Alert.alert('找不到此股票', `無法驗證「${t}」，請確認代號與幣別是否正確。`);
+        return;
+      }
+      setTicker(t);
+      setTickerName(t);
+      setTickerCurrency(customCurrency);
+      Alert.alert('驗證成功', `已選取「${t}」，現價 ${result.price}`);
+    } finally {
+      setValidating(false);
+    }
+  }
+
   async function handleSave() {
+    if (!ticker) return Alert.alert('請先選擇股票');
     const sharesNum = parseFloat(shares);
     const priceNum = parseFloat(priceNative);
     const twdNum = parseFloat(twdCost);
 
-    if (!ticker) return Alert.alert('請選擇股票');
     if (isNaN(sharesNum) || sharesNum <= 0) return Alert.alert('請輸入有效股數');
     if (isNaN(priceNum) || priceNum <= 0) return Alert.alert('請輸入有效股價');
     if (isNaN(twdNum) || twdNum <= 0) return Alert.alert('請輸入台幣成本');
 
-    let usdNum = undefined;
-    let rateNum = undefined;
+    let usdNum: number | undefined;
+    let rateNum: number | undefined;
     if (isUS) {
       usdNum = parseFloat(usdCost);
       rateNum = parseFloat(exchangeRate);
@@ -113,7 +159,7 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
     const tx: StockTransaction = {
       id: editingTx?.id ?? generateId(),
       ticker,
-      name: TICKER_NAMES[ticker] ?? ticker,
+      name: tickerName || ticker,
       date,
       type: txType,
       shares: sharesNum,
@@ -158,38 +204,121 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
         <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 24 }]}>
           {/* 買/賣切換 */}
           <View style={styles.toggleRow}>
-            <TouchableOpacity
-              style={[styles.toggleBtn, txType === 'buy' && styles.toggleActive]}
-              onPress={() => setTxType('buy')}
-            >
-              <Text style={[styles.toggleText, txType === 'buy' && styles.toggleTextActive]}>買入</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.toggleBtn, txType === 'sell' && styles.toggleActive]}
-              onPress={() => setTxType('sell')}
-            >
-              <Text style={[styles.toggleText, txType === 'sell' && styles.toggleTextActive]}>賣出</Text>
-            </TouchableOpacity>
+            {(['buy', 'sell'] as const).map(t => (
+              <TouchableOpacity
+                key={t}
+                style={[styles.toggleBtn, txType === t && styles.toggleActive]}
+                onPress={() => setTxType(t)}
+              >
+                <Text style={[styles.toggleText, txType === t && styles.toggleTextActive]}>
+                  {t === 'buy' ? '買入' : '賣出'}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
 
-          {/* 股票選擇 */}
+          {/* ── 股票選擇區 ── */}
           <View style={styles.field}>
-            <Text style={styles.label}>股票</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tickerScroll}>
-              {ALL_TICKERS.map(t => (
-                <TouchableOpacity
-                  key={t}
-                  style={[styles.tickerChip, ticker === t && styles.tickerChipActive]}
-                  onPress={() => setTicker(t)}
-                >
-                  <Text style={[styles.tickerChipText, ticker === t && styles.tickerChipTextActive]}>
-                    {t}
+            <View style={styles.pickerHeader}>
+              <Text style={styles.label}>股票</Text>
+              {/* 常用清單 / 自行輸入 切換 */}
+              <View style={styles.modeToggle}>
+                {(['watchlist', 'custom'] as PickerMode[]).map(m => (
+                  <TouchableOpacity
+                    key={m}
+                    style={[styles.modeBtn, pickerMode === m && styles.modeBtnActive]}
+                    onPress={() => setPickerMode(m)}
+                  >
+                    <Text style={[styles.modeBtnText, pickerMode === m && styles.modeBtnTextActive]}>
+                      {m === 'watchlist' ? '常用清單' : '自行輸入'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {pickerMode === 'watchlist' ? (
+              <>
+                {/* 常用清單 chips */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tickerScroll}>
+                  {watchlist.map(item => (
+                    <TouchableOpacity
+                      key={item.ticker}
+                      style={[styles.tickerChip, ticker === item.ticker && styles.tickerChipActive]}
+                      onPress={() => selectFromWatchlist(item)}
+                    >
+                      <Text style={[styles.tickerChipText, ticker === item.ticker && styles.tickerChipTextActive]}>
+                        {item.ticker}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                  {/* 管理清單捷徑 */}
+                  <TouchableOpacity
+                    style={styles.manageChip}
+                    onPress={() => navigation.navigate('StockWatchlistSettings')}
+                  >
+                    <Ionicons name="settings-outline" size={14} color="#6b7280" />
+                    <Text style={styles.manageChipText}>管理</Text>
+                  </TouchableOpacity>
+                </ScrollView>
+                {ticker ? (
+                  <Text style={styles.tickerNameHint}>
+                    {tickerName}{tickerName !== ticker ? '' : ''}
+                    {'  '}
+                    <Text style={[styles.currencyTag, isUS ? styles.currencyTagUSD : styles.currencyTagTWD]}>
+                      {tickerCurrency}
+                    </Text>
                   </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            {ticker && (
-              <Text style={styles.tickerNameHint}>{TICKER_NAMES[ticker]}</Text>
+                ) : (
+                  <Text style={styles.tickerNameHint}>請從清單選擇股票</Text>
+                )}
+              </>
+            ) : (
+              <>
+                {/* 自行輸入 */}
+                <View style={styles.customRow}>
+                  <TextInput
+                    style={[styles.input, styles.customInput]}
+                    value={customInput}
+                    onChangeText={t => setCustomInput(t.toUpperCase())}
+                    placeholder="輸入代號，如 AAPL"
+                    placeholderTextColor="#9ca3af"
+                    autoCapitalize="characters"
+                  />
+                  <View style={styles.customCurrencyBtns}>
+                    {(['USD', 'TWD'] as StockCurrency[]).map(c => (
+                      <TouchableOpacity
+                        key={c}
+                        style={[styles.customCurrencyBtn, customCurrency === c && styles.customCurrencyBtnActive]}
+                        onPress={() => setCustomCurrency(c)}
+                      >
+                        <Text style={[styles.customCurrencyText, customCurrency === c && styles.customCurrencyTextActive]}>
+                          {c}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.validateBtn, validating && { opacity: 0.6 }]}
+                    onPress={handleValidateCustom}
+                    disabled={validating}
+                  >
+                    {validating
+                      ? <ActivityIndicator color="#fff" size="small" />
+                      : <Text style={styles.validateBtnText}>驗證</Text>
+                    }
+                  </TouchableOpacity>
+                </View>
+                {ticker && (
+                  <Text style={styles.tickerNameHint}>
+                    已選取：{ticker}
+                    {'  '}
+                    <Text style={[styles.currencyTag, isUS ? styles.currencyTagUSD : styles.currencyTagTWD]}>
+                      {tickerCurrency}
+                    </Text>
+                  </Text>
+                )}
+              </>
             )}
           </View>
 
@@ -218,7 +347,7 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
             />
           </View>
 
-          {/* 股價（原幣） */}
+          {/* 股價 */}
           <View style={styles.field}>
             <Text style={styles.label}>
               {txType === 'buy' ? '買入股價' : '賣出股價'}（{isUS ? 'USD' : 'TWD'}）
@@ -320,18 +449,19 @@ const styles = StyleSheet.create({
   toggleTextActive: { color: '#111827', fontWeight: '600' },
   field: { gap: 6 },
   label: { fontSize: 13, fontWeight: '500', color: '#374151' },
-  input: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: '#111827',
+  // 股票選擇器
+  pickerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  modeToggle: {
+    flexDirection: 'row',
+    backgroundColor: '#e5e7eb',
+    borderRadius: 8,
+    padding: 2,
   },
-  inputNote: { minHeight: 72, textAlignVertical: 'top' },
-  tickerScroll: { marginBottom: 4 },
+  modeBtn: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
+  modeBtnActive: { backgroundColor: '#fff' },
+  modeBtnText: { fontSize: 12, color: '#6b7280', fontWeight: '500' },
+  modeBtnTextActive: { color: '#111827', fontWeight: '600' },
+  tickerScroll: { marginBottom: 2 },
   tickerChip: {
     paddingHorizontal: 14,
     paddingVertical: 8,
@@ -343,5 +473,56 @@ const styles = StyleSheet.create({
   tickerChipActive: { backgroundColor: '#2563eb' },
   tickerChipText: { fontSize: 14, color: '#374151', fontWeight: '500' },
   tickerChipTextActive: { color: '#fff', fontWeight: '600' },
+  manageChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#f3f4f6',
+    marginVertical: 2,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderStyle: 'dashed',
+  },
+  manageChipText: { fontSize: 12, color: '#6b7280' },
   tickerNameHint: { fontSize: 12, color: '#6b7280' },
+  currencyTag: { fontSize: 11, fontWeight: '700', borderRadius: 4, overflow: 'hidden' },
+  currencyTagUSD: { color: '#1d4ed8' },
+  currencyTagTWD: { color: '#15803d' },
+  // 自行輸入
+  customRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  customInput: { flex: 1 },
+  customCurrencyBtns: { flexDirection: 'row', gap: 4 },
+  customCurrencyBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+  },
+  customCurrencyBtnActive: { backgroundColor: '#2563eb' },
+  customCurrencyText: { fontSize: 13, fontWeight: '600', color: '#374151' },
+  customCurrencyTextActive: { color: '#fff' },
+  validateBtn: {
+    backgroundColor: '#2563eb',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    minWidth: 52,
+    alignItems: 'center',
+  },
+  validateBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  // 通用輸入框
+  input: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#111827',
+  },
+  inputNote: { minHeight: 72, textAlignVertical: 'top' },
 });

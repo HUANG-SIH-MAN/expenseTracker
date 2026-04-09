@@ -36,6 +36,7 @@ export const STORAGE_KEYS = {
   CASH_TOPUP_RULES: "@expense_tracker/cash_topup_rules",
   STOCK_TRANSACTIONS: "@expense_tracker/stock_transactions",
   STOCK_PRICES_CACHE: "@expense_tracker/stock_prices_cache",
+  STOCK_WATCHLIST: "@expense_tracker/stock_watchlist",
   ETF_HOLDINGS: "@expense_tracker/etf_holdings",
 } as const;
 

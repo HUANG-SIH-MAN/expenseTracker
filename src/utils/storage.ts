@@ -24,6 +24,7 @@ import type {
   RecurringSkipItem,
   StockPriceCache,
   StockTransaction,
+  StockWatchlistItem,
   StoredCategories,
   Transaction,
   TransferTemplate,
@@ -2105,6 +2106,100 @@ export async function getETFHoldings(etfTicker: string): Promise<ETFHolding[]> {
   } catch {
     return [];
   }
+}
+
+// ─────────────────────────────────────────────
+// Stock watchlist
+// ─────────────────────────────────────────────
+
+/** 預設常用股票（首次使用時的初始清單） */
+const DEFAULT_WATCHLIST: StockWatchlistItem[] = [
+  { ticker: '006208', name: '富邦台灣優質高息 ETF', currency: 'TWD', sortOrder: 0 },
+  { ticker: 'NVDA',   name: 'NVIDIA',               currency: 'USD', sortOrder: 1 },
+  { ticker: 'QQQ',    name: 'Invesco QQQ ETF',       currency: 'USD', sortOrder: 2 },
+  { ticker: 'SMH',    name: 'VanEck Semiconductor ETF', currency: 'USD', sortOrder: 3 },
+  { ticker: 'GLD',    name: 'SPDR Gold Shares ETF',  currency: 'USD', sortOrder: 4 },
+  { ticker: 'IBIT',   name: 'iShares Bitcoin Trust ETF', currency: 'USD', sortOrder: 5 },
+  { ticker: 'ARKK',   name: 'ARK Innovation ETF',    currency: 'USD', sortOrder: 6 },
+];
+
+export async function getStockWatchlist(): Promise<StockWatchlistItem[]> {
+  const db = await getDb();
+  if (db) {
+    const rows = await db.getAllAsync<Record<string, unknown>>(
+      'SELECT * FROM stock_watchlist ORDER BY sort_order ASC, ticker ASC'
+    );
+    if (rows.length > 0) {
+      return rows.map(r => ({
+        ticker: r.ticker as string,
+        name: r.name as string,
+        currency: r.currency as 'TWD' | 'USD',
+        sortOrder: r.sort_order as number,
+      }));
+    }
+    // 首次使用：寫入預設清單
+    for (const item of DEFAULT_WATCHLIST) {
+      await db.runAsync(
+        'INSERT OR IGNORE INTO stock_watchlist (ticker, name, currency, sort_order) VALUES (?, ?, ?, ?)',
+        [item.ticker, item.name, item.currency, item.sortOrder]
+      );
+    }
+    return DEFAULT_WATCHLIST;
+  }
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.STOCK_WATCHLIST);
+    if (!raw) {
+      await AsyncStorage.setItem(STORAGE_KEYS.STOCK_WATCHLIST, JSON.stringify(DEFAULT_WATCHLIST));
+      return DEFAULT_WATCHLIST;
+    }
+    const parsed = JSON.parse(raw) as StockWatchlistItem[];
+    return Array.isArray(parsed) ? parsed : DEFAULT_WATCHLIST;
+  } catch {
+    return DEFAULT_WATCHLIST;
+  }
+}
+
+export async function saveStockWatchlistItem(item: StockWatchlistItem): Promise<void> {
+  const db = await getDb();
+  if (db) {
+    await db.runAsync(
+      'INSERT OR REPLACE INTO stock_watchlist (ticker, name, currency, sort_order) VALUES (?, ?, ?, ?)',
+      [item.ticker, item.name, item.currency, item.sortOrder]
+    );
+    return;
+  }
+  const all = await getStockWatchlist();
+  const idx = all.findIndex(i => i.ticker === item.ticker);
+  if (idx >= 0) all[idx] = item; else all.push(item);
+  await AsyncStorage.setItem(STORAGE_KEYS.STOCK_WATCHLIST, JSON.stringify(all));
+}
+
+export async function deleteStockWatchlistItem(ticker: string): Promise<void> {
+  const db = await getDb();
+  if (db) {
+    await db.runAsync('DELETE FROM stock_watchlist WHERE ticker = ?', [ticker]);
+    return;
+  }
+  const all = await getStockWatchlist();
+  await AsyncStorage.setItem(
+    STORAGE_KEYS.STOCK_WATCHLIST,
+    JSON.stringify(all.filter(i => i.ticker !== ticker))
+  );
+}
+
+export async function reorderStockWatchlist(items: StockWatchlistItem[]): Promise<void> {
+  const db = await getDb();
+  if (db) {
+    for (let i = 0; i < items.length; i++) {
+      await db.runAsync(
+        'UPDATE stock_watchlist SET sort_order = ? WHERE ticker = ?',
+        [i, items[i].ticker]
+      );
+    }
+    return;
+  }
+  const updated = items.map((item, i) => ({ ...item, sortOrder: i }));
+  await AsyncStorage.setItem(STORAGE_KEYS.STOCK_WATCHLIST, JSON.stringify(updated));
 }
 
 export async function saveETFHoldings(holdings: ETFHolding[]): Promise<void> {

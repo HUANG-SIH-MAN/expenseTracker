@@ -19,14 +19,52 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { Platform } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { useInvestment } from '../contexts/InvestmentContext';
 import { importStockCSV } from '../utils/stockImport';
 import type { StockTransaction } from '../types';
 import type { MainStackParamList } from '../navigation/MainStack';
 
 type Nav = NativeStackNavigationProp<MainStackParamList>;
+
+// 格式：日期,股票代號,股數,成交價,幣別,TWD成本,USD成本
+const STOCK_TEMPLATE_CSV = [
+  '日期,股票代號,股數,成交價,幣別,TWD成本,USD成本',
+  '2024-01-15,006208,10,150,TWD,1500,',
+  '2024-01-15,2330,5,850,TWD,4250,',
+  '2024-01-15,NVDA,1,500,USD,15000,490',
+  '2024-01-20,QQQ,2,138,USD,9000,276',
+  '2024-03-01,GLD,3,185,USD,18200,553',
+].join('\n');
+
+async function handleDownloadStockTemplate() {
+  const filename = '股票匯入範本.csv';
+  const content = '\uFEFF' + STOCK_TEMPLATE_CSV;
+  try {
+    if (Platform.OS === 'web') {
+      const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else {
+      const cacheDir = FileSystem.cacheDirectory ?? '';
+      const path = `${cacheDir}${filename}`;
+      await FileSystem.writeAsStringAsync(path, content, { encoding: 'utf8' as const });
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(path, { mimeType: 'text/csv', dialogTitle: filename });
+      }
+    }
+  } catch {
+    // 靜默失敗，不影響主流程
+  }
+}
 
 export default function ImportStockScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
@@ -126,18 +164,25 @@ export default function ImportStockScreen(): React.JSX.Element {
         <View style={styles.instructionCard}>
           <Ionicons name="information-circle-outline" size={20} color="#2563eb" />
           <View style={{ flex: 1, gap: 4 }}>
-            <Text style={styles.instructionTitle}>如何匯入？</Text>
+            <Text style={styles.instructionTitle}>CSV 格式說明</Text>
             <Text style={styles.instructionText}>
-              1. 打開 Excel 的股票記錄檔{'\n'}
-              2. 點選「另存新檔」→ 選「CSV（逗號分隔）」{'\n'}
-              3. 回到此頁面點「選取 CSV 檔案」{'\n'}
-              4. 預覽確認後點「確認匯入」
+              欄位順序：日期, 股票代號, 股數, 成交價, 幣別, TWD成本, USD成本{'\n\n'}
+              • 日期：YYYY-MM-DD（如 2024-01-15）{'\n'}
+              • 幣別：TWD 或 USD{'\n'}
+              • TWD成本：選填，不填則由股數×成交價估算{'\n'}
+              • USD成本：選填，USD 股票才需填
             </Text>
             <Text style={[styles.instructionText, { color: '#dc2626' }]}>
-              ⚠️ 匯入不會影響現有記帳紀錄
+              先下載範本參考格式，再整理你的資料匯入
             </Text>
           </View>
         </View>
+
+        {/* 範本下載 */}
+        <TouchableOpacity style={styles.templateBtn} onPress={handleDownloadStockTemplate}>
+          <Ionicons name="document-text-outline" size={20} color="#16a34a" />
+          <Text style={styles.templateBtnText}>下載股票範本 CSV</Text>
+        </TouchableOpacity>
 
         {/* 選取按鈕 */}
         <TouchableOpacity
@@ -245,6 +290,18 @@ const styles = StyleSheet.create({
   },
   instructionTitle: { fontSize: 14, fontWeight: '600', color: '#1e40af', marginBottom: 4 },
   instructionText: { fontSize: 13, color: '#374151', lineHeight: 20 },
+  templateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1.5,
+    borderColor: '#16a34a',
+    borderRadius: 12,
+    paddingVertical: 13,
+    backgroundColor: '#f0fdf4',
+  },
+  templateBtnText: { fontSize: 15, fontWeight: '600', color: '#16a34a' },
   pickBtn: {
     backgroundColor: '#2563eb',
     borderRadius: 12,

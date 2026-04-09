@@ -264,6 +264,14 @@ export interface StockPriceCache {
   lastUpdated: string; // ISO 8601
 }
 
+/** 自選股清單項目 */
+export interface StockWatchlistItem {
+  ticker: string;       // 股票代號，如 NVDA / 006208
+  name: string;         // 顯示名稱
+  currency: StockCurrency;
+  sortOrder: number;
+}
+
 /** ETF 成分股（單筆持股） */
 export interface ETFHolding {
   etfTicker: string;

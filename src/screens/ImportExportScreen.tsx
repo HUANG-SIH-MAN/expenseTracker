@@ -52,6 +52,14 @@ const BTN_EXPORT = '匯出記帳資料';
 const EXPORT_HINT = '將目前所有記帳匯出為 CSV，可備份或於其他裝置使用。';
 const BTN_IMPORT = '匯入記帳資料';
 const IMPORT_HINT = '從其他記帳 APP 匯出的 CSV（欄位：日期,大類別,類別,金額,帳戶,備註,收支等）可匯入，將加入現有資料。';
+const BTN_TEMPLATE = '下載記帳範本 CSV';
+const TEMPLATE_HINT = '下載欄位格式範本，參考後再整理你的資料匯入。';
+
+const LEDGER_TEMPLATE_CSV =
+  '日期,大類別,類別,金額,帳戶,貨幣,成員,備註,收支,上次更新\n' +
+  '2024-01-15,飲食,飲食,150,現金,TWD,,午餐,支出,2024-01-15 12:00:00\n' +
+  '2024-01-16,交通,交通,50,悠遊卡,TWD,,捷運,支出,2024-01-16 08:30:00\n' +
+  '2024-01-20,工作,工資,50000,玉山銀行,TWD,,一月薪水,收入,2024-01-20 09:00:00\n';
 const CONFIRM_IMPORT_TITLE = '確認匯入';
 const CONFIRM_IMPORT_MSG = '將匯入 %d 筆，是否加入現有資料？';
 const BTN_CANCEL = '取消';
@@ -123,6 +131,33 @@ export default function ImportExportScreen(): React.JSX.Element {
     },
     [refreshCategories, refreshTransactions],
   );
+
+  const handleDownloadTemplate = useCallback(async () => {
+    try {
+      const filename = '記帳匯入範本.csv';
+      if (Platform.OS === 'web') {
+        const blob = new Blob(['\uFEFF' + LEDGER_TEMPLATE_CSV], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        const dir = FileSystemLegacy.cacheDirectory ?? '';
+        const path = `${dir}${filename}`;
+        await FileSystemLegacy.writeAsStringAsync(path, '\uFEFF' + LEDGER_TEMPLATE_CSV, {
+          encoding: FileSystemLegacy.EncodingType.UTF8,
+        });
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(path, { mimeType: 'text/csv', dialogTitle: filename });
+        }
+      }
+    } catch {
+      Alert.alert('', '範本下載失敗。');
+    }
+  }, []);
 
   const handleExport = useCallback(async () => {
     try {
@@ -298,6 +333,15 @@ export default function ImportExportScreen(): React.JSX.Element {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{SECTION_IMPORT}</Text>
+          <TouchableOpacity style={styles.card} onPress={handleDownloadTemplate} activeOpacity={0.7}>
+            <Ionicons name="document-text-outline" size={24} color="#16a34a" />
+            <View style={styles.cardText}>
+              <Text style={[styles.cardTitle, { color: '#16a34a' }]}>{BTN_TEMPLATE}</Text>
+              <Text style={styles.cardHint}>{TEMPLATE_HINT}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+          </TouchableOpacity>
+          <View style={{ height: 10 }} />
           <TouchableOpacity style={styles.card} onPress={handleImportPress} activeOpacity={0.7}>
             <Ionicons name="document-attach-outline" size={24} color="#2563eb" />
             <View style={styles.cardText}>

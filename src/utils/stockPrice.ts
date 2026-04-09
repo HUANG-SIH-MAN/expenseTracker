@@ -17,21 +17,56 @@ function isCacheValid(lastUpdated: string): boolean {
 }
 
 /**
- * 輔助函數：處理 Web CORS 的 fetch
+ * CORS proxy 設定列表（web 平台用）
+ * 依序嘗試，第一個成功即回傳
  */
-async function fetchWithCORS(url: string, headers?: any): Promise<Response> {
+const CORS_PROXIES: Array<{
+  buildUrl: (target: string) => string;
+  parseResponse: (res: globalThis.Response) => Promise<globalThis.Response>;
+}> = [
+  {
+    // corsproxy.io — 直接回傳原始 response
+    buildUrl: (target) => `https://corsproxy.io/?${encodeURIComponent(target)}`,
+    parseResponse: async (res) => res,
+  },
+  {
+    // codetabs — 直接回傳原始 response
+    buildUrl: (target) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(target)}`,
+    parseResponse: async (res) => res,
+  },
+  {
+    // allorigins — 回傳 { contents: string }，需解包
+    buildUrl: (target) => `https://api.allorigins.win/get?url=${encodeURIComponent(target)}`,
+    parseResponse: async (res) => {
+      const json = await res.json();
+      const contents: string = json.contents;
+      return {
+        ok: true,
+        json: async () => JSON.parse(contents),
+        text: async () => contents,
+      } as globalThis.Response;
+    },
+  },
+];
+
+/**
+ * 輔助函數：處理 Web CORS 的 fetch（依序嘗試多個 proxy）
+ */
+async function fetchWithCORS(url: string, _headers?: any): Promise<globalThis.Response> {
   if (Platform.OS === 'web') {
-    // Web 使用 allorigins 代理解決 CORS
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-    const res = await fetch(proxyUrl);
-    if (!res.ok) throw new Error('Fetch failed');
-    const json = await res.json();
-    return {
-      ok: true,
-      json: async () => JSON.parse(json.contents),
-    } as Response;
+    for (const proxy of CORS_PROXIES) {
+      try {
+        const proxyUrl = proxy.buildUrl(url);
+        const res = await fetch(proxyUrl, { signal: AbortSignal.timeout(10000) });
+        if (!res.ok) continue;
+        return await proxy.parseResponse(res);
+      } catch {
+        // 這個 proxy 失敗，試下一個
+      }
+    }
+    throw new Error('All CORS proxies failed');
   }
-  return fetch(url, headers);
+  return fetch(url, _headers);
 }
 
 /**
