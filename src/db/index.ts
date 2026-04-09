@@ -286,6 +286,13 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase | null> {
   }
   try {
     await db.runAsync(
+      "ALTER TABLE monthly_fixed_items ADD COLUMN account_id TEXT"
+    );
+  } catch {
+    // Column already exists on existing DBs
+  }
+  try {
+    await db.runAsync(
       "ALTER TABLE accounts ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0"
     );
   } catch {
@@ -315,6 +322,13 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase | null> {
   try {
     await db.runAsync(
       "ALTER TABLE transactions ADD COLUMN amortization_months INTEGER"
+    );
+  } catch {
+    // Column already exists on existing DBs
+  }
+  try {
+    await db.runAsync(
+      "ALTER TABLE credit_card_autopay_rules ADD COLUMN holiday_adjust TEXT NOT NULL DEFAULT 'none'"
     );
   } catch {
     // Column already exists on existing DBs

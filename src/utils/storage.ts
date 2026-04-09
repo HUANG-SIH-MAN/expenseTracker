@@ -927,6 +927,7 @@ interface MonthlyFixedRow {
   id: string;
   label: string;
   category_key: string | null;
+  account_id: string | null;
   estimated_amount: number;
   currency: string | null;
   original_amount: number | null;
@@ -939,6 +940,7 @@ function rowToMonthlyFixedItem(r: MonthlyFixedRow): MonthlyFixedItem {
     id: r.id,
     label: r.label,
     categoryKey: r.category_key ?? undefined,
+    accountId: r.account_id ?? undefined,
     estimatedAmount: r.estimated_amount,
     currency: (r.currency as MonthlyFixedItem['currency']) ?? undefined,
     originalAmount: r.original_amount ?? undefined,
@@ -952,7 +954,7 @@ export async function getMonthlyFixedItems(): Promise<MonthlyFixedItem[]> {
   if (db) {
     await ensureMigrationDone(db);
     const rows = await db.getAllAsync<MonthlyFixedRow>(
-      "SELECT id, label, category_key, estimated_amount, currency, original_amount, recurring_item_id, sort_order FROM monthly_fixed_items ORDER BY sort_order, id",
+      "SELECT id, label, category_key, account_id, estimated_amount, currency, original_amount, recurring_item_id, sort_order FROM monthly_fixed_items ORDER BY sort_order, id",
     );
     return rows.map(rowToMonthlyFixedItem);
   }
@@ -974,10 +976,11 @@ export async function saveMonthlyFixedItems(
     await db.runAsync("DELETE FROM monthly_fixed_items");
     for (const item of items) {
       await db.runAsync(
-        "INSERT INTO monthly_fixed_items (id, label, category_key, estimated_amount, currency, original_amount, recurring_item_id, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO monthly_fixed_items (id, label, category_key, account_id, estimated_amount, currency, original_amount, recurring_item_id, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         item.id,
         item.label,
         item.categoryKey ?? null,
+        item.accountId ?? null,
         item.estimatedAmount,
         item.currency ?? null,
         item.originalAmount ?? null,
@@ -1203,6 +1206,7 @@ interface CreditCardAutoPayRuleRow {
   pay_from_account_id: string;
   statement_day: number;
   payment_day: number;
+  holiday_adjust: string | null;
   created_at: string;
   updated_at: string;
   is_enabled: number;
@@ -1230,6 +1234,7 @@ function rowToCreditCardAutoPayRule(
     payFromAccountId: row.pay_from_account_id,
     statementDay: row.statement_day,
     paymentDay: row.payment_day,
+    holidayAdjust: (row.holiday_adjust as CreditCardAutoPayRule["holidayAdjust"]) ?? "none",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     isEnabled: row.is_enabled === SQLITE_TRUE,
@@ -1276,7 +1281,7 @@ export async function getCreditCardAutoPayRules(): Promise<
   if (db) {
     await ensureMigrationDone(db);
     const rows = await db.getAllAsync<CreditCardAutoPayRuleRow>(
-      "SELECT id, credit_card_account_id, pay_from_account_id, statement_day, payment_day, created_at, updated_at, is_enabled, deleted_at, delete_reason FROM credit_card_autopay_rules ORDER BY created_at, id",
+      "SELECT id, credit_card_account_id, pay_from_account_id, statement_day, payment_day, holiday_adjust, created_at, updated_at, is_enabled, deleted_at, delete_reason FROM credit_card_autopay_rules ORDER BY created_at, id",
     );
     return rows.map(rowToCreditCardAutoPayRule);
   }
@@ -1300,12 +1305,13 @@ export async function saveCreditCardAutoPayRules(
       await db.runAsync("DELETE FROM credit_card_autopay_rules");
       for (const rule of rules) {
         await db.runAsync(
-          "INSERT INTO credit_card_autopay_rules (id, credit_card_account_id, pay_from_account_id, statement_day, payment_day, created_at, updated_at, is_enabled, deleted_at, delete_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO credit_card_autopay_rules (id, credit_card_account_id, pay_from_account_id, statement_day, payment_day, holiday_adjust, created_at, updated_at, is_enabled, deleted_at, delete_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
           rule.id,
           rule.creditCardAccountId,
           rule.payFromAccountId,
           rule.statementDay,
           rule.paymentDay,
+          rule.holidayAdjust ?? "none",
           rule.createdAt,
           rule.updatedAt,
           rule.isEnabled ? SQLITE_TRUE : SQLITE_FALSE,
@@ -1479,9 +1485,9 @@ export async function syncCreditCardAutopayToTransactions(): Promise<{
       ...rule,
       isEnabled: false,
       deletedAt: nowIso,
-      deleteReason: hasSourceAccount
+      deleteReason: (hasSourceAccount
         ? "credit_card_account_deleted"
-        : "source_account_deleted",
+        : "source_account_deleted") as CreditCardAutoPayRule["deleteReason"],
       updatedAt: nowIso,
     };
   });
@@ -1791,11 +1797,11 @@ export async function clearAllData(): Promise<void> {
   await AsyncStorage.removeItem(STORAGE_KEYS.CREDIT_CARD_AUTOPAY_EXECUTION_LOGS);
   await AsyncStorage.removeItem(STORAGE_KEYS.CASH_TOPUP_RULES);
   await AsyncStorage.removeItem(TRANSFER_TEMPLATES_ASYNC_KEY);
+  await AsyncStorage.removeItem(STORAGE_KEYS.EXCHANGE_RATES);
   await saveBudgetSettings({
     defaultMonthlyIncome: 0,
     weekdayWeight: BUDGET_DEFAULT_WEEKDAY_WEIGHT,
     weekendWeight: BUDGET_DEFAULT_WEEKEND_WEIGHT,
-    fixedExpenseCategoryKeys: [],
   });
   await AsyncStorage.removeItem(STORAGE_KEYS.ONBOARDING);
   await AsyncStorage.removeItem(STORAGE_KEYS.CATEGORIES);
