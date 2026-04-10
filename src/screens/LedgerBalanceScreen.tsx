@@ -119,13 +119,6 @@ export default function LedgerBalanceScreen(): React.JSX.Element {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => navigation.goBack()}
-          hitSlop={12}
-        >
-          <Ionicons name="chevron-back" size={BACK_ICON_SIZE} color="#2563eb" />
-        </TouchableOpacity>
         <Text style={styles.title}>{TITLE}</Text>
         <Text style={styles.subtitle}>{SUBTITLE}</Text>
       </View>
@@ -236,16 +229,11 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
+    paddingTop: 16,
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
     backgroundColor: '#fff',
-  },
-  backBtn: {
-    alignSelf: 'flex-start',
-    paddingVertical: 8,
-    paddingRight: 12,
-    marginBottom: 4,
   },
   title: {
     fontSize: 22,

@@ -184,16 +184,7 @@ export default function StatisticsScreen(): React.JSX.Element {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => navigation.goBack()}
-          hitSlop={12}
-        >
-          <Ionicons name="chevron-back" size={BACK_ICON_SIZE} color="#2563eb" />
-        </TouchableOpacity>
-        <View style={styles.titleWrap} pointerEvents="box-none">
-          <Text style={styles.title}>{TITLE}</Text>
-        </View>
+        <Text style={styles.title}>{TITLE}</Text>
       </View>
 
       <ScrollView
@@ -392,18 +383,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
     backgroundColor: '#fff',
-  },
-  backBtn: {
-    paddingVertical: 8,
-    paddingRight: 12,
-    zIndex: 1,
-  },
-  titleWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   title: {
     fontSize: HEADER_TITLE_FONT_SIZE,

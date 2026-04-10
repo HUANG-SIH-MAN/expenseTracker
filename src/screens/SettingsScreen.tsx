@@ -115,13 +115,6 @@ export default function SettingsScreen(): React.JSX.Element {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => navigation.goBack()}
-          hitSlop={12}
-        >
-          <Ionicons name="chevron-back" size={BACK_ICON_SIZE} color="#2563eb" />
-        </TouchableOpacity>
         <Text style={styles.title}>{TITLE}</Text>
       </View>
 
@@ -195,10 +188,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
     backgroundColor: '#fff',
-  },
-  backBtn: {
-    paddingVertical: 8,
-    paddingRight: 16,
   },
   title: {
     fontSize: 18,

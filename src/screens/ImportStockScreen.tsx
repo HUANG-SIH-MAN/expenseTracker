@@ -25,6 +25,7 @@ import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { useInvestment } from '../contexts/InvestmentContext';
 import { importStockCSV } from '../utils/stockImport';
+import { getStockWatchlist, saveStockWatchlistItem } from '../utils/storage';
 import type { StockTransaction } from '../types';
 import type { MainStackParamList } from '../navigation/MainStack';
 
@@ -132,9 +133,31 @@ export default function ImportStockScreen(): React.JSX.Element {
             setIsImporting(true);
             try {
               await importTransactions(preview.transactions);
+
+              // 自動將匯入的股票加入自選股清單（若尚未存在）
+              const watchlist = await getStockWatchlist();
+              const existing = new Set(watchlist.map(w => w.ticker));
+              const toAdd = Object.entries(preview.byTicker)
+                .filter(([ticker]) => !existing.has(ticker));
+              if (toAdd.length > 0) {
+                const baseOrder = watchlist.length;
+                for (let i = 0; i < toAdd.length; i++) {
+                  const [ticker] = toAdd[i];
+                  // 判斷幣別：從匯入的交易找第一筆
+                  const sample = preview.transactions.find(tx => tx.ticker === ticker);
+                  const currency = sample?.usdCost != null ? 'USD' : 'TWD';
+                  await saveStockWatchlistItem({
+                    ticker,
+                    name: sample?.name || ticker,
+                    currency,
+                    sortOrder: baseOrder + i,
+                  });
+                }
+              }
+
               Alert.alert(
                 '匯入成功',
-                `已成功匯入 ${preview.transactions.length} 筆交易紀錄。`,
+                `已成功匯入 ${preview.transactions.length} 筆交易紀錄。${toAdd.length > 0 ? `\n同時新增 ${toAdd.length} 支股票至自選股清單。` : ''}`,
                 [{ text: '確定', onPress: () => navigation.goBack() }]
               );
             } catch {

@@ -219,11 +219,6 @@ export default function AddTransactionScreen(): React.JSX.Element {
       prevTypeRef.current = type;
       return;
     }
-    if (prevCategoryRef.current === null) {
-      prevCategoryRef.current = category;
-      prevTypeRef.current = type;
-      return;
-    }
     if (prevCategoryRef.current === category && prevTypeRef.current === type) {
       return;
     }

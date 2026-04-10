@@ -9,10 +9,8 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { MainStackParamList } from '../navigation/MainStack';
 import { useBudget } from '../contexts/BudgetContext';
 import { MonthlyBudgetTab, AnnualBudgetTab, BottomBar } from '../components';
 
@@ -21,16 +19,10 @@ const TAB_MONTHLY = '月預算';
 const TAB_ANNUAL = '年預算';
 const BACK_ICON_SIZE = 28;
 
-type NavProp = NativeStackNavigationProp<
-  MainStackParamList,
-  'BudgetSettings'
->;
-
 type BudgetTab = 'monthly' | 'annual';
 
 export default function BudgetSettingsScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation<NavProp>();
   const { refreshBudget } = useBudget();
   const [tab, setTab] = useState<BudgetTab>('monthly');
 
@@ -48,13 +40,6 @@ export default function BudgetSettingsScreen(): React.JSX.Element {
       ]}
     >
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => navigation.goBack()}
-          hitSlop={12}
-        >
-          <Ionicons name="chevron-back" size={BACK_ICON_SIZE} color="#2563eb" />
-        </TouchableOpacity>
         <Text style={styles.title}>{TITLE}</Text>
       </View>
 
@@ -103,10 +88,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
     backgroundColor: '#fff',
-  },
-  backBtn: {
-    paddingVertical: 8,
-    paddingRight: 16,
   },
   title: {
     fontSize: 18,

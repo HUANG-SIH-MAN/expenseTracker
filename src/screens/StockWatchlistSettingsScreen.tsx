@@ -12,6 +12,7 @@ import {
   Alert,
   Modal,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -63,17 +64,17 @@ export default function StockWatchlistSettingsScreen(): React.JSX.Element {
   }
 
   async function handleDelete(item: StockWatchlistItem) {
-    Alert.alert('刪除股票', `確定要從常用清單移除「${item.ticker}」嗎？`, [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '刪除',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteStockWatchlistItem(item.ticker);
-          setList(prev => prev.filter(i => i.ticker !== item.ticker));
-        },
-      },
-    ]);
+    const confirmed = Platform.OS === 'web'
+      ? window.confirm(`確定要從常用清單移除「${item.ticker}」嗎？`)
+      : await new Promise<boolean>(resolve =>
+          Alert.alert('刪除股票', `確定要從常用清單移除「${item.ticker}」嗎？`, [
+            { text: '取消', style: 'cancel', onPress: () => resolve(false) },
+            { text: '刪除', style: 'destructive', onPress: () => resolve(true) },
+          ])
+        );
+    if (!confirmed) return;
+    await deleteStockWatchlistItem(item.ticker);
+    setList(prev => prev.filter(i => i.ticker !== item.ticker));
   }
 
   async function handleSave() {
