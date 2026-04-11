@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -88,19 +89,21 @@ export default function StockDetailScreen(): React.JSX.Element {
   const [showAll, setShowAll] = useState(false);
   const displayTx = showAll ? txList : txList.slice(0, 10);
 
-  function handleDelete(id: string, date: string, shares: number) {
-    Alert.alert(
-      '刪除交易',
-      `確定要刪除 ${date} 的 ${shares} 股紀錄嗎？`,
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '刪除',
-          style: 'destructive',
-          onPress: () => removeTransaction(id),
-        },
-      ]
-    );
+  async function handleDelete(id: string, date: string, shares: number) {
+    const confirmed = Platform.OS === 'web'
+      ? window.confirm(`確定要刪除 ${date} 的 ${shares} 股紀錄嗎？`)
+      : await new Promise<boolean>(resolve =>
+          Alert.alert(
+            '刪除交易',
+            `確定要刪除 ${date} 的 ${shares} 股紀錄嗎？`,
+            [
+              { text: '取消', style: 'cancel', onPress: () => resolve(false) },
+              { text: '刪除', style: 'destructive', onPress: () => resolve(true) },
+            ]
+          )
+        );
+    if (!confirmed) return;
+    await removeTransaction(id);
   }
 
   return (

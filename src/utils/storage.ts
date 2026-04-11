@@ -1955,7 +1955,7 @@ export async function getStockTransactionsByTicker(ticker: string): Promise<Stoc
   if (db) {
     const rows = await db.getAllAsync<Record<string, unknown>>(
       'SELECT * FROM stock_transactions WHERE ticker = ? ORDER BY date ASC',
-      [ticker]
+      ticker,
     );
     return rows.map(rowToStockTransaction);
   }
@@ -1967,14 +1967,21 @@ export async function saveStockTransaction(tx: StockTransaction): Promise<void> 
   const db = await getDb();
   if (db) {
     await db.runAsync(
-      `INSERT OR REPLACE INTO stock_transactions
-        (id, ticker, name, date, type, shares, price_native, usd_cost, twd_cost, exchange_rate, note, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        tx.id, tx.ticker, tx.name, tx.date, tx.type, tx.shares,
-        tx.priceNative, tx.usdCost ?? null, tx.twdCost,
-        tx.exchangeRate ?? null, tx.note ?? null, tx.createdAt,
-      ]
+      `INSERT OR REPLACE INTO stock_transactions` +
+      ` (id,ticker,name,date,type,shares,price_native,usd_cost,twd_cost,exchange_rate,note,created_at)` +
+      ` VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+      tx.id,
+      tx.ticker,
+      tx.name,
+      tx.date,
+      tx.type,
+      tx.shares,
+      tx.priceNative,
+      tx.usdCost ?? null,
+      tx.twdCost,
+      tx.exchangeRate ?? null,
+      tx.note ?? null,
+      tx.createdAt,
     );
     return;
   }
@@ -1985,30 +1992,51 @@ export async function saveStockTransaction(tx: StockTransaction): Promise<void> 
   await AsyncStorage.setItem(STORAGE_KEYS.STOCK_TRANSACTIONS, JSON.stringify(all));
 }
 
+/** SQL 字串值跳脫（單引號加倍） */
+function sqlStr(v: string): string {
+  return `'${v.replace(/'/g, "''")}'`;
+}
+/** 數值或 NULL */
+function sqlNum(v: number | undefined | null): string {
+  return v == null || !isFinite(v) ? 'NULL' : String(v);
+}
+
 export async function saveStockTransactions(txs: StockTransaction[]): Promise<void> {
   const db = await getDb();
   if (db) {
-    for (const tx of txs) {
-      await db.runAsync(
-        `INSERT OR REPLACE INTO stock_transactions
-          (id, ticker, name, date, type, shares, price_native, usd_cost, twd_cost, exchange_rate, note, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          tx.id, tx.ticker, tx.name, tx.date, tx.type, tx.shares,
-          tx.priceNative, tx.usdCost ?? null, tx.twdCost,
-          tx.exchangeRate ?? null, tx.note ?? null, tx.createdAt,
-        ]
-      );
-    }
+    await db.withTransactionAsync(async () => {
+      for (const tx of txs) {
+        await db.runAsync(
+          `INSERT OR REPLACE INTO stock_transactions` +
+          ` (id,ticker,name,date,type,shares,price_native,usd_cost,twd_cost,exchange_rate,note,created_at)` +
+          ` VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+          tx.id,
+          tx.ticker,
+          tx.name,
+          tx.date,
+          tx.type,
+          tx.shares,
+          tx.priceNative,
+          tx.usdCost ?? null,
+          tx.twdCost,
+          tx.exchangeRate ?? null,
+          tx.note ?? null,
+          tx.createdAt,
+        );
+      }
+    });
     return;
   }
-  await AsyncStorage.setItem(STORAGE_KEYS.STOCK_TRANSACTIONS, JSON.stringify(txs));
+  const existing = await getStockTransactions();
+  const existingIds = new Set(existing.map(t => t.id));
+  const merged = [...existing, ...txs.filter(t => !existingIds.has(t.id))];
+  await AsyncStorage.setItem(STORAGE_KEYS.STOCK_TRANSACTIONS, JSON.stringify(merged));
 }
 
 export async function deleteStockTransaction(id: string): Promise<void> {
   const db = await getDb();
   if (db) {
-    await db.runAsync('DELETE FROM stock_transactions WHERE id = ?', [id]);
+    await db.runAsync('DELETE FROM stock_transactions WHERE id = ?', id);
     return;
   }
   const all = await getStockTransactions();
@@ -2141,7 +2169,7 @@ export async function getStockWatchlist(): Promise<StockWatchlistItem[]> {
     for (const item of DEFAULT_WATCHLIST) {
       await db.runAsync(
         'INSERT OR IGNORE INTO stock_watchlist (ticker, name, currency, sort_order) VALUES (?, ?, ?, ?)',
-        [item.ticker, item.name, item.currency, item.sortOrder]
+        item.ticker, item.name, item.currency, item.sortOrder,
       );
     }
     return DEFAULT_WATCHLIST;
@@ -2164,7 +2192,7 @@ export async function saveStockWatchlistItem(item: StockWatchlistItem): Promise<
   if (db) {
     await db.runAsync(
       'INSERT OR REPLACE INTO stock_watchlist (ticker, name, currency, sort_order) VALUES (?, ?, ?, ?)',
-      [item.ticker, item.name, item.currency, item.sortOrder]
+      item.ticker, item.name, item.currency, item.sortOrder,
     );
     return;
   }
@@ -2177,7 +2205,7 @@ export async function saveStockWatchlistItem(item: StockWatchlistItem): Promise<
 export async function deleteStockWatchlistItem(ticker: string): Promise<void> {
   const db = await getDb();
   if (db) {
-    await db.runAsync('DELETE FROM stock_watchlist WHERE ticker = ?', [ticker]);
+    await db.runAsync('DELETE FROM stock_watchlist WHERE ticker = ?', ticker);
     return;
   }
   const all = await getStockWatchlist();
@@ -2193,7 +2221,7 @@ export async function reorderStockWatchlist(items: StockWatchlistItem[]): Promis
     for (let i = 0; i < items.length; i++) {
       await db.runAsync(
         'UPDATE stock_watchlist SET sort_order = ? WHERE ticker = ?',
-        [i, items[i].ticker]
+        i, items[i].ticker,
       );
     }
     return;

@@ -1,11 +1,8 @@
 /**
- * CSV 匯入頁面
- * 流程：
- *  1. 使用者選取 CSV 檔案（從 Excel 另存）
- *  2. APP 解析並顯示預覽（筆數、各股票明細）
- *  3. 使用者確認後寫入 DB
+ * CSV 匯入頁面（Web）：使用隱藏 file input + FileReader 讀檔，
+ * 不經 expo-document-picker / expo-file-system，與 ImportExportScreen.web 相同策略。
  */
-import React, { useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -20,10 +17,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Platform } from 'react-native';
-import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
 import { useInvestment } from '../contexts/InvestmentContext';
 import { importStockCSV } from '../utils/stockImport';
 import { getStockWatchlist, saveStockWatchlistItem } from '../utils/storage';
@@ -38,12 +31,10 @@ const SUCCESS_IMPORT_TITLE = '匯入完成';
 const SUCCESS_IMPORT_BODY = '已成功匯入 %d 筆交易紀錄。';
 const SUCCESS_WATCHLIST_SUFFIX = '\n同時新增 %d 支股票至自選股清單。';
 const ERROR_IMPORT_STOCK = '匯入失敗或無法儲存，請稍後再試。';
-/** 關閉載入層後再顯示完成視窗，避免 Alert 被遮擋 */
 const IMPORT_SUCCESS_ALERT_DELAY_MS = 300;
 const BTN_OK = '確定';
-const MODAL_OVERLAY_ALPHA = 0.45;
+const OVERLAY_BG = 'rgba(0,0,0,0.45)';
 
-// 格式：日期,股票代號,股數,成交價,幣別,TWD成本,USD成本
 const STOCK_TEMPLATE_CSV = [
   '日期,股票代號,股數,成交價,幣別,TWD成本,USD成本',
   '2024-01-15,006208,10,150,TWD,1500,',
@@ -53,31 +44,19 @@ const STOCK_TEMPLATE_CSV = [
   '2024-03-01,GLD,3,185,USD,18200,553',
 ].join('\n');
 
-async function handleDownloadStockTemplate() {
+function handleDownloadStockTemplate() {
   const filename = '股票匯入範本.csv';
   const content = '\uFEFF' + STOCK_TEMPLATE_CSV;
   try {
-    if (Platform.OS === 'web') {
-      const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
-    } else {
-      const cacheDir = FileSystem.cacheDirectory ?? '';
-      const path = `${cacheDir}${filename}`;
-      await FileSystem.writeAsStringAsync(path, content, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
-      const canShare = await Sharing.isAvailableAsync();
-      if (canShare) {
-        await Sharing.shareAsync(path, { mimeType: 'text/csv', dialogTitle: filename });
-      }
-    }
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
   } catch {
-    // 靜默失敗，不影響主流程
+    // 靜默失敗
   }
 }
 
@@ -85,6 +64,7 @@ export default function ImportStockScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<Nav>();
   const { importTransactions } = useInvestment();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [isParsing, setIsParsing] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -95,95 +75,95 @@ export default function ImportStockScreen(): React.JSX.Element {
     byTicker: Record<string, number>;
   } | null>(null);
 
-  async function handlePickFile() {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ['text/csv', 'text/comma-separated-values', 'text/plain', '*/*'],
-        copyToCacheDirectory: true,
-      });
-      if (result.canceled) return;
-      const file = result.assets[0];
+  const applyCsvText = useCallback((csvText: string) => {
+    const importResult = importStockCSV(csvText);
+    const byTicker: Record<string, number> = {};
+    for (const tx of importResult.transactions) {
+      byTicker[tx.ticker] = (byTicker[tx.ticker] ?? 0) + 1;
+    }
+    setPreview({
+      ...importResult,
+      byTicker,
+    });
+  }, []);
+
+  const handleFileInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = '';
       if (!file) return;
 
       setIsParsing(true);
       setPreview(null);
-      try {
-        const cacheDir = FileSystem.cacheDirectory ?? '';
-        const safeName = (file.name ?? 'import.csv').replace(/[^a-zA-Z0-9._-]/g, '_');
-        const cachePath = `${cacheDir}stock_import_${Date.now()}_${safeName}`;
-        await FileSystem.copyAsync({ from: file.uri, to: cachePath });
-        const csvText = await FileSystem.readAsStringAsync(cachePath, {
-          encoding: FileSystem.EncodingType.UTF8,
-        });
-        const importResult = importStockCSV(csvText);
-
-        // 統計各股票筆數
-        const byTicker: Record<string, number> = {};
-        for (const tx of importResult.transactions) {
-          byTicker[tx.ticker] = (byTicker[tx.ticker] ?? 0) + 1;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const text = typeof reader.result === 'string' ? reader.result : '';
+          applyCsvText(text);
+        } catch {
+          Alert.alert('解析失敗', '無法讀取 CSV 檔案，請確認檔案格式正確。');
+        } finally {
+          setIsParsing(false);
         }
-
-        setPreview({
-          ...importResult,
-          byTicker,
-        });
-      } catch (e) {
-        Alert.alert('解析失敗', '無法讀取 CSV 檔案，請確認檔案格式正確。');
-      } finally {
+      };
+      reader.onerror = () => {
         setIsParsing(false);
-      }
-    } catch (e) {
-      Alert.alert('錯誤', '選取檔案失敗');
-    }
-  }
+        Alert.alert('解析失敗', '無法讀取 CSV 檔案，請確認檔案格式正確。');
+      };
+      reader.readAsText(file, 'UTF-8');
+    },
+    [applyCsvText],
+  );
+
+  const handlePickFile = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
 
   async function handleConfirmImport() {
     if (!preview || preview.transactions.length === 0) return;
 
-    Alert.alert(
-      '確認匯入',
+    const ok = window.confirm(
       `將匯入 ${preview.transactions.length} 筆交易紀錄，是否繼續？`,
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '匯入',
-          onPress: async () => {
-            setIsImporting(true);
-            try {
-              await importTransactions(preview.transactions);
-
-              // 自動將匯入的股票加入自選股清單（若尚未存在）
-              const watchlist = await getStockWatchlist();
-              const existing = new Set(watchlist.map(w => w.ticker));
-              const toAdd = Object.entries(preview.byTicker)
-                .filter(([ticker]) => !existing.has(ticker));
-              if (toAdd.length > 0) {
-                const baseOrder = watchlist.length;
-                for (let i = 0; i < toAdd.length; i++) {
-                  const [ticker] = toAdd[i];
-                  // 判斷幣別：從匯入的交易找第一筆
-                  const sample = preview.transactions.find(tx => tx.ticker === ticker);
-                  const currency = sample?.usdCost != null ? 'USD' : 'TWD';
-                  await saveStockWatchlistItem({
-                    ticker,
-                    name: sample?.name || ticker,
-                    currency,
-                    sortOrder: baseOrder + i,
-                  });
-                }
-              }
-
-              setIsImporting(false);
-              setTimeout(() => navigation.goBack(), 300);
-            } catch (err) {
-              setIsImporting(false);
-              const detail = err instanceof Error ? err.message : String(err);
-              Alert.alert('匯入失敗（除錯）', detail);
-            }
-          },
-        },
-      ]
     );
+    if (!ok) return;
+
+    setIsImporting(true);
+    try {
+      await importTransactions(preview.transactions);
+
+      const watchlist = await getStockWatchlist();
+      const existing = new Set(watchlist.map(w => w.ticker));
+      const toAdd = Object.entries(preview.byTicker).filter(([ticker]) => !existing.has(ticker));
+      if (toAdd.length > 0) {
+        const baseOrder = watchlist.length;
+        for (let i = 0; i < toAdd.length; i++) {
+          const [ticker] = toAdd[i];
+          const sample = preview.transactions.find(tx => tx.ticker === ticker);
+          const currency = sample?.usdCost != null ? 'USD' : 'TWD';
+          await saveStockWatchlistItem({
+            ticker,
+            name: sample?.name || ticker,
+            currency,
+            sortOrder: baseOrder + i,
+          });
+        }
+      }
+
+      const addedWatchlistCount = toAdd.length;
+      setIsImporting(false);
+      setTimeout(() => {
+        let body = SUCCESS_IMPORT_BODY.replace('%d', String(preview.transactions.length));
+        if (addedWatchlistCount > 0) {
+          body += SUCCESS_WATCHLIST_SUFFIX.replace('%d', String(addedWatchlistCount));
+        }
+        Alert.alert(SUCCESS_IMPORT_TITLE, body, [
+          { text: BTN_OK, onPress: () => navigation.goBack() },
+        ]);
+      }, IMPORT_SUCCESS_ALERT_DELAY_MS);
+    } catch {
+      setIsImporting(false);
+      Alert.alert('', ERROR_IMPORT_STOCK);
+    }
   }
 
   const loadingOverlayVisible = isParsing || isImporting;
@@ -199,7 +179,17 @@ export default function ImportStockScreen(): React.JSX.Element {
           </View>
         </View>
       </Modal>
-      {/* Header */}
+
+      <input
+        ref={(el) => {
+          fileInputRef.current = el;
+        }}
+        type="file"
+        accept=".csv,text/csv,text/plain"
+        style={styles.hiddenInput as React.CSSProperties}
+        onChange={handleFileInputChange}
+      />
+
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color="#111827" />
@@ -209,7 +199,6 @@ export default function ImportStockScreen(): React.JSX.Element {
       </View>
 
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 24 }]}>
-        {/* 說明 */}
         <View style={styles.instructionCard}>
           <Ionicons name="information-circle-outline" size={20} color="#2563eb" />
           <View style={{ flex: 1, gap: 4 }}>
@@ -227,13 +216,11 @@ export default function ImportStockScreen(): React.JSX.Element {
           </View>
         </View>
 
-        {/* 範本下載 */}
         <TouchableOpacity style={styles.templateBtn} onPress={handleDownloadStockTemplate}>
           <Ionicons name="document-text-outline" size={20} color="#16a34a" />
           <Text style={styles.templateBtnText}>下載股票範本 CSV</Text>
         </TouchableOpacity>
 
-        {/* 選取按鈕 */}
         <TouchableOpacity
           style={styles.pickBtn}
           onPress={handlePickFile}
@@ -243,7 +230,6 @@ export default function ImportStockScreen(): React.JSX.Element {
           <Text style={styles.pickBtnText}>選取 CSV 檔案</Text>
         </TouchableOpacity>
 
-        {/* 預覽結果 */}
         {preview && !isParsing && (
           <View style={styles.previewCard}>
             <Text style={styles.previewTitle}>解析結果預覽</Text>
@@ -272,8 +258,10 @@ export default function ImportStockScreen(): React.JSX.Element {
                 {preview.errors.length > 0 && (
                   <View style={styles.errorsBox}>
                     <Text style={styles.errorsTitle}>注意 {preview.errors.length} 個警告</Text>
-                    {preview.errors.slice(0, 5).map((e, i) => (
-                      <Text key={i} style={styles.errorText}>{e}</Text>
+                    {preview.errors.slice(0, 5).map((err, i) => (
+                      <Text key={i} style={styles.errorText}>
+                        {err}
+                      </Text>
                     ))}
                   </View>
                 )}
@@ -308,7 +296,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f9fafb' },
   importingOverlay: {
     flex: 1,
-    backgroundColor: `rgba(0,0,0,${MODAL_OVERLAY_ALPHA})`,
+    backgroundColor: OVERLAY_BG,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -337,6 +325,13 @@ const styles = StyleSheet.create({
   },
   backBtn: { padding: 4 },
   headerTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '600', color: '#111827' },
+  hiddenInput: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    opacity: 0,
+    left: -9999,
+  },
   scroll: { padding: 16, gap: 16 },
   instructionCard: {
     backgroundColor: '#eff6ff',
