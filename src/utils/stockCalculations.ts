@@ -7,7 +7,7 @@
  * - XIRR（內部報酬率，考量各筆投入時間點，最能反映實際投資績效）
  * - 各年度報酬率
  */
-import type { StockTransaction } from '../types';
+import type { StockTransaction, StockPriceCache } from '../types';
 
 export interface HoldingPosition {
   ticker: string;
@@ -277,6 +277,120 @@ export function calcYearlyReturns(
       year,
       startValueTWD,
       endValueTWD,
+      investedTWD: investedThisYear,
+      gainTWD,
+      returnRate,
+    });
+  }
+
+  return results;
+}
+
+/**
+ * 整體投資組合各年度損益（跨所有股票）
+ *
+ * @param transactions  所有股票的交易紀錄
+ * @param prices        目前價格快取（用於當年度現價）
+ * @param usdTwdRate    美元匯率
+ * @param fetchYearEndPrice  抓取某年底收盤價（台幣）的 async 函式
+ */
+export async function calcPortfolioYearlyReturns(
+  transactions: StockTransaction[],
+  prices: Record<string, StockPriceCache>,
+  usdTwdRate: number,
+  fetchYearEndPrice: (
+    ticker: string,
+    currency: 'TWD' | 'USD',
+    year: number,
+    rate: number,
+  ) => Promise<number | null>,
+): Promise<YearlyReturn[]> {
+  if (transactions.length === 0) return [];
+
+  const sorted = [...transactions].sort((a, b) => a.date.localeCompare(b.date));
+  const firstYear = parseInt(sorted[0].date.slice(0, 4));
+  const currentYear = new Date().getFullYear();
+
+  // 收集所有 ticker 及其幣別
+  const tickerCurrency = new Map<string, 'TWD' | 'USD'>();
+  for (const tx of sorted) {
+    if (!tickerCurrency.has(tx.ticker)) {
+      tickerCurrency.set(tx.ticker, tx.usdCost != null ? 'USD' : 'TWD');
+    }
+  }
+
+  // 預先抓完整年底價格（跳過當年）
+  const endOfYearPrices: Record<string, Record<number, number>> = {}; // ticker -> year -> priceTWD
+  const fetchPromises: Promise<void>[] = [];
+  for (const [ticker, currency] of tickerCurrency.entries()) {
+    endOfYearPrices[ticker] = {};
+    for (let y = firstYear; y < currentYear; y++) {
+      fetchPromises.push(
+        fetchYearEndPrice(ticker, currency, y, usdTwdRate).then(price => {
+          if (price != null) endOfYearPrices[ticker][y] = price;
+        }),
+      );
+    }
+  }
+  await Promise.all(fetchPromises);
+
+  // 取得某 ticker 在某年底的 TWD 價格（當年用現價快取）
+  function getPriceTWDForYear(ticker: string, year: number): number | null {
+    if (year === currentYear) {
+      const cache = prices[ticker];
+      if (!cache) return null;
+      return cache.currency === 'TWD' ? cache.price : cache.price * usdTwdRate;
+    }
+    return endOfYearPrices[ticker]?.[year] ?? null;
+  }
+
+  // 計算每一年的總市值（所有 ticker 加總）
+  function portfolioValueAtYearEnd(txsBefore: StockTransaction[], year: number): number | null {
+    const positions = calculatePositions(txsBefore);
+    let total = 0;
+    for (const [ticker, pos] of positions.entries()) {
+      if (pos.shares <= 0) continue;
+      const price = getPriceTWDForYear(ticker, year);
+      if (price === null) return null; // 缺少價格資料
+      total += pos.shares * price;
+    }
+    return total;
+  }
+
+  const results: YearlyReturn[] = [];
+
+  for (let year = firstYear; year <= currentYear; year++) {
+    const yearEnd = `${year}-12-31`;
+    const prevYearEnd = `${year - 1}-12-31`;
+
+    const txsBeforeYear = sorted.filter(tx => tx.date <= prevYearEnd);
+    const txsUpToYear = sorted.filter(tx => tx.date <= yearEnd);
+    const txsThisYear = sorted.filter(
+      tx => tx.date >= `${year}-01-01` && tx.date <= yearEnd,
+    );
+
+    const startValue = year === firstYear ? 0 : portfolioValueAtYearEnd(txsBeforeYear, year - 1);
+    const endValue = portfolioValueAtYearEnd(txsUpToYear, year);
+
+    // 若資料不完整（歷史年份缺價格）就跳過
+    if (startValue === null || endValue === null) continue;
+
+    let investedThisYear = 0;
+    for (const tx of txsThisYear) {
+      investedThisYear += tx.type === 'buy' ? tx.twdCost : -tx.twdCost;
+    }
+
+    // 若整年都沒持倉且沒投入，跳過
+    if (endValue === 0 && startValue === 0 && investedThisYear === 0) continue;
+
+    const gainTWD = endValue - startValue - investedThisYear;
+    const baseline = startValue + investedThisYear;
+    const returnRate = baseline > 0 ? gainTWD / baseline : 0;
+
+    results.push({
+      year,
+      startValueTWD: startValue,
+      endValueTWD: endValue,
       investedTWD: investedThisYear,
       gainTWD,
       returnRate,

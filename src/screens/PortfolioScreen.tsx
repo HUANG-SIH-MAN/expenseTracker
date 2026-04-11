@@ -123,7 +123,11 @@ export default function PortfolioScreen(): React.JSX.Element {
         }
       >
         {/* 總覽卡片 */}
-        <View style={styles.summaryCard}>
+        <TouchableOpacity
+          style={styles.summaryCard}
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('PortfolioYearly')}
+        >
           <Text style={styles.summaryLabel}>總市值</Text>
           <Text style={styles.summaryValue}>NT$ {formatTWD(totalValueTWD)}</Text>
           <View style={styles.summaryRow}>
@@ -147,7 +151,7 @@ export default function PortfolioScreen(): React.JSX.Element {
           {usdTwdRate > 0 && (
             <Text style={styles.rateHint}>USD/TWD ≈ {usdTwdRate.toFixed(2)}</Text>
           )}
-        </View>
+        </TouchableOpacity>
 
         {/* 無持倉提示 */}
         {posArray.length === 0 && (

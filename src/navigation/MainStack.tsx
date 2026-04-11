@@ -34,6 +34,7 @@ import ImportStockScreen from '../screens/ImportStockScreen';
 import StockWatchlistSettingsScreen from '../screens/StockWatchlistSettingsScreen';
 import ETFExposureScreen from '../screens/ETFExposureScreen';
 import InvestmentSettingsScreen from '../screens/InvestmentSettingsScreen';
+import PortfolioYearlyScreen from '../screens/PortfolioYearlyScreen';
 import type { TransactionType, StockTransaction } from '../types';
 
 export type MainStackParamList = {
@@ -97,6 +98,7 @@ export type MainStackParamList = {
   AddStockTransaction: { ticker?: string; transaction?: StockTransaction };
   ImportStock: undefined;
   StockWatchlistSettings: undefined;
+  PortfolioYearly: undefined;
   SelectBudgetLink: {
     transactionType: string;
     dateKey: string;
@@ -289,6 +291,11 @@ export default function MainStack(): React.JSX.Element {
       <Stack.Screen
         name="StockWatchlistSettings"
         component={StockWatchlistSettingsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="PortfolioYearly"
+        component={PortfolioYearlyScreen}
         options={{ headerShown: false }}
       />
     </Stack.Navigator>
