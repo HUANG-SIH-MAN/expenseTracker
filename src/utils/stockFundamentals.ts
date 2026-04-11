@@ -7,7 +7,13 @@ import {
 } from "./storage";
 import { fetchWithCORS } from "./stockPrice";
 
-const CACHE_TTL_MS = 3 * 24 * 60 * 60 * 1000; // 3 天
+const DAY_MS = 24 * 60 * 60 * 1000;
+const CACHE_TTL_DAYS = 7;
+const CACHE_TTL_MS = CACHE_TTL_DAYS * DAY_MS;
+const REFRESH_COOLDOWN_MS = 30 * 1000;
+const REFRESH_LOG_PREFIX = "[Stock Fundamentals]";
+const inflightRefreshMap = new Map<string, Promise<StockFundamentals>>();
+const lastRefreshAtMap = new Map<string, number>();
 
 function isCacheValid(lastUpdated: string): boolean {
   return Date.now() - new Date(lastUpdated).getTime() < CACHE_TTL_MS;
@@ -129,20 +135,55 @@ async function fetchAndSave(ticker: string): Promise<StockFundamentals> {
   return data;
 }
 
-/** 讀取快取，若過期則重新抓取 */
+function getOrCreateRefreshPromise(ticker: string): Promise<StockFundamentals> {
+  const inflight = inflightRefreshMap.get(ticker);
+  if (inflight) return inflight;
+
+  const task = (async () => {
+    lastRefreshAtMap.set(ticker, Date.now());
+    return fetchAndSave(ticker);
+  })().finally(() => {
+    inflightRefreshMap.delete(ticker);
+  });
+  inflightRefreshMap.set(ticker, task);
+  return task;
+}
+
+function isInRefreshCooldown(ticker: string): boolean {
+  const lastRefreshAt = lastRefreshAtMap.get(ticker);
+  if (!lastRefreshAt) return false;
+  return Date.now() - lastRefreshAt < REFRESH_COOLDOWN_MS;
+}
+
+function triggerStaleRefreshInBackground(ticker: string): void {
+  if (inflightRefreshMap.has(ticker)) return;
+  if (isInRefreshCooldown(ticker)) return;
+  void getOrCreateRefreshPromise(ticker).catch((error: unknown) => {
+    console.warn(`${REFRESH_LOG_PREFIX} stale refresh failed for ${ticker}:`, error);
+  });
+}
+
+/** 讀取快取；若超過 7 天則先回舊資料並背景刷新 */
 export async function getStockFundamentals(
   ticker: string
 ): Promise<StockFundamentals> {
   const cached = await getFromStorage(ticker);
-  if (cached && isCacheValid(cached.lastUpdated)) {
+  if (cached) {
+    if (!isCacheValid(cached.lastUpdated)) {
+      triggerStaleRefreshInBackground(ticker);
+    }
     return cached;
   }
-  return fetchAndSave(ticker);
+  return getOrCreateRefreshPromise(ticker);
 }
 
 /** 強制重新抓取，忽略快取（手動刷新按鈕） */
 export async function refreshStockFundamentals(
   ticker: string
 ): Promise<StockFundamentals> {
-  return fetchAndSave(ticker);
+  if (isInRefreshCooldown(ticker)) {
+    const cached = await getFromStorage(ticker);
+    if (cached) return cached;
+  }
+  return getOrCreateRefreshPromise(ticker);
 }

@@ -4,14 +4,20 @@
  *   - QQQ, SMH → Alpha Vantage ETF_PROFILE API
  *   - 006208    → TWSE 官方 API（台灣50成分股）
  *   - GLD, IBIT → 靜態說明（單一實物資產 ETF）
- * 快取策略：30 天（SQLite etf_holdings table）
+ * 快取策略：7 天（SQLite etf_holdings table）
  */
 import { Platform } from 'react-native';
 import { getETFHoldings as getETFHoldingsFromDB, saveETFHoldings, getAlphaVantageApiKey } from './storage';
 import { fetchWithCORS } from './stockPrice';
 import type { ETFHolding } from '../types';
 
-const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 天
+const DAY_MS = 24 * 60 * 60 * 1000;
+const CACHE_TTL_DAYS = 7;
+const CACHE_TTL_MS = CACHE_TTL_DAYS * DAY_MS;
+const REFRESH_COOLDOWN_MS = 30 * 1000;
+const REFRESH_LOG_PREFIX = '[ETF Holdings]';
+const inflightRefreshMap = new Map<string, Promise<ETFHolding[]>>();
+const lastRefreshAtMap = new Map<string, number>();
 
 export const SUPPORTED_ETF_TICKERS = ['QQQ', 'SMH', 'GLD', 'IBIT', '006208'];
 
@@ -118,10 +124,41 @@ async function fetchHoldings(ticker: string): Promise<ETFHolding[]> {
   }
 }
 
+function getOrCreateRefreshPromise(ticker: string): Promise<ETFHolding[]> {
+  const inflight = inflightRefreshMap.get(ticker);
+  if (inflight) return inflight;
+
+  const task = (async () => {
+    lastRefreshAtMap.set(ticker, Date.now());
+    const fresh = await fetchHoldings(ticker);
+    await saveETFHoldings(fresh);
+    return fresh;
+  })().finally(() => {
+    inflightRefreshMap.delete(ticker);
+  });
+
+  inflightRefreshMap.set(ticker, task);
+  return task;
+}
+
+function isInRefreshCooldown(ticker: string): boolean {
+  const lastRefreshAt = lastRefreshAtMap.get(ticker);
+  if (!lastRefreshAt) return false;
+  return Date.now() - lastRefreshAt < REFRESH_COOLDOWN_MS;
+}
+
+function triggerStaleRefreshInBackground(ticker: string): void {
+  if (inflightRefreshMap.has(ticker)) return;
+  if (isInRefreshCooldown(ticker)) return;
+  void getOrCreateRefreshPromise(ticker).catch((error: unknown) => {
+    console.warn(`${REFRESH_LOG_PREFIX} stale refresh failed for ${ticker}:`, error);
+  });
+}
+
 // ─── 公開 API ─────────────────────────────────────────────────────
 
 /**
- * 取得 ETF 持股（優先使用快取，超過 30 天才重新抓取）
+ * 取得 ETF 持股（優先使用快取，超過 7 天背景刷新）
  * - 不支援的 ticker 回傳空陣列
  * - 單一資產 ETF（GLD, IBIT）回傳空陣列，由 UI 顯示靜態說明
  */
@@ -130,13 +167,14 @@ export async function getETFHoldings(ticker: string): Promise<ETFHolding[]> {
   if (isSingleAssetETF(ticker)) return [];
 
   const cached = await getETFHoldingsFromDB(ticker);
-  if (cached.length > 0 && isCacheValid(cached[0].lastUpdated)) {
+  if (cached.length > 0) {
+    if (!isCacheValid(cached[0].lastUpdated)) {
+      triggerStaleRefreshInBackground(ticker);
+    }
     return cached;
   }
 
-  const fresh = await fetchHoldings(ticker);
-  await saveETFHoldings(fresh);
-  return fresh;
+  return getOrCreateRefreshPromise(ticker);
 }
 
 /**
@@ -144,7 +182,9 @@ export async function getETFHoldings(ticker: string): Promise<ETFHolding[]> {
  */
 export async function refreshETFHoldings(ticker: string): Promise<ETFHolding[]> {
   if (!SUPPORTED_ETF_TICKERS.includes(ticker) || isSingleAssetETF(ticker)) return [];
-  const fresh = await fetchHoldings(ticker);
-  await saveETFHoldings(fresh);
-  return fresh;
+  if (isInRefreshCooldown(ticker)) {
+    const cached = await getETFHoldingsFromDB(ticker);
+    if (cached.length > 0) return cached;
+  }
+  return getOrCreateRefreshPromise(ticker);
 }

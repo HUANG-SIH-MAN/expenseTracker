@@ -121,7 +121,7 @@ export default function InvestmentSettingsScreen(): React.JSX.Element {
               <Text style={styles.sectionTitle}>Alpha Vantage API Key</Text>
               <Text style={styles.sectionDesc}>
                 用於抓取 ETF 持股明細（QQQ、SMH）。{'\n'}
-                免費方案每日 25 次，對每月更新一次的快取策略完全足夠。
+                免費方案每日 25 次，系統會優先使用舊資料，超過 7 天才背景更新。
               </Text>
 
               <View style={styles.stepBox}>
