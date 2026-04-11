@@ -72,6 +72,7 @@ async function fetchAlphaVantageHoldings(ticker: string): Promise<ETFHolding[]> 
     etfTicker: ticker,
     rank: i + 1,
     companyName: h.description ?? h.symbol ?? '—',
+    stockTicker: h.symbol ?? undefined,
     weightPct: parseFloat(h.weight ?? '0') * 100,
     lastUpdated: now,
   }));

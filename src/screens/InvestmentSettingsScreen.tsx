@@ -2,7 +2,7 @@
  * 投資設定頁
  * - Alpha Vantage API Key 管理（用於 ETF 持股資料）
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -14,11 +14,17 @@ import {
   Platform,
   ActivityIndicator,
   Linking,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { getAlphaVantageApiKey, setAlphaVantageApiKey } from '../utils/storage';
+
+const HEADER_HEIGHT = 48;
+const BOTTOM_PADDING = 24;
+const INPUT_FOCUS_SCROLL_DELAY_MS = 160;
+const DEFAULT_INPUT_HEIGHT = 44;
 
 export default function InvestmentSettingsScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
@@ -28,6 +34,9 @@ export default function InvestmentSettingsScreen(): React.JSX.Element {
   const [savedKey, setSavedKey] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const scrollViewRef = useRef<ScrollView | null>(null);
+  const [contentVisibleHeight, setContentVisibleHeight] = useState(0);
+  const [inputLayout, setInputLayout] = useState({ y: 0, height: DEFAULT_INPUT_HEIGHT });
 
   useEffect(() => {
     getAlphaVantageApiKey().then(k => {
@@ -71,6 +80,15 @@ export default function InvestmentSettingsScreen(): React.JSX.Element {
 
   const isDirty = apiKey.trim() !== savedKey;
 
+  function handleApiKeyFocus() {
+    const inputCenterY = inputLayout.y + inputLayout.height / 2;
+    const targetOffsetY = Math.max(0, inputCenterY - contentVisibleHeight / 2);
+
+    setTimeout(() => {
+      scrollViewRef.current?.scrollTo({ y: targetOffsetY, animated: true });
+    }, INPUT_FOCUS_SCROLL_DELAY_MS);
+  }
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
@@ -82,97 +100,116 @@ export default function InvestmentSettingsScreen(): React.JSX.Element {
         <View style={{ width: 36 }} />
       </View>
 
-      {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color="#2563eb" />
-        </View>
-      ) : (
-        <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 24 }]}>
-          {/* Alpha Vantage 說明區塊 */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Alpha Vantage API Key</Text>
-            <Text style={styles.sectionDesc}>
-              用於抓取 ETF 持股明細（QQQ、SMH）。{'\n'}
-              免費方案每日 25 次，對每月更新一次的快取策略完全足夠。
-            </Text>
-
-            <View style={styles.stepBox}>
-              <Text style={styles.stepTitle}>如何取得免費 API Key</Text>
-              <Text style={styles.stepText}>
-                1. 點選下方連結前往官網{'\n'}
-                2. 點選「Get Free API Key」{'\n'}
-                3. 填入 Email（不需信用卡）{'\n'}
-                4. 複製 Key 貼到下方欄位
+      <KeyboardAvoidingView
+        style={styles.contentContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={insets.top + HEADER_HEIGHT}
+        onLayout={event => setContentVisibleHeight(event.nativeEvent.layout.height)}
+      >
+        {loading ? (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color="#2563eb" />
+          </View>
+        ) : (
+          <ScrollView
+            ref={scrollViewRef}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + BOTTOM_PADDING }]}
+          >
+            {/* Alpha Vantage 說明區塊 */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Alpha Vantage API Key</Text>
+              <Text style={styles.sectionDesc}>
+                用於抓取 ETF 持股明細（QQQ、SMH）。{'\n'}
+                免費方案每日 25 次，對每月更新一次的快取策略完全足夠。
               </Text>
-              <TouchableOpacity
-                style={styles.linkBtn}
-                onPress={() => Linking.openURL('https://www.alphavantage.co/support/#api-key')}
-              >
-                <Ionicons name="open-outline" size={14} color="#2563eb" />
-                <Text style={styles.linkText}>前往 alphavantage.co 申請</Text>
-              </TouchableOpacity>
-            </View>
 
-            {/* 輸入欄 */}
-            <Text style={styles.inputLabel}>API Key</Text>
-            <View style={styles.inputRow}>
-              <TextInput
-                style={styles.input}
-                value={apiKey}
-                onChangeText={setApiKey}
-                placeholder="貼上你的 Alpha Vantage API Key"
-                placeholderTextColor="#9ca3af"
-                autoCapitalize="characters"
-                autoCorrect={false}
-              />
-              {apiKey.length > 0 && (
-                <TouchableOpacity style={styles.clearBtn} onPress={() => setApiKey('')}>
-                  <Ionicons name="close-circle" size={18} color="#9ca3af" />
+              <View style={styles.stepBox}>
+                <Text style={styles.stepTitle}>如何取得免費 API Key</Text>
+                <Text style={styles.stepText}>
+                  1. 點選下方連結前往官網{'\n'}
+                  2. 點選「Get Free API Key」{'\n'}
+                  3. 填入 Email（不需信用卡）{'\n'}
+                  4. 複製 Key 貼到下方欄位
+                </Text>
+                <TouchableOpacity
+                  style={styles.linkBtn}
+                  onPress={() => Linking.openURL('https://www.alphavantage.co/support/#api-key')}
+                >
+                  <Ionicons name="open-outline" size={14} color="#2563eb" />
+                  <Text style={styles.linkText}>前往 alphavantage.co 申請</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* 輸入欄 */}
+              <Text style={styles.inputLabel}>API Key</Text>
+              <View
+                style={styles.inputRow}
+                onLayout={event => {
+                  const { y, height } = event.nativeEvent.layout;
+                  setInputLayout({ y, height });
+                }}
+              >
+                <TextInput
+                  style={styles.input}
+                  value={apiKey}
+                  onChangeText={setApiKey}
+                  onFocus={handleApiKeyFocus}
+                  placeholder="貼上你的 Alpha Vantage API Key"
+                  placeholderTextColor="#9ca3af"
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                />
+                {apiKey.length > 0 && (
+                  <TouchableOpacity style={styles.clearBtn} onPress={() => setApiKey('')}>
+                    <Ionicons name="close-circle" size={18} color="#9ca3af" />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* 狀態標籤 */}
+              {savedKey ? (
+                <View style={styles.statusRow}>
+                  <Ionicons name="checkmark-circle" size={14} color="#16a34a" />
+                  <Text style={styles.statusSaved}>已設定（{savedKey.slice(0, 4)}…{savedKey.slice(-4)}）</Text>
+                </View>
+              ) : (
+                <View style={styles.statusRow}>
+                  <Ionicons name="warning-outline" size={14} color="#d97706" />
+                  <Text style={styles.statusEmpty}>尚未設定，ETF 持股資料無法顯示</Text>
+                </View>
+              )}
+
+              {/* 儲存按鈕 */}
+              <TouchableOpacity
+                style={[styles.saveBtn, (!isDirty || saving) && styles.saveBtnDisabled]}
+                onPress={handleSave}
+                disabled={!isDirty || saving}
+              >
+                {saving ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.saveBtnText}>儲存</Text>
+                )}
+              </TouchableOpacity>
+
+              {/* 清除按鈕 */}
+              {savedKey.length > 0 && (
+                <TouchableOpacity style={styles.clearKeyBtn} onPress={handleClear}>
+                  <Text style={styles.clearKeyBtnText}>清除 API Key</Text>
                 </TouchableOpacity>
               )}
             </View>
-
-            {/* 狀態標籤 */}
-            {savedKey ? (
-              <View style={styles.statusRow}>
-                <Ionicons name="checkmark-circle" size={14} color="#16a34a" />
-                <Text style={styles.statusSaved}>已設定（{savedKey.slice(0, 4)}…{savedKey.slice(-4)}）</Text>
-              </View>
-            ) : (
-              <View style={styles.statusRow}>
-                <Ionicons name="warning-outline" size={14} color="#d97706" />
-                <Text style={styles.statusEmpty}>尚未設定，ETF 持股資料無法顯示</Text>
-              </View>
-            )}
-
-            {/* 儲存按鈕 */}
-            <TouchableOpacity
-              style={[styles.saveBtn, (!isDirty || saving) && styles.saveBtnDisabled]}
-              onPress={handleSave}
-              disabled={!isDirty || saving}
-            >
-              {saving ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Text style={styles.saveBtnText}>儲存</Text>
-              )}
-            </TouchableOpacity>
-
-            {/* 清除按鈕 */}
-            {savedKey.length > 0 && (
-              <TouchableOpacity style={styles.clearKeyBtn} onPress={handleClear}>
-                <Text style={styles.clearKeyBtnText}>清除 API Key</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </ScrollView>
-      )}
+          </ScrollView>
+        )}
+      </KeyboardAvoidingView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f9fafb' },
+  contentContainer: { flex: 1 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: {
     flexDirection: 'row',

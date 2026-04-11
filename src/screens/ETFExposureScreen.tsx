@@ -13,6 +13,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { MainStackParamList } from '../navigation/MainStack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useInvestment, getPriceTWD } from '../contexts/InvestmentContext';
 import { getETFHoldings, refreshETFHoldings, SUPPORTED_ETF_TICKERS, isSingleAssetETF } from '../utils/etfHoldings';
@@ -27,14 +29,17 @@ function fmtPct(n: number): string {
 
 interface ExposureRow {
   companyName: string;
+  stockTicker?: string; // 成分股代號（來自 ETF holdings 的 stockTicker）
   totalTWD: number;
   portfolioPct: number;
   sources: { ticker: string; contributionTWD: number }[];
 }
 
+type Nav = NativeStackNavigationProp<MainStackParamList>;
+
 export default function ETFExposureScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation();
+  const navigation = useNavigation<Nav>();
   const { positions, prices, usdTwdRate, isLoading: isContextLoading } = useInvestment();
 
   // ETF ticker → holdings（從 DB / 網路）
@@ -112,7 +117,7 @@ export default function ETFExposureScreen(): React.JSX.Element {
       }
     }
 
-    const map = new Map<string, { totalTWD: number; sources: { ticker: string; contributionTWD: number }[] }>();
+    const map = new Map<string, { stockTicker?: string; totalTWD: number; sources: { ticker: string; contributionTWD: number }[] }>();
 
     for (const pos of etfPositions) {
       const etfValueTWD = pos.shares * getPriceTWD(pos.ticker, prices, usdTwdRate);
@@ -126,6 +131,7 @@ export default function ETFExposureScreen(): React.JSX.Element {
           existing.sources.push({ ticker: pos.ticker, contributionTWD });
         } else {
           map.set(h.companyName, {
+            stockTicker: h.stockTicker,
             totalTWD: contributionTWD,
             sources: [{ ticker: pos.ticker, contributionTWD }],
           });
@@ -136,6 +142,7 @@ export default function ETFExposureScreen(): React.JSX.Element {
     const rows: ExposureRow[] = Array.from(map.entries())
       .map(([companyName, data]) => ({
         companyName,
+        stockTicker: data.stockTicker,
         totalTWD: data.totalTWD,
         portfolioPct: totalPortfolioTWD > 0 ? (data.totalTWD / totalPortfolioTWD) * 100 : 0,
         sources: data.sources.sort((a, b) => b.contributionTWD - a.contributionTWD),
@@ -207,23 +214,45 @@ export default function ETFExposureScreen(): React.JSX.Element {
             <Text style={[styles.colPct, styles.colLabel]}>佔組合</Text>
           </View>
 
-          {exposureRows.map((row, i) => (
-            <View key={row.companyName} style={[styles.row, i % 2 === 1 && styles.rowAlt]}>
-              <Text style={styles.colRank}>{i + 1}</Text>
-              <View style={styles.colName}>
-                <Text style={styles.companyName} numberOfLines={2}>{row.companyName}</Text>
-                <View style={styles.sourceTags}>
-                  {row.sources.map(s => (
-                    <View key={s.ticker} style={styles.tag}>
-                      <Text style={styles.tagText}>{s.ticker}</Text>
-                    </View>
-                  ))}
+          {exposureRows.map((row, i) => {
+            const canNavigate = !!row.stockTicker;
+            const RowWrapper = canNavigate ? TouchableOpacity : View;
+            return (
+              <RowWrapper
+                key={row.companyName}
+                style={[styles.row, i % 2 === 1 && styles.rowAlt]}
+                {...(canNavigate
+                  ? {
+                      onPress: () =>
+                        navigation.navigate('CompanyFundamentals', {
+                          companyName: row.companyName,
+                          stockTicker: row.stockTicker!,
+                        }),
+                      activeOpacity: 0.7,
+                    }
+                  : {})}
+              >
+                <Text style={styles.colRank}>{i + 1}</Text>
+                <View style={styles.colName}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Text style={styles.companyName} numberOfLines={2}>{row.companyName}</Text>
+                    {canNavigate && (
+                      <Ionicons name="chevron-forward" size={12} color="#9ca3af" />
+                    )}
+                  </View>
+                  <View style={styles.sourceTags}>
+                    {row.sources.map(s => (
+                      <View key={s.ticker} style={styles.tag}>
+                        <Text style={styles.tagText}>{s.ticker}</Text>
+                      </View>
+                    ))}
+                  </View>
                 </View>
-              </View>
-              <Text style={styles.colValue}>NT$ {fmtTWD(row.totalTWD)}</Text>
-              <Text style={styles.colPct}>{fmtPct(row.portfolioPct)}</Text>
-            </View>
-          ))}
+                <Text style={styles.colValue}>NT$ {fmtTWD(row.totalTWD)}</Text>
+                <Text style={styles.colPct}>{fmtPct(row.portfolioPct)}</Text>
+              </RowWrapper>
+            );
+          })}
         </ScrollView>
       )}
     </View>

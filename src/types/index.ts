@@ -277,7 +277,30 @@ export interface ETFHolding {
   etfTicker: string;
   rank: number;
   companyName: string;
+  stockTicker?: string; // 成分股的股票代號（如 AAPL、NVDA），台股持股可能無此欄位
   weightPct: number;
+  lastUpdated: string; // ISO 8601
+}
+
+/** 股票年度財務資料（來自 Alpha Vantage INCOME_STATEMENT） */
+export interface StockAnnualFinancial {
+  fiscalYear: string; // e.g. "2024-12-31"
+  totalRevenue: number;
+  grossProfit: number;
+  netIncome: number;
+  operatingIncome: number;
+}
+
+/** 股票基本面資料（來自 Alpha Vantage OVERVIEW + INCOME_STATEMENT） */
+export interface StockFundamentals {
+  ticker: string;
+  marketCap: number;
+  peRatio: number | null;
+  eps: number | null;
+  week52High: number;
+  week52Low: number;
+  beta: number | null;
+  annualFinancials: StockAnnualFinancial[]; // 最近5年
   lastUpdated: string; // ISO 8601
 }
 

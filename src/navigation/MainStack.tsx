@@ -35,6 +35,7 @@ import StockWatchlistSettingsScreen from '../screens/StockWatchlistSettingsScree
 import ETFExposureScreen from '../screens/ETFExposureScreen';
 import InvestmentSettingsScreen from '../screens/InvestmentSettingsScreen';
 import PortfolioYearlyScreen from '../screens/PortfolioYearlyScreen';
+import CompanyFundamentalsScreen from '../screens/CompanyFundamentalsScreen';
 import type { TransactionType, StockTransaction } from '../types';
 
 export type MainStackParamList = {
@@ -95,6 +96,7 @@ export type MainStackParamList = {
   ETFExposure: undefined;
   InvestmentSettings: undefined;
   StockDetail: { ticker: string };
+  CompanyFundamentals: { companyName: string; stockTicker: string };
   AddStockTransaction: { ticker?: string; transaction?: StockTransaction };
   ImportStock: undefined;
   StockWatchlistSettings: undefined;
@@ -276,6 +278,11 @@ export default function MainStack(): React.JSX.Element {
       <Stack.Screen
         name="StockDetail"
         component={StockDetailScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="CompanyFundamentals"
+        component={CompanyFundamentalsScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen

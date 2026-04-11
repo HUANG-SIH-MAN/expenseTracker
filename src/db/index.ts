@@ -192,9 +192,22 @@ CREATE TABLE IF NOT EXISTS etf_holdings (
   etf_ticker TEXT NOT NULL,
   rank INTEGER NOT NULL,
   company_name TEXT NOT NULL,
+  stock_ticker TEXT,
   weight_pct REAL NOT NULL,
   last_updated TEXT NOT NULL,
   UNIQUE(etf_ticker, rank)
+);
+
+CREATE TABLE IF NOT EXISTS stock_fundamentals (
+  ticker TEXT PRIMARY KEY,
+  market_cap REAL NOT NULL DEFAULT 0,
+  pe_ratio REAL,
+  eps REAL,
+  week52_high REAL NOT NULL DEFAULT 0,
+  week52_low REAL NOT NULL DEFAULT 0,
+  beta REAL,
+  annual_financials TEXT NOT NULL DEFAULT '[]',
+  last_updated TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_stock_transactions_ticker ON stock_transactions(ticker);
@@ -407,9 +420,30 @@ async function initDb(): Promise<SQLite.SQLiteDatabase | null> {
       etf_ticker TEXT NOT NULL,
       rank INTEGER NOT NULL,
       company_name TEXT NOT NULL,
+      stock_ticker TEXT,
       weight_pct REAL NOT NULL,
       last_updated TEXT NOT NULL,
       UNIQUE(etf_ticker, rank)
+    )`);
+  } catch {
+    // Table already exists
+  }
+  try {
+    await db.runAsync('ALTER TABLE etf_holdings ADD COLUMN stock_ticker TEXT');
+  } catch {
+    // Column already exists
+  }
+  try {
+    await db.execAsync(`CREATE TABLE IF NOT EXISTS stock_fundamentals (
+      ticker TEXT PRIMARY KEY,
+      market_cap REAL NOT NULL DEFAULT 0,
+      pe_ratio REAL,
+      eps REAL,
+      week52_high REAL NOT NULL DEFAULT 0,
+      week52_low REAL NOT NULL DEFAULT 0,
+      beta REAL,
+      annual_financials TEXT NOT NULL DEFAULT '[]',
+      last_updated TEXT NOT NULL
     )`);
   } catch {
     // Table already exists

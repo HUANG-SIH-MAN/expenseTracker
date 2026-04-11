@@ -21,12 +21,22 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }):
 
   useEffect(() => {
     let cancelled = false;
-    getOnboardingData().then((data) => {
-      if (!cancelled) {
-        setHasCompletedOnboarding(data?.hasCompletedOnboarding === true);
+    async function loadOnboarding() {
+      try {
+        const data = await getOnboardingData();
+        if (!cancelled) {
+          setHasCompletedOnboarding(data?.hasCompletedOnboarding === true);
+        }
+      } catch {
+        // 發生讀取錯誤時，保守回退到尚未完成導覽，避免卡在 loading
+        if (!cancelled) {
+          setHasCompletedOnboarding(false);
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
       }
-      if (!cancelled) setIsLoading(false);
-    });
+    }
+    loadOnboarding();
     return () => {
       cancelled = true;
     };
@@ -41,8 +51,12 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }):
   );
 
   const refreshOnboardingState = useCallback(async () => {
-    const data = await getOnboardingData();
-    setHasCompletedOnboarding(data?.hasCompletedOnboarding === true);
+    try {
+      const data = await getOnboardingData();
+      setHasCompletedOnboarding(data?.hasCompletedOnboarding === true);
+    } catch {
+      setHasCompletedOnboarding(false);
+    }
   }, []);
 
   const value: OnboardingContextValue = {

@@ -18,6 +18,7 @@ import type {
   CurrencyCode,
   CurrencyOption,
   ETFHolding,
+  StockFundamentals,
   MonthlyFixedItem,
   OnboardingData,
   RecurringItem,
@@ -2136,6 +2137,7 @@ export async function getETFHoldings(etfTicker: string): Promise<ETFHolding[]> {
       etfTicker: r.etf_ticker as string,
       rank: r.rank as number,
       companyName: r.company_name as string,
+      stockTicker: (r.stock_ticker as string | null) ?? undefined,
       weightPct: r.weight_pct as number,
       lastUpdated: r.last_updated as string,
     }));
@@ -2252,9 +2254,9 @@ export async function saveETFHoldings(holdings: ETFHolding[]): Promise<void> {
     await db.runAsync('DELETE FROM etf_holdings WHERE etf_ticker = ?', [etfTicker]);
     for (const h of holdings) {
       await db.runAsync(
-        `INSERT INTO etf_holdings (etf_ticker, rank, company_name, weight_pct, last_updated)
-         VALUES (?, ?, ?, ?, ?)`,
-        [h.etfTicker, h.rank, h.companyName, h.weightPct, h.lastUpdated]
+        `INSERT INTO etf_holdings (etf_ticker, rank, company_name, stock_ticker, weight_pct, last_updated)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [h.etfTicker, h.rank, h.companyName, h.stockTicker ?? null, h.weightPct, h.lastUpdated]
       );
     }
     return;
@@ -2292,4 +2294,89 @@ export async function setAlphaVantageApiKey(key: string): Promise<void> {
     return;
   }
   await AsyncStorage.setItem(STORAGE_KEYS.ALPHAVANTAGE_API_KEY, key.trim());
+}
+
+function toStockFundamentalsRecord(
+  input: unknown,
+): Record<string, StockFundamentals> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return {};
+  }
+  return input as Record<string, StockFundamentals>;
+}
+
+export async function getStockFundamentals(
+  ticker: string
+): Promise<StockFundamentals | null> {
+  const db = await getDb();
+  if (db) {
+    const row = await db.getFirstAsync<Record<string, unknown>>(
+      "SELECT * FROM stock_fundamentals WHERE ticker = ?",
+      [ticker]
+    );
+    if (!row) return null;
+    let annualFinancials: StockFundamentals["annualFinancials"] = [];
+    if (typeof row.annual_financials === "string") {
+      try {
+        const parsed = JSON.parse(row.annual_financials);
+        annualFinancials = Array.isArray(parsed)
+          ? (parsed as StockFundamentals["annualFinancials"])
+          : [];
+      } catch {
+        annualFinancials = [];
+      }
+    }
+    return {
+      ticker: row.ticker as string,
+      marketCap: row.market_cap as number,
+      peRatio: row.pe_ratio as number | null,
+      eps: row.eps as number | null,
+      week52High: row.week52_high as number,
+      week52Low: row.week52_low as number,
+      beta: row.beta as number | null,
+      annualFinancials,
+      lastUpdated: row.last_updated as string,
+    };
+  }
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.STOCK_FUNDAMENTALS);
+    if (!raw) return null;
+    const all = toStockFundamentalsRecord(JSON.parse(raw));
+    return all[ticker] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveStockFundamentals(
+  data: StockFundamentals
+): Promise<void> {
+  const db = await getDb();
+  if (db) {
+    await db.runAsync(
+      `INSERT OR REPLACE INTO stock_fundamentals
+        (ticker, market_cap, pe_ratio, eps, week52_high, week52_low, beta, annual_financials, last_updated)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        data.ticker,
+        data.marketCap,
+        data.peRatio,
+        data.eps,
+        data.week52High,
+        data.week52Low,
+        data.beta,
+        JSON.stringify(data.annualFinancials),
+        data.lastUpdated,
+      ]
+    );
+    return;
+  }
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.STOCK_FUNDAMENTALS);
+    const all = raw ? toStockFundamentalsRecord(JSON.parse(raw)) : {};
+    all[data.ticker] = data;
+    await AsyncStorage.setItem(STORAGE_KEYS.STOCK_FUNDAMENTALS, JSON.stringify(all));
+  } catch {
+    // ignore
+  }
 }
