@@ -158,6 +158,75 @@ export async function getStockPrice(
   return cache;
 }
 
+/**
+ * 抓取歷史年底收盤價（TWD）
+ * - 台股：TWSE API，查該年 12 月最後一個交易日
+ * - 美股：Yahoo Finance，查 12/30~1/2 區間，換算 TWD
+ *
+ * 快取策略：歷史價格不會變動，存入後永久有效（key = `${ticker}_${year}_ye`）
+ */
+export async function fetchYearEndPriceTWD(
+  ticker: string,
+  currency: 'TWD' | 'USD',
+  year: number,
+  usdTwdRate: number
+): Promise<number | null> {
+  const cacheKey = `${ticker}_${year}_ye`;
+
+  // 查永久快取
+  const cached = await getStockPriceCache(cacheKey);
+  if (cached) return cached.price; // 歷史價格永久有效，有就直接用
+
+  let priceTWD: number | null = null;
+
+  if (currency === 'TWD') {
+    // TWSE：查該年 12 月月底最後收盤
+    try {
+      const yyyymmdd = `${year}1215`; // 12 月中旬，讓 API 回傳整個 12 月
+      const url = `https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?stockNo=${encodeURIComponent(ticker)}&date=${yyyymmdd}&response=json`;
+      const res = await fetchWithCORS(url);
+      const json = await res.json();
+      const rows: string[][] = json?.data ?? [];
+      if (rows.length > 0) {
+        const lastRow = rows[rows.length - 1];
+        const closeStr = lastRow[6]?.replace(/,/g, '');
+        const close = parseFloat(closeStr);
+        if (!isNaN(close)) priceTWD = close;
+      }
+    } catch {
+      // ignore
+    }
+  } else {
+    // Yahoo Finance：查該年 12/29 ~ 1/2 區間取最後一個交易日
+    try {
+      const period1 = Math.floor(new Date(`${year}-12-29T00:00:00Z`).getTime() / 1000);
+      const period2 = Math.floor(new Date(`${year + 1}-01-03T00:00:00Z`).getTime() / 1000);
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&period1=${period1}&period2=${period2}`;
+      const headers = Platform.OS === 'web' ? {} : { headers: { 'User-Agent': 'Mozilla/5.0' } };
+      const res = await fetchWithCORS(url, headers);
+      const json = await res.json();
+      const closes: number[] | undefined = json?.chart?.result?.[0]?.indicators?.quote?.[0]?.close;
+      if (closes && closes.length > 0) {
+        const lastClose = [...closes].reverse().find(v => v != null);
+        if (lastClose != null) priceTWD = lastClose * usdTwdRate;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  if (priceTWD != null) {
+    await setStockPriceCache({
+      ticker: cacheKey,
+      price: priceTWD,
+      currency: 'TWD',
+      lastUpdated: '2099-01-01T00:00:00.000Z', // 歷史價格永久有效
+    });
+  }
+
+  return priceTWD;
+}
+
 /** 批次取得多支股票現價 */
 export async function getMultipleStockPrices(
   stocks: Array<{ ticker: string; currency: 'TWD' | 'USD' }>,

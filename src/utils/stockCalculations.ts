@@ -190,15 +190,22 @@ export function buildXIRRCashFlows(
 }
 
 /**
- * 各年度報酬率（對應 Excel 的 AP/AQ/AR/AS 欄）
- * 計算每一年底的累積市值，與年初比較算出當年度報酬率
+ * 各年度損益
  *
- * transactions: 該標的所有買賣紀錄
- * pricesByDate: { 'YYYY-MM-DD': price in TWD } — 年底收盤價
+ * 計算方式（Modified Dietz 近似法）：
+ *   年初市值 = 上年底持股數 × 上年底收盤價
+ *   年末市值 = 該年底持股數 × 該年底收盤價（當年用現價）
+ *   當年新投入 = 該年所有 buy 成本之和（sell 為負）
+ *   年度損益 = 年末市值 - 年初市值 - 當年新投入
+ *   報酬率   = 年度損益 / (年初市值 + 當年新投入)
+ *
+ * @param endOfYearPricesTWD  { 2020: 55.0, 2021: 88.0, ... } 各年底收盤價（TWD）
+ *        若某年無資料（尚未抓到），則該年跳過不顯示
+ * @param currentPriceTWD  今日現價（TWD），用於當年度
  */
 export function calcYearlyReturns(
   transactions: StockTransaction[],
-  endOfYearPricesTWD: Record<number, number>, // { 2021: 171.6, 2022: 155.2, ... }
+  endOfYearPricesTWD: Record<number, number>,
   currentPriceTWD: number
 ): YearlyReturn[] {
   if (transactions.length === 0) return [];
@@ -209,17 +216,29 @@ export function calcYearlyReturns(
 
   const results: YearlyReturn[] = [];
   let sharesHeld = 0;
-  let cumulativeCostTWD = 0;
   let txIndex = 0;
 
   for (let year = firstYear; year <= currentYear; year++) {
     const yearStart = `${year}-01-01`;
     const yearEnd = `${year}-12-31`;
 
-    const sharesAtStart = sharesHeld;
-    const prevYearPrice = endOfYearPricesTWD[year - 1] ?? 0;
-    const startValueTWD = sharesAtStart * prevYearPrice;
+    // 年初市值：用上一年底價格
+    const prevYearPrice = year === firstYear ? 0 : (endOfYearPricesTWD[year - 1] ?? null);
+    // 若上一年底價格尚未載入（null），且不是第一年，跳過（資料不完整）
+    if (prevYearPrice === null && year !== firstYear) {
+      // 仍要把這一年的交易過掉，保持 sharesHeld 正確
+      while (txIndex < sorted.length && sorted[txIndex].date <= yearEnd) {
+        const tx = sorted[txIndex];
+        if (tx.date >= yearStart) {
+          sharesHeld += tx.type === 'buy' ? tx.shares : -tx.shares;
+          sharesHeld = Math.max(0, sharesHeld);
+        }
+        txIndex++;
+      }
+      continue;
+    }
 
+    const startValueTWD = sharesHeld * (prevYearPrice ?? 0);
     let investedThisYear = 0;
 
     // 處理這一年的交易
@@ -229,25 +248,30 @@ export function calcYearlyReturns(
         if (tx.type === 'buy') {
           sharesHeld += tx.shares;
           investedThisYear += tx.twdCost;
-          cumulativeCostTWD += tx.twdCost;
         } else {
           sharesHeld = Math.max(0, sharesHeld - tx.shares);
           investedThisYear -= tx.twdCost;
-          cumulativeCostTWD = Math.max(0, cumulativeCostTWD - tx.twdCost);
         }
       }
       txIndex++;
     }
 
-    const endPrice =
-      year === currentYear ? currentPriceTWD : (endOfYearPricesTWD[year] ?? 0);
+    // 年末市值
+    const endPrice = year === currentYear
+      ? currentPriceTWD
+      : (endOfYearPricesTWD[year] ?? null);
+
+    // 年末價格也沒有就跳過（資料不完整），但 currentYear 一定有
+    if (endPrice === null) continue;
+
+    if (endPrice === 0 && sharesHeld === 0 && investedThisYear === 0) continue;
+
     const endValueTWD = sharesHeld * endPrice;
 
-    if (endValueTWD === 0 && sharesAtStart === 0 && investedThisYear === 0) continue;
-
+    // 年度損益 = 年末市值 - 年初市值 - 當年新投入
+    const gainTWD = endValueTWD - startValueTWD - investedThisYear;
     const baseline = startValueTWD + investedThisYear;
-    const gainTWD = endValueTWD - cumulativeCostTWD;
-    const returnRate = baseline > 0 ? (endValueTWD - baseline) / baseline : 0;
+    const returnRate = baseline > 0 ? gainTWD / baseline : 0;
 
     results.push({
       year,

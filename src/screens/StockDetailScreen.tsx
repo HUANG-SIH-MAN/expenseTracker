@@ -5,7 +5,7 @@
  * - 各年度報酬率
  * - 歷史買賣紀錄列表
  */
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -31,6 +31,7 @@ import {
 } from '../utils/stockCalculations';
 import type { MainStackParamList } from '../navigation/MainStack';
 import { getETFHoldings, SUPPORTED_ETF_TICKERS, isSingleAssetETF, getSingleAssetDescription } from '../utils/etfHoldings';
+import { fetchYearEndPriceTWD } from '../utils/stockPrice';
 import type { ETFHolding } from '../types';
 
 type Nav = NativeStackNavigationProp<MainStackParamList>;
@@ -106,13 +107,44 @@ export default function StockDetailScreen(): React.JSX.Element {
     try { return calcXIRR(cashFlows, dates); } catch { return null; }
   }, [txList, pos, valueTWD, isUS, priceNative, usdTwdRate]);
 
+  // 各年底收盤價（TWD）：{ 2020: 55.0, 2021: 88.0, ... }
+  const [endOfYearPrices, setEndOfYearPrices] = useState<Record<number, number>>({});
+
   // 各年報酬率
   const yearlyReturns = useMemo(() => {
     if (txList.length === 0) return [];
     const sortedTx = [...txList].sort((a, b) => a.date.localeCompare(b.date));
-    // 只用當前股價作為「目前」的參考；年底價格在此不可知，先略過
-    return calcYearlyReturns(sortedTx, {}, priceTWD);
-  }, [txList, priceTWD]);
+    return calcYearlyReturns(sortedTx, endOfYearPrices, priceTWD);
+  }, [txList, endOfYearPrices, priceTWD]);
+
+  useEffect(() => {
+    if (!pos || txList.length === 0) return;
+    const currency = pos.currency;
+    const firstYear = parseInt(txList[txList.length - 1].date.slice(0, 4)); // txList 是倒序
+    const lastFullYear = new Date().getFullYear() - 1;
+
+    async function loadYearEndPrices() {
+      const years: number[] = [];
+      for (let y = firstYear; y <= lastFullYear; y++) years.push(y);
+      if (years.length === 0) return;
+
+      const entries = await Promise.all(
+        years.map(async (y) => {
+          const price = await fetchYearEndPriceTWD(ticker, currency, y, usdTwdRate);
+          return [y, price] as [number, number | null];
+        })
+      );
+
+      const map: Record<number, number> = {};
+      for (const [y, price] of entries) {
+        if (price != null) map[y] = price;
+      }
+      setEndOfYearPrices(map);
+    }
+
+    loadYearEndPrices();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticker, pos?.currency, txList.length, usdTwdRate]);
 
   const [showAll, setShowAll] = useState(false);
   const displayTx = showAll ? txList : txList.slice(0, 10);
