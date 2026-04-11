@@ -44,6 +44,15 @@ function fmtPct(n: number): string {
   return (n >= 0 ? '+' : '') + (n * 100).toFixed(2) + '%';
 }
 
+const YEAR_LAYOUT = {
+  yearWidth: 52,
+  investedFlex: 1.05,
+  gainFlex: 1.15,
+  pctFlex: 0.9,
+  columnGap: 8,
+} as const;
+const YEAR_ROW_ALTERNATE_MODULO = 2;
+
 export default function StockDetailScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<Nav>();
@@ -277,7 +286,7 @@ export default function StockDetailScreen(): React.JSX.Element {
                   <View style={styles.gainBlockRow}>
                     <Text style={styles.gainBlockLabel}>TWD 損益（含匯率）</Text>
                     <Text style={[styles.gainBlockVal, { color: gainTWD >= 0 ? '#16a34a' : '#dc2626' }]}>
-                      {gainTWD >= 0 ? '+' : ''}NT$ {fmtTWD(gainTWD)}
+                      {gainTWD >= 0 ? '+' : ''}{fmtTWD(gainTWD)}
                       {'  '}{fmtPct(gainPct)}
                     </Text>
                   </View>
@@ -326,8 +335,8 @@ export default function StockDetailScreen(): React.JSX.Element {
             </Text>
             <Text style={styles.xirrHint}>
               {isUS
-                ? '以 USD 計算，排除匯率影響，反映股票本身績效'
-                : '考量每次投入時間點，最能反映實際投資績效'}
+                ? '以 USD 計算，排除匯率影響'
+                : ''}
             </Text>
           </View>
         )}
@@ -336,12 +345,25 @@ export default function StockDetailScreen(): React.JSX.Element {
         {yearlyReturns.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>各年度損益</Text>
-            {yearlyReturns.map(yr => (
-              <View key={yr.year} style={styles.yearRow}>
+            <Text style={styles.yearCurrency}>幣別：TWD</Text>
+            <View style={styles.yearHeaderRow}>
+              <Text style={styles.yearHeaderYear}>年度</Text>
+              <Text style={[styles.yearHeaderText, styles.yearHeaderInvested]}>投入</Text>
+              <Text style={[styles.yearHeaderText, styles.yearHeaderReturn]}>報酬</Text>
+              <Text style={[styles.yearHeaderText, styles.yearHeaderPct]}>報酬率</Text>
+            </View>
+            {yearlyReturns.map((yr, index) => (
+              <View
+                key={yr.year}
+                style={[
+                  styles.yearRow,
+                  index % YEAR_ROW_ALTERNATE_MODULO === 0 ? styles.yearRowOdd : styles.yearRowEven,
+                ]}
+              >
                 <Text style={styles.yearLabel}>{yr.year}</Text>
-                <Text style={styles.yearInvested}>投入 NT$ {fmtTWD(yr.investedTWD)}</Text>
+                <Text style={styles.yearInvested}>{fmtTWD(yr.investedTWD)}</Text>
                 <Text style={[styles.yearReturn, { color: yr.gainTWD >= 0 ? '#16a34a' : '#dc2626' }]}>
-                  {yr.gainTWD >= 0 ? '+' : ''}NT$ {fmtTWD(yr.gainTWD)}
+                  {yr.gainTWD >= 0 ? '+' : ''}{fmtTWD(yr.gainTWD)}
                 </Text>
                 <Text style={[styles.yearPct, { color: yr.returnRate >= 0 ? '#16a34a' : '#dc2626' }]}>
                   {fmtPct(yr.returnRate)}
@@ -529,15 +551,35 @@ const styles = StyleSheet.create({
   yearRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: '#f3f4f6',
-    gap: 8,
+    gap: YEAR_LAYOUT.columnGap,
+    borderRadius: 8,
   },
-  yearLabel: { width: 44, fontSize: 13, fontWeight: '600', color: '#374151' },
-  yearInvested: { flex: 1, fontSize: 12, color: '#6b7280' },
-  yearReturn: { fontSize: 13, fontWeight: '600' },
-  yearPct: { width: 60, fontSize: 12, textAlign: 'right' },
+  yearRowOdd: { backgroundColor: '#ffffff' },
+  yearRowEven: { backgroundColor: '#f9fafb' },
+  yearCurrency: { fontSize: 11, color: '#9ca3af', marginBottom: 2 },
+  yearHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#f3f4f6',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#f3f4f6',
+    gap: YEAR_LAYOUT.columnGap,
+  },
+  yearHeaderYear: { width: YEAR_LAYOUT.yearWidth, fontSize: 11, color: '#9ca3af', fontWeight: '600' },
+  yearHeaderText: { fontSize: 11, color: '#9ca3af', fontWeight: '600', textAlign: 'right' },
+  yearHeaderInvested: { flex: YEAR_LAYOUT.investedFlex },
+  yearHeaderReturn: { flex: YEAR_LAYOUT.gainFlex },
+  yearHeaderPct: { flex: YEAR_LAYOUT.pctFlex },
+  yearLabel: { width: YEAR_LAYOUT.yearWidth, fontSize: 13, fontWeight: '600', color: '#374151' },
+  yearInvested: { flex: YEAR_LAYOUT.investedFlex, fontSize: 12, color: '#6b7280', textAlign: 'right' },
+  yearReturn: { flex: YEAR_LAYOUT.gainFlex, fontSize: 13, fontWeight: '600', textAlign: 'right' },
+  yearPct: { flex: YEAR_LAYOUT.pctFlex, fontSize: 12, textAlign: 'right' },
   emptyText: { fontSize: 13, color: '#9ca3af', textAlign: 'center', paddingVertical: 12 },
   txRow: {
     flexDirection: 'row',

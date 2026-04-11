@@ -1,5 +1,5 @@
 /**
- * 月預算 Tab：每月固定/預估支出列表 + 預算設定（月收入、權重）
+ * 月預算 Tab：每月固定/預估支出列表 + 預算設定（收入來源說明、權重）
  */
 import React, { useState, useCallback } from 'react';
 import {
@@ -23,12 +23,15 @@ import { getAmortizedItemsForMonth } from '../utils/budget';
 const SECTION_FIXED = '每月固定/預估支出';
 const SECTION_SETTINGS = '預算設定';
 const BTN_ADD = '新增固定支出';
-const LABEL_DEFAULT_INCOME = '預設月收入';
-const LABEL_DEFAULT_INCOME_HINT = '未記帳時用於計算可支配額';
+const LABEL_INCOME_SOURCE = '收入來源（自動計算）';
+const LABEL_INCOME_SOURCE_HINT =
+  '月收入會使用「每月固定收入」+「其他收入記帳（不含年度預算與固定收支自動帶入）」';
 const LABEL_WEEKDAY_WEIGHT = '平日權重';
 const LABEL_WEEKEND_WEIGHT = '假日權重';
 const BTN_SAVE_SETTINGS = '儲存設定';
 const EMPTY_HINT = '尚無固定支出項目，可點下方按鈕新增';
+const DEFAULT_WEEKDAY_WEIGHT = 1;
+const DEFAULT_WEEKEND_WEIGHT = 1.5;
 
 interface MonthlyBudgetTabProps {
   navigation: NativeStackNavigationProp<MainStackParamList, 'BudgetSettings'>;
@@ -99,13 +102,11 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
 
   const [confirmDeleteItem, setConfirmDeleteItem] =
     useState<MonthlyFixedItem | null>(null);
-  const [defaultIncomeStr, setDefaultIncomeStr] = useState('');
   const [weekdayWeightStr, setWeekdayWeightStr] = useState('');
   const [weekendWeightStr, setWeekendWeightStr] = useState('');
   const [settingsDirty, setSettingsDirty] = useState(false);
 
   React.useEffect(() => {
-    setDefaultIncomeStr(String(budgetSettings.defaultMonthlyIncome));
     setWeekdayWeightStr(String(budgetSettings.weekdayWeight));
     setWeekendWeightStr(String(budgetSettings.weekendWeight));
   }, [budgetSettings]);
@@ -137,19 +138,18 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
   }, [confirmDeleteItem, monthlyFixedItems, saveMonthlyFixedItems]);
 
   const handleSaveSettings = useCallback(async () => {
-    const defaultMonthlyIncome = Number(defaultIncomeStr) || 0;
-    const weekdayWeight = Number(weekdayWeightStr) || 1;
-    const weekendWeight = Number(weekendWeightStr) || 1.5;
+    const weekdayWeight = Number(weekdayWeightStr) || DEFAULT_WEEKDAY_WEIGHT;
+    const weekendWeight = Number(weekendWeightStr) || DEFAULT_WEEKEND_WEIGHT;
     await saveBudgetSettings({
-      defaultMonthlyIncome,
+      defaultMonthlyIncome: budgetSettings.defaultMonthlyIncome,
       weekdayWeight,
       weekendWeight,
     });
     setSettingsDirty(false);
   }, [
-    defaultIncomeStr,
     weekdayWeightStr,
     weekendWeightStr,
+    budgetSettings.defaultMonthlyIncome,
     saveBudgetSettings,
   ]);
 
@@ -313,24 +313,11 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
         </Text>
         <View style={styles.settingsBlock}>
           <View style={styles.field}>
-            <Text style={styles.fieldLabel}>{LABEL_DEFAULT_INCOME}</Text>
-            <TextInput
-              style={styles.input}
-              value={defaultIncomeStr}
-              onChangeText={(t) => {
-                setDefaultIncomeStr(t);
-                setSettingsDirty(true);
-              }}
-              placeholder="0"
-              placeholderTextColor="#9ca3af"
-              keyboardType="numeric"
-            />
-            {recurringMonthlyIncomeTotal > 0 && (
-              <Text style={styles.incomeHint}>
-                固定收入加總：NT${recurringMonthlyIncomeTotal.toLocaleString()}（無收入記帳時自動使用）
-              </Text>
-            )}
-            <Text style={styles.fieldHint}>{LABEL_DEFAULT_INCOME_HINT}</Text>
+            <Text style={styles.fieldLabel}>{LABEL_INCOME_SOURCE}</Text>
+            <Text style={styles.incomeHint}>
+              每月固定收入：NT${recurringMonthlyIncomeTotal.toLocaleString()}
+            </Text>
+            <Text style={styles.fieldHint}>{LABEL_INCOME_SOURCE_HINT}</Text>
           </View>
           <View style={styles.field}>
             <Text style={styles.fieldLabel}>{LABEL_WEEKDAY_WEIGHT}</Text>

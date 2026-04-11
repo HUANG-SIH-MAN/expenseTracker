@@ -91,6 +91,29 @@ async function fetchUSStockPrice(ticker: string): Promise<number | null> {
 }
 
 /**
+ * 抓取台股報價（Yahoo Finance：{stockNo}.TW / {stockNo}.TWO）
+ * 回傳 TWD 現價，失敗時回傳 null
+ */
+async function fetchTWStockPriceFromYahoo(stockNo: string): Promise<number | null> {
+  const twTickers = [`${stockNo}.TW`, `${stockNo}.TWO`];
+  for (const ticker of twTickers) {
+    try {
+      const originalUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`;
+      const headers = Platform.OS === 'web' ? {} : { headers: { 'User-Agent': 'Mozilla/5.0' } };
+      const res = await fetchWithCORS(originalUrl, headers);
+      const json = await res.json();
+      const meta = json?.chart?.result?.[0]?.meta;
+      const price: number | undefined =
+        meta?.regularMarketPrice ?? meta?.chartPreviousClose;
+      if (price != null) return price;
+    } catch {
+      // 該代號格式失敗，嘗試下一個
+    }
+  }
+  return null;
+}
+
+/**
  * 抓取台股收盤價（TWSE 官方 API）
  * 回傳 TWD 現價，失敗時回傳 null
  */
@@ -120,7 +143,10 @@ async function fetchTWStockPrice(stockNo: string): Promise<number | null> {
   const lastMonth = new Date();
   lastMonth.setMonth(lastMonth.getMonth() - 1);
   price = await getDailyPrice(lastMonth);
-  return price;
+  if (price != null) return price;
+
+  // 3. TWSE 查無資料時，退回 Yahoo（可涵蓋 .TW / .TWO）
+  return fetchTWStockPriceFromYahoo(stockNo);
 }
 
 /** 取得單一股票現價（優先使用快取） */

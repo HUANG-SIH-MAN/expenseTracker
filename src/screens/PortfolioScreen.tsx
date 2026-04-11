@@ -33,6 +33,18 @@ function formatPct(n: number): string {
   return (n >= 0 ? '+' : '') + (n * 100).toFixed(2) + '%';
 }
 
+const SHARE_DECIMAL_PLACES = 2;
+const USD_DECIMAL_PLACES = 2;
+const TWD_DECIMAL_PLACES = 0;
+
+function formatShares(n: number): string {
+  const roundedShares = Math.round(n * (10 ** SHARE_DECIMAL_PLACES)) / (10 ** SHARE_DECIMAL_PLACES);
+  return roundedShares.toLocaleString('zh-TW', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: SHARE_DECIMAL_PLACES,
+  });
+}
+
 export default function PortfolioScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<Nav>();
@@ -133,15 +145,17 @@ export default function PortfolioScreen(): React.JSX.Element {
           <View style={styles.summaryRow}>
             <View style={styles.summaryItem}>
               <Text style={styles.summarySubLabel}>總投入成本</Text>
-              <Text style={styles.summarySubValue}>NT$ {formatTWD(totalCostTWD)}</Text>
+              <Text style={styles.summarySubValue}>{formatTWD(totalCostTWD)}</Text>
             </View>
             <View style={styles.summaryItem}>
               <Text style={styles.summarySubLabel}>未實現損益</Text>
               <Text style={[styles.summarySubValue, { color: gainColor }]}>
-                {totalGainTWD >= 0 ? '+' : ''}NT$ {formatTWD(totalGainTWD)}
+                {totalGainTWD >= 0 ? '+' : ''}{formatTWD(totalGainTWD)}
               </Text>
             </View>
-            <View style={styles.summaryItem}>
+          </View>
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryItemFull}>
               <Text style={styles.summarySubLabel}>報酬率</Text>
               <Text style={[styles.summarySubValue, { color: gainColor }]}>
                 {formatPct(totalGainPct)}
@@ -170,6 +184,26 @@ export default function PortfolioScreen(): React.JSX.Element {
           const cardGainColor = gainTWD >= 0 ? '#16a34a' : '#dc2626';
           const priceCache = prices[pos.ticker];
           const isUS = pos.currency === 'USD';
+          const hasSeparateName = pos.name.trim() !== '' && pos.name !== pos.ticker;
+          const displayName = hasSeparateName ? pos.name : pos.ticker;
+          const displayTicker = hasSeparateName ? pos.ticker : null;
+          const nativePrice = priceCache?.price ?? 0;
+          const valueNative = pos.shares * nativePrice;
+          const nativeGainPct = (nativePrice > 0 && pos.avgCostNative > 0)
+            ? (nativePrice - pos.avgCostNative) / pos.avgCostNative
+            : null;
+          const displayGainPct = isUS ? (nativeGainPct ?? gainPct) : gainPct;
+          const displayPrice = priceCache
+            ? (isUS
+              ? `$${priceCache.price.toFixed(USD_DECIMAL_PLACES)}`
+              : `NT$${priceCache.price.toFixed(TWD_DECIMAL_PLACES)}`)
+            : '—';
+          const displayValue = isUS
+            ? `$${valueNative.toLocaleString('zh-TW', {
+              minimumFractionDigits: USD_DECIMAL_PLACES,
+              maximumFractionDigits: USD_DECIMAL_PLACES,
+            })}`
+            : `NT$ ${formatTWD(valueTWD)}`;
 
           return (
             <TouchableOpacity
@@ -180,26 +214,24 @@ export default function PortfolioScreen(): React.JSX.Element {
             >
               <View style={styles.holdingTop}>
                 <View>
-                  <Text style={styles.holdingTicker}>{pos.ticker}</Text>
-                  <Text style={styles.holdingName}>{pos.name}</Text>
+                  <Text style={styles.holdingTitle}>{displayName}</Text>
+                  {displayTicker && <Text style={styles.holdingSubtitle}>{displayTicker}</Text>}
                 </View>
                 <View style={styles.holdingRight}>
-                  <Text style={styles.holdingValue}>NT$ {formatTWD(valueTWD)}</Text>
-                  <Text style={[styles.holdingGain, { color: cardGainColor }]}>
-                    {gainTWD >= 0 ? '+' : ''}NT$ {formatTWD(gainTWD)} ({formatPct(gainPct)})
-                  </Text>
+                  <Text style={styles.holdingValue}>{displayValue}</Text>
                 </View>
               </View>
-              <View style={styles.holdingBottom}>
+              <View style={styles.holdingMetaRow}>
+                <Text style={styles.holdingMeta}>現價 {displayPrice}</Text>
                 <Text style={styles.holdingMeta}>
-                  {pos.shares.toLocaleString(undefined, { maximumFractionDigits: 4 })} 股
-                  ．均成本 {isUS ? `$${pos.avgCostNative.toFixed(2)}` : `NT$${pos.avgCostNative.toFixed(0)}`}
+                  均成本 {isUS ? `$${pos.avgCostNative.toFixed(2)}` : `NT$${pos.avgCostNative.toFixed(0)}`}
                 </Text>
-                {priceCache && (
-                  <Text style={styles.holdingPrice}>
-                    現價 {isUS ? `$${priceCache.price.toFixed(2)}` : `NT$${priceCache.price.toFixed(0)}`}
-                  </Text>
-                )}
+              </View>
+              <View style={styles.holdingMetaRow}>
+                <Text style={styles.holdingMeta}>持有 {formatShares(pos.shares)} 股</Text>
+                <Text style={[styles.holdingMetaEmphasis, { color: cardGainColor }]}>
+                  報酬率 {formatPct(displayGainPct)}
+                </Text>
               </View>
             </TouchableOpacity>
           );
@@ -231,14 +263,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#1e3a5f',
     borderRadius: 16,
     padding: 20,
-    gap: 12,
+    gap: 14,
   },
   summaryLabel: { fontSize: 13, color: '#93c5fd' },
   summaryValue: { fontSize: 32, fontWeight: '700', color: '#fff' },
-  summaryRow: { flexDirection: 'row', gap: 8 },
+  summaryRow: { flexDirection: 'row', gap: 12 },
   summaryItem: { flex: 1 },
-  summarySubLabel: { fontSize: 11, color: '#93c5fd', marginBottom: 2 },
-  summarySubValue: { fontSize: 13, fontWeight: '600', color: '#fff' },
+  summaryItemFull: { flex: 1 },
+  summarySubLabel: { fontSize: 11, color: '#93c5fd', marginBottom: 4 },
+  summarySubValue: { fontSize: 15, fontWeight: '600', color: '#fff' },
   rateHint: { fontSize: 11, color: '#64748b', marginTop: 4 },
   empty: { alignItems: 'center', paddingTop: 60, gap: 12 },
   emptyText: { fontSize: 16, color: '#9ca3af', fontWeight: '500' },
@@ -254,12 +287,11 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   holdingTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  holdingTicker: { fontSize: 16, fontWeight: '700', color: '#111827' },
-  holdingName: { fontSize: 12, color: '#6b7280', marginTop: 2 },
+  holdingTitle: { fontSize: 16, fontWeight: '700', color: '#111827' },
+  holdingSubtitle: { fontSize: 12, color: '#6b7280', marginTop: 2 },
   holdingRight: { alignItems: 'flex-end' },
   holdingValue: { fontSize: 16, fontWeight: '700', color: '#111827' },
-  holdingGain: { fontSize: 13, fontWeight: '500', marginTop: 2 },
-  holdingBottom: { flexDirection: 'row', justifyContent: 'space-between' },
+  holdingMetaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   holdingMeta: { fontSize: 12, color: '#6b7280' },
-  holdingPrice: { fontSize: 12, color: '#6b7280' },
+  holdingMetaEmphasis: { fontSize: 12, fontWeight: '600' },
 });

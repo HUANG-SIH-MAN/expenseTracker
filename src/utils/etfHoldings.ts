@@ -16,6 +16,10 @@ const CACHE_TTL_DAYS = 7;
 const CACHE_TTL_MS = CACHE_TTL_DAYS * DAY_MS;
 const REFRESH_COOLDOWN_MS = 30 * 1000;
 const REFRESH_LOG_PREFIX = '[ETF Holdings]';
+const TOP_HOLDINGS_LIMIT = 15;
+const ZERO_WEIGHT = 0;
+const MONEYDJ_006208_URL = 'https://www.moneydj.com/etf/x/basic/basic0007.xdjhtm?etfid=006208.tw';
+const TWSE_TWT50U_URL = 'https://www.twse.com.tw/rwd/zh/fund/TWT50U?response=json';
 const inflightRefreshMap = new Map<string, Promise<ETFHolding[]>>();
 const lastRefreshAtMap = new Map<string, number>();
 
@@ -86,9 +90,7 @@ async function fetchAlphaVantageHoldings(ticker: string): Promise<ETFHolding[]> 
 
 /** TWSE 台灣50成分股 — 用於 006208 */
 async function fetchTWSE006208Holdings(): Promise<ETFHolding[]> {
-  // TWSE 公開的台灣50指數成分股（006208 追蹤此指數）
-  const url = 'https://www.twse.com.tw/rwd/zh/fund/TWT50U?response=json';
-  const res = await fetchWithCORS(url);
+  const res = await fetchWithCORS(TWSE_TWT50U_URL);
   const json = await res.json();
 
   // 回傳格式：{ data: [["排名","代號","名稱","市值(億)","權重(%)"], ...] }
@@ -98,7 +100,7 @@ async function fetchTWSE006208Holdings(): Promise<ETFHolding[]> {
   }
 
   const now = new Date().toISOString();
-  return rows.slice(0, 15).map((row, i) => {
+  return rows.slice(0, TOP_HOLDINGS_LIMIT).map((row, i) => {
     // row: [排名, 股票代號, 股票名稱, 市值, 權重%]
     const weightStr = (row[4] ?? '0').replace('%', '').replace(',', '').trim();
     return {
@@ -111,6 +113,67 @@ async function fetchTWSE006208Holdings(): Promise<ETFHolding[]> {
   });
 }
 
+function parseWeightPercent(raw: string): number {
+  const value = parseFloat(raw.replace(/,/g, '').replace('%', '').trim());
+  return Number.isFinite(value) ? value : ZERO_WEIGHT;
+}
+
+/**
+ * MoneyDJ 006208 持股表解析
+ * 解析欄位樣式：
+ *   <td class="col05"><a ...>台積電(2330.TW)</a></td>
+ *   <td class="col06">63.85</td>
+ */
+function parseMoneyDJ006208Holdings(html: string): ETFHolding[] {
+  const rowPattern = /<td class="col05">[\s\S]*?<a[^>]*>([^<]*?)\((\d{4,6})\.TW\)<\/a><\/td>\s*<td class="col06">([\d.,]+)<\/td>/g;
+  const now = new Date().toISOString();
+  const parsed: ETFHolding[] = [];
+  let match: RegExpExecArray | null = rowPattern.exec(html);
+
+  while (match != null && parsed.length < TOP_HOLDINGS_LIMIT) {
+    const companyNameRaw = match[1]?.trim() || '';
+    const stockCode = match[2]?.trim() || '';
+    const weightPct = parseWeightPercent(match[3] ?? '');
+    if (stockCode && weightPct > ZERO_WEIGHT) {
+      parsed.push({
+        etfTicker: '006208',
+        rank: parsed.length + 1,
+        companyName: companyNameRaw || stockCode,
+        stockTicker: stockCode,
+        weightPct,
+        lastUpdated: now,
+      });
+    }
+    match = rowPattern.exec(html);
+  }
+
+  return parsed;
+}
+
+/** MoneyDJ 持股（006208） */
+async function fetchMoneyDJ006208Holdings(): Promise<ETFHolding[]> {
+  const res = await fetchWithCORS(MONEYDJ_006208_URL);
+  const html = await res.text();
+  const parsed = parseMoneyDJ006208Holdings(html);
+  if (parsed.length === 0) {
+    throw new Error('MoneyDJ: no data for 006208');
+  }
+  return parsed;
+}
+
+/**
+ * 006208 來源策略
+ * 1) TWSE 舊端點（若恢復可直接使用）
+ * 2) MoneyDJ 備援
+ */
+async function fetch006208Holdings(): Promise<ETFHolding[]> {
+  try {
+    return await fetchTWSE006208Holdings();
+  } catch {
+    return fetchMoneyDJ006208Holdings();
+  }
+}
+
 /** 依 ticker 路由到正確的抓取函式 */
 async function fetchHoldings(ticker: string): Promise<ETFHolding[]> {
   switch (ticker) {
@@ -118,7 +181,7 @@ async function fetchHoldings(ticker: string): Promise<ETFHolding[]> {
     case 'SMH':
       return fetchAlphaVantageHoldings(ticker);
     case '006208':
-      return fetchTWSE006208Holdings();
+      return fetch006208Holdings();
     default:
       return []; // 尚未支援的 ETF，回傳空陣列
   }

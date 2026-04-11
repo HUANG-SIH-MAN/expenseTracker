@@ -26,16 +26,23 @@ import {
   type HoldingPosition,
 } from '../utils/stockCalculations';
 
-/** 股票幣別定義（決定使用哪個報價 API） */
-const STOCK_CURRENCIES: Record<string, 'TWD' | 'USD'> = {
-  '006208': 'TWD',
-  NVDA: 'USD',
-  QQQ: 'USD',
-  SMH: 'USD',
-  GLD: 'USD',
-  IBIT: 'USD',
-  ARKK: 'USD',
-};
+/**
+ * 依交易資料推斷幣別（避免硬編碼白名單造成台股被誤判為 USD）
+ * 規則：任一筆交易有 usdCost => USD，否則 TWD
+ */
+function inferTickerCurrencies(
+  txList: StockTransaction[],
+): Record<string, 'TWD' | 'USD'> {
+  const result: Record<string, 'TWD' | 'USD'> = {};
+  for (const tx of txList) {
+    const inferred = tx.usdCost != null ? 'USD' : 'TWD';
+    const existing = result[tx.ticker];
+    if (existing == null || inferred === 'USD') {
+      result[tx.ticker] = inferred;
+    }
+  }
+  return result;
+}
 
 interface InvestmentContextValue {
   transactions: StockTransaction[];
@@ -79,12 +86,13 @@ export function InvestmentProvider({ children }: { children: React.ReactNode }) 
     setIsRefreshingPrices(true);
     try {
       const targetTxs = txList || transactionsRef.current;
+      const tickerCurrencies = inferTickerCurrencies(targetTxs);
       const tickers = Array.from(new Set(targetTxs.map(t => t.ticker)));
       if (tickers.length === 0) return;
 
       const stocksToFetch = tickers.map(ticker => ({
         ticker,
-        currency: STOCK_CURRENCIES[ticker] ?? 'USD',
+        currency: tickerCurrencies[ticker] ?? 'TWD',
       }));
       stocksToFetch.push({ ticker: 'USDTWD=X', currency: 'USD' });
 

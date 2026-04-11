@@ -258,16 +258,17 @@ export function getTodaySuggestedBudget(
   return (remainingDisposable * todayWeight) / weightedSum;
 }
 
+const ZERO_AMOUNT = 0;
+
 /**
- * 當月收入：依記帳加總；
- * 若為 0 → 用每月固定收入項目（repeat=monthly）加總；
- * 若仍為 0 → 用設定的預設月收入
+ * 當月收入：
+ * 1. 先使用每月固定收入（repeat=monthly）加總作為基礎收入
+ * 2. 再加上當月「其他收入」記帳（排除年度預算連結與固定收支自動帶入）
  */
 export function getMonthIncome(
   transactions: Transaction[],
   year: number,
   month: number,
-  defaultMonthlyIncome: number,
   recurringItems?: RecurringItem[]
 ): number {
   const list = filterTransactionsByPeriod(
@@ -276,19 +277,18 @@ export function getMonthIncome(
     year,
     month
   );
-  const transactionTotal = list
-    .filter((t) => t.type === 'income' && t.annualBudgetEntryId == null)
-    .reduce((sum, t) => sum + t.amount, 0);
-  if (transactionTotal > 0) return transactionTotal;
-
-  if (recurringItems && recurringItems.length > 0) {
-    const recurringIncomeTotal = recurringItems
-      .filter((r) => r.type === 'income' && r.repeat === 'monthly')
-      .reduce((sum, r) => sum + r.amount, 0);
-    if (recurringIncomeTotal > 0) return recurringIncomeTotal;
-  }
-
-  return defaultMonthlyIncome;
+  const recurringIncomeTotal = (recurringItems ?? [])
+    .filter((r) => r.type === 'income' && r.repeat === 'monthly')
+    .reduce((sum, r) => sum + r.amount, ZERO_AMOUNT);
+  const additionalIncomeTotal = list
+    .filter(
+      (t) =>
+        t.type === 'income' &&
+        t.annualBudgetEntryId == null &&
+        t.recurringId == null
+    )
+    .reduce((sum, t) => sum + t.amount, ZERO_AMOUNT);
+  return recurringIncomeTotal + additionalIncomeTotal;
 }
 
 /**
@@ -321,7 +321,6 @@ export function getBudgetSummary(
     transactions,
     year,
     month,
-    settings.defaultMonthlyIncome,
     recurringItems
   );
   const fixedItemsTotal = getFixedEstimatedTotal(monthlyFixedItems, ratesToPrimary, recurringItems);
