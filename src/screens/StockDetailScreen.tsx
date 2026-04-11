@@ -52,6 +52,9 @@ const YEAR_LAYOUT = {
   columnGap: 8,
 } as const;
 const YEAR_ROW_ALTERNATE_MODULO = 2;
+const DEFAULT_VISIBLE_TX_COUNT = 10;
+const TX_ACTION_ICON_SIZE = 16;
+const TX_ACTION_GAP = 12;
 
 export default function StockDetailScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
@@ -156,7 +159,8 @@ export default function StockDetailScreen(): React.JSX.Element {
   }, [ticker, pos?.currency, txList.length, usdTwdRate]);
 
   const [showAll, setShowAll] = useState(false);
-  const displayTx = showAll ? txList : txList.slice(0, 10);
+  const [expandedTxId, setExpandedTxId] = useState<string | null>(null);
+  const displayTx = showAll ? txList : txList.slice(0, DEFAULT_VISIBLE_TX_COUNT);
 
   // ETF 持股 Modal
   const [holdingsVisible, setHoldingsVisible] = useState(false);
@@ -271,58 +275,72 @@ export default function StockDetailScreen(): React.JSX.Element {
             </View>
 
             {/* 損益區塊 */}
-            {isUS && usdGain != null ? (
-              <>
-                {/* USD 損益（排除匯率） */}
-                <View style={styles.gainBlock}>
+            <View style={styles.gainBlock}>
+              {isUS && usdGain != null ? (
+                <View style={styles.gainSimpleRows}>
+                  <Text style={styles.gainGroupTitle}>股票漲跌（USD）</Text>
                   <View style={styles.gainBlockRow}>
-                    <Text style={styles.gainBlockLabel}>USD 損益（股票漲跌）</Text>
+                    <Text style={styles.gainBlockLabel}>報酬率</Text>
+                    <Text style={[styles.gainBlockVal, { color: usdGain >= 0 ? '#16a34a' : '#dc2626' }]}>
+                      {fmtPct(usdGainPct ?? 0)}
+                    </Text>
+                  </View>
+                  <View style={styles.gainBlockRow}>
+                    <Text style={styles.gainBlockLabel}>損益</Text>
                     <Text style={[styles.gainBlockVal, { color: usdGain >= 0 ? '#16a34a' : '#dc2626' }]}>
                       {usdGain >= 0 ? '+' : ''}${usdGain.toFixed(2)}
-                      {'  '}{fmtPct(usdGainPct ?? 0)}
                     </Text>
                   </View>
-                  {/* TWD 損益（含匯率） */}
+                  <Text style={styles.gainGroupTitle}>含匯率（TWD）</Text>
                   <View style={styles.gainBlockRow}>
-                    <Text style={styles.gainBlockLabel}>TWD 損益（含匯率）</Text>
+                    <Text style={styles.gainBlockLabel}>報酬率</Text>
                     <Text style={[styles.gainBlockVal, { color: gainTWD >= 0 ? '#16a34a' : '#dc2626' }]}>
-                      {gainTWD >= 0 ? '+' : ''}{fmtTWD(gainTWD)}
-                      {'  '}{fmtPct(gainPct)}
+                      {fmtPct(gainPct)}
                     </Text>
                   </View>
-                  {/* 匯率效果 */}
+                  <View style={styles.gainBlockRow}>
+                    <Text style={styles.gainBlockLabel}>損益</Text>
+                    <Text style={[styles.gainBlockVal, { color: gainTWD >= 0 ? '#16a34a' : '#dc2626' }]}>
+                      {gainTWD >= 0 ? '+' : ''}NT $ {fmtTWD(gainTWD)}
+                    </Text>
+                  </View>
                   {fxEffect != null && (
-                    <View style={styles.gainBlockRow}>
-                      <Text style={styles.gainBlockLabel}>匯率效果</Text>
-                      <Text style={[styles.gainBlockVal, { color: fxEffect >= 0 ? '#16a34a' : '#dc2626' }]}>
-                        {fxEffect >= 0 ? '+' : ''}NT$ {fmtTWD(fxEffect)}
-                      </Text>
+                    <View style={styles.fxEffectSection}>
+                      <View style={styles.gainBlockRow}>
+                        <Text style={styles.gainBlockLabel}>匯率效果</Text>
+                        <Text style={[styles.gainBlockVal, { color: fxEffect >= 0 ? '#16a34a' : '#dc2626' }]}>
+                          {fxEffect >= 0 ? '+' : ''}NT $ {fmtTWD(fxEffect)}
+                        </Text>
+                      </View>
                     </View>
                   )}
                 </View>
-              </>
-            ) : (
-              <View style={styles.summaryRow}>
-                <View style={styles.summaryItem}>
-                  <Text style={styles.summaryLabel}>未實現損益</Text>
-                  <Text style={[styles.summaryVal, { color: gainColor }]}>
-                    {gainTWD >= 0 ? '+' : ''}NT$ {fmtTWD(gainTWD)}
-                    {'\n'}{fmtPct(gainPct)}
-                  </Text>
+              ) : (
+                <View style={styles.gainSimpleRows}>
+                  <View style={styles.gainBlockRow}>
+                    <Text style={styles.gainBlockLabel}>報酬率</Text>
+                    <Text style={[styles.gainBlockVal, { color: gainColor }]}>
+                      {fmtPct(gainPct)}
+                    </Text>
+                  </View>
+                  <View style={styles.gainBlockRow}>
+                    <Text style={styles.gainBlockLabel}>未實現損益</Text>
+                    <Text style={[styles.gainBlockVal, { color: gainColor }]}>
+                      {gainTWD >= 0 ? '+' : ''}NT $ {fmtTWD(gainTWD)}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-            )}
+              )}
 
-            {pos.realizedGainTWD !== 0 && (
-              <View style={styles.summaryRow}>
-                <View style={styles.summaryItem}>
-                  <Text style={styles.summaryLabel}>已實現損益</Text>
-                  <Text style={[styles.summaryVal, { color: pos.realizedGainTWD >= 0 ? '#16a34a' : '#dc2626' }]}>
+              {pos.realizedGainTWD !== 0 && (
+                <View style={styles.gainBlockRow}>
+                  <Text style={styles.gainBlockLabel}>已實現損益</Text>
+                  <Text style={[styles.gainBlockVal, { color: pos.realizedGainTWD >= 0 ? '#16a34a' : '#dc2626' }]}>
                     {pos.realizedGainTWD >= 0 ? '+' : ''}NT$ {fmtTWD(pos.realizedGainTWD)}
                   </Text>
                 </View>
-              </View>
-            )}
+              )}
+            </View>
           </View>
         )}
 
@@ -379,37 +397,74 @@ export default function StockDetailScreen(): React.JSX.Element {
           {txList.length === 0 && (
             <Text style={styles.emptyText}>尚無交易紀錄</Text>
           )}
-          {displayTx.map(tx => (
-            <View key={tx.id} style={styles.txRow}>
-              <View style={styles.txLeft}>
-                <View style={[styles.txBadge, tx.type === 'buy' ? styles.badgeBuy : styles.badgeSell]}>
-                  <Text style={styles.txBadgeText}>{tx.type === 'buy' ? '買入' : '賣出'}</Text>
-                </View>
-                <View>
-                  <Text style={styles.txDate}>{tx.date}</Text>
-                  <Text style={styles.txMeta}>
-                    {tx.shares.toLocaleString()} 股 ．
-                    {pos?.currency === 'USD' ? `$${tx.priceNative.toFixed(2)}` : `NT$${tx.priceNative.toFixed(0)}`}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.txRight}>
-                <Text style={styles.txCost}>NT$ {fmtTWD(tx.twdCost)}</Text>
-                {tx.usdCost != null && (
-                  <Text style={styles.txCostSub}>${tx.usdCost.toFixed(2)}</Text>
+          {displayTx.map(tx => {
+            const isExpanded = expandedTxId === tx.id;
+            return (
+              <View key={tx.id} style={styles.txItem}>
+                <TouchableOpacity
+                  style={styles.txCollapsedRow}
+                  onPress={() => setExpandedTxId(prev => (prev === tx.id ? null : tx.id))}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.txCollapsedLeft}>
+                    <View style={[styles.txBadge, tx.type === 'buy' ? styles.badgeBuy : styles.badgeSell]}>
+                      <Text style={styles.txBadgeText}>{tx.type === 'buy' ? '買入' : '賣出'}</Text>
+                    </View>
+                    <View>
+                      <Text style={styles.txDate}>{tx.date}</Text>
+                      <Text style={styles.txMeta}>
+                        成交單價：
+                        {pos?.currency === 'USD' ? `$${tx.priceNative.toFixed(2)}` : `NT$${tx.priceNative.toFixed(0)}`}
+                      </Text>
+                    </View>
+                  </View>
+                  <Ionicons
+                    name={isExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
+                    size={18}
+                    color="#9ca3af"
+                  />
+                </TouchableOpacity>
+
+                {isExpanded && (
+                  <View style={styles.txExpanded}>
+                    <View style={styles.txExpandedRow}>
+                      <Text style={styles.txExpandedLabel}>交易股數</Text>
+                      <Text style={styles.txExpandedValue}>
+                        {tx.shares.toLocaleString(undefined, { maximumFractionDigits: 4 })} 股
+                      </Text>
+                    </View>
+                    <View style={styles.txExpandedRow}>
+                      <Text style={styles.txExpandedLabel}>交易金額（TWD）</Text>
+                      <Text style={styles.txExpandedValue}>NT$ {fmtTWD(tx.twdCost)}</Text>
+                    </View>
+                    {tx.usdCost != null && (
+                      <View style={styles.txExpandedRow}>
+                        <Text style={styles.txExpandedLabel}>交易金額（USD）</Text>
+                        <Text style={styles.txExpandedValue}>${tx.usdCost.toFixed(2)}</Text>
+                      </View>
+                    )}
+                    <View style={styles.txActions}>
+                      <TouchableOpacity
+                        style={styles.txActionBtn}
+                        onPress={() => navigation.navigate('AddStockTransaction', { transaction: tx })}
+                      >
+                        <Ionicons name="pencil-outline" size={TX_ACTION_ICON_SIZE} color="#6b7280" />
+                        <Text style={styles.txActionText}>編輯</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.txActionBtn}
+                        onPress={() => handleDelete(tx.id, tx.date, tx.shares)}
+                      >
+                        <Ionicons name="trash-outline" size={TX_ACTION_ICON_SIZE} color="#ef4444" />
+                        <Text style={[styles.txActionText, styles.txDeleteText]}>刪除</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
                 )}
-                <View style={{ flexDirection: 'row', gap: 12 }}>
-                  <TouchableOpacity onPress={() => navigation.navigate('AddStockTransaction', { transaction: tx })}>
-                    <Ionicons name="pencil-outline" size={16} color="#9ca3af" />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleDelete(tx.id, tx.date, tx.shares)}>
-                    <Ionicons name="trash-outline" size={16} color="#9ca3af" />
-                  </TouchableOpacity>
-                </View>
               </View>
-            </View>
-          ))}
-          {txList.length > 10 && !showAll && (
+            );
+          })}
+          {txList.length > DEFAULT_VISIBLE_TX_COUNT && !showAll && (
             <TouchableOpacity style={styles.showMore} onPress={() => setShowAll(true)}>
               <Text style={styles.showMoreText}>顯示全部 {txList.length} 筆</Text>
             </TouchableOpacity>
@@ -502,7 +557,7 @@ const styles = StyleSheet.create({
   headerBtn: { padding: 4 },
   scroll: { padding: 16, gap: 16 },
   summaryCard: {
-    backgroundColor: '#fff',
+    backgroundColor: '#1e3a5f',
     borderRadius: 12,
     padding: 16,
     gap: 16,
@@ -513,21 +568,29 @@ const styles = StyleSheet.create({
   },
   summaryRow: { flexDirection: 'row', gap: 12 },
   summaryItem: { flex: 1 },
-  summaryLabel: { fontSize: 11, color: '#9ca3af', marginBottom: 4 },
-  summaryVal: { fontSize: 14, fontWeight: '600', color: '#111827' },
+  summaryLabel: { fontSize: 11, color: '#93c5fd', marginBottom: 4 },
+  summaryVal: { fontSize: 14, fontWeight: '600', color: '#f8fafc' },
   gainBlock: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#f3f4f6',
+    borderTopColor: '#31547c',
     paddingTop: 12,
-    gap: 8,
+    gap: 10,
   },
   gainBlockRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
-  gainBlockLabel: { fontSize: 12, color: '#6b7280' },
-  gainBlockVal: { fontSize: 13, fontWeight: '600' },
+  gainBlockLabel: { fontSize: 12, color: '#bfdbfe' },
+  gainBlockVal: { fontSize: 15, fontWeight: '700' },
+  gainSimpleRows: { gap: 6 },
+  gainGroupTitle: { fontSize: 11, color: '#93c5fd', fontWeight: '600', marginTop: 4 },
+  fxEffectSection: {
+    marginTop: 4,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#31547c',
+  },
   xirrCard: {
     backgroundColor: '#eff6ff',
     borderRadius: 12,
@@ -581,24 +644,52 @@ const styles = StyleSheet.create({
   yearReturn: { flex: YEAR_LAYOUT.gainFlex, fontSize: 13, fontWeight: '600', textAlign: 'right' },
   yearPct: { flex: YEAR_LAYOUT.pctFlex, fontSize: 12, textAlign: 'right' },
   emptyText: { fontSize: 13, color: '#9ca3af', textAlign: 'center', paddingVertical: 12 },
-  txRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
+  txItem: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: '#f3f4f6',
   },
-  txLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  txCollapsedRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    gap: 10,
+  },
+  txCollapsedLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
   txBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   badgeBuy: { backgroundColor: '#dbeafe' },
   badgeSell: { backgroundColor: '#fce7f3' },
   txBadgeText: { fontSize: 11, fontWeight: '600', color: '#374151' },
   txDate: { fontSize: 13, fontWeight: '500', color: '#111827' },
   txMeta: { fontSize: 11, color: '#6b7280', marginTop: 2 },
-  txRight: { alignItems: 'flex-end', gap: 2 },
-  txCost: { fontSize: 13, fontWeight: '600', color: '#111827' },
-  txCostSub: { fontSize: 11, color: '#6b7280' },
+  txExpanded: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
+    gap: 8,
+  },
+  txExpandedRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  txExpandedLabel: { fontSize: 12, color: '#6b7280' },
+  txExpandedValue: { fontSize: 13, fontWeight: '600', color: '#111827' },
+  txActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: TX_ACTION_GAP,
+    paddingTop: 2,
+  },
+  txActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  txActionText: { fontSize: 12, color: '#6b7280' },
+  txDeleteText: { color: '#ef4444' },
   showMore: { alignItems: 'center', paddingTop: 8 },
   showMoreText: { fontSize: 13, color: '#2563eb' },
   // ETF Holdings Modal

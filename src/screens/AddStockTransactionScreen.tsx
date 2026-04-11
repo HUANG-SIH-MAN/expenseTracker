@@ -150,7 +150,9 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
     if (isUS) {
       usdNum = parseFloat(usdCost);
       rateNum = parseFloat(exchangeRate);
-      if (isNaN(usdNum) || usdNum <= 0) return Alert.alert('請輸入有效 USD 成本');
+      if (isNaN(usdNum) || usdNum <= 0) {
+        return Alert.alert(`請輸入有效 USD ${txType === 'buy' ? '成本' : '收入'}`);
+      }
       if (isNaN(rateNum) || rateNum <= 0) return Alert.alert('請輸入有效換匯匯率');
     }
 
@@ -379,7 +381,7 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
           {isUS && (
             <>
               <View style={styles.field}>
-                <Text style={styles.label}>USD 成本</Text>
+                <Text style={styles.label}>USD {txType === 'buy' ? '成本' : '收入'}</Text>
                 <TextInput
                   style={styles.input}
                   value={usdCost}
