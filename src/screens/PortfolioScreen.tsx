@@ -91,6 +91,12 @@ export default function PortfolioScreen(): React.JSX.Element {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerBtn}
+            onPress={() => navigation.navigate('ETFExposure')}
+          >
+            <Ionicons name="analytics-outline" size={22} color="#2563eb" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerBtn}
             onPress={() => navigation.navigate('StockWatchlistSettings')}
           >
             <Ionicons name="star-outline" size={22} color="#2563eb" />

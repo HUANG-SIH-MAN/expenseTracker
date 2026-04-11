@@ -52,7 +52,7 @@ const CORS_PROXIES: Array<{
 /**
  * 輔助函數：處理 Web CORS 的 fetch（依序嘗試多個 proxy）
  */
-async function fetchWithCORS(url: string, _headers?: any): Promise<globalThis.Response> {
+export async function fetchWithCORS(url: string, _headers?: any): Promise<globalThis.Response> {
   if (Platform.OS === 'web') {
     for (const proxy of CORS_PROXIES) {
       try {

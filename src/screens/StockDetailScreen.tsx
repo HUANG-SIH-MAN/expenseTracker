@@ -15,6 +15,7 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -29,6 +30,8 @@ import {
   calcYearlyReturns,
 } from '../utils/stockCalculations';
 import type { MainStackParamList } from '../navigation/MainStack';
+import { getETFHoldings, SUPPORTED_ETF_TICKERS, isSingleAssetETF, getSingleAssetDescription } from '../utils/etfHoldings';
+import type { ETFHolding } from '../types';
 
 type Nav = NativeStackNavigationProp<MainStackParamList>;
 type Route = RouteProp<MainStackParamList, 'StockDetail'>;
@@ -114,6 +117,27 @@ export default function StockDetailScreen(): React.JSX.Element {
   const [showAll, setShowAll] = useState(false);
   const displayTx = showAll ? txList : txList.slice(0, 10);
 
+  // ETF 持股 Modal
+  const [holdingsVisible, setHoldingsVisible] = useState(false);
+  const [holdings, setHoldings] = useState<ETFHolding[]>([]);
+  const [holdingsLoading, setHoldingsLoading] = useState(false);
+  const [holdingsError, setHoldingsError] = useState<string | null>(null);
+
+  async function handleOpenHoldings() {
+    setHoldingsVisible(true);
+    if (isSingleAssetETF(ticker)) return;
+    setHoldingsLoading(true);
+    setHoldingsError(null);
+    try {
+      const data = await getETFHoldings(ticker);
+      setHoldings(data);
+    } catch {
+      setHoldingsError('無法載入持股資料，請稍後再試');
+    } finally {
+      setHoldingsLoading(false);
+    }
+  }
+
   async function handleDelete(id: string, date: string, shares: number) {
     const confirmed = Platform.OS === 'web'
       ? window.confirm(`確定要刪除 ${date} 的 ${shares} 股紀錄嗎？`)
@@ -143,6 +167,11 @@ export default function StockDetailScreen(): React.JSX.Element {
           <Text style={styles.headerName}>{pos?.name ?? ticker}</Text>
         </View>
         <View style={styles.headerRight}>
+          {SUPPORTED_ETF_TICKERS.includes(ticker) && (
+            <TouchableOpacity style={styles.headerBtn} onPress={handleOpenHoldings}>
+              <Ionicons name="information-circle-outline" size={22} color="#2563eb" />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={styles.headerBtn}
             onPress={async () => {
@@ -333,6 +362,69 @@ export default function StockDetailScreen(): React.JSX.Element {
           )}
         </View>
       </ScrollView>
+
+      {/* ETF 持股明細 Modal */}
+      <Modal
+        visible={holdingsVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setHoldingsVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{ticker} 持股明細</Text>
+              <TouchableOpacity onPress={() => setHoldingsVisible(false)}>
+                <Ionicons name="close" size={22} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+
+            {isSingleAssetETF(ticker) ? (
+              <View style={styles.modalCenter}>
+                <Ionicons
+                  name={ticker === 'GLD' ? 'star' : 'logo-bitcoin'}
+                  size={32}
+                  color={ticker === 'GLD' ? '#d97706' : '#f59e0b'}
+                />
+                <Text style={styles.modalInfoText}>
+                  {getSingleAssetDescription(ticker)}
+                </Text>
+              </View>
+            ) : holdingsLoading ? (
+              <View style={styles.modalCenter}>
+                <ActivityIndicator size="large" color="#2563eb" />
+                <Text style={styles.modalHint}>載入中…</Text>
+              </View>
+            ) : holdingsError ? (
+              <View style={styles.modalCenter}>
+                <Text style={styles.modalErrorText}>{holdingsError}</Text>
+              </View>
+            ) : holdings.length === 0 ? (
+              <View style={styles.modalCenter}>
+                <Ionicons name="construct-outline" size={28} color="#d1d5db" />
+                <Text style={styles.modalInfoText}>台股 ETF 持股資料暫不支援{'\n'}未來版本更新</Text>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.modalSubHint}>Top {holdings.length} 持股（持股資料每月更新）</Text>
+                <ScrollView style={styles.modalScroll}>
+                  {holdings.map(h => (
+                    <View key={h.rank} style={styles.holdingRow}>
+                      <Text style={styles.holdingRank}>{h.rank}</Text>
+                      <Text style={styles.holdingName} numberOfLines={1}>{h.companyName}</Text>
+                      <Text style={styles.holdingPct}>{h.weightPct.toFixed(2)}%</Text>
+                    </View>
+                  ))}
+                  <Text style={styles.modalLastUpdated}>
+                    更新時間：{holdings[0]?.lastUpdated ? new Date(holdings[0].lastUpdated).toLocaleDateString('zh-TW') : '—'}
+                  </Text>
+                </ScrollView>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -435,4 +527,52 @@ const styles = StyleSheet.create({
   txCostSub: { fontSize: 11, color: '#6b7280' },
   showMore: { alignItems: 'center', paddingTop: 8 },
   showMoreText: { fontSize: 13, color: '#2563eb' },
+  // ETF Holdings Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 32,
+    maxHeight: '75%',
+  },
+  modalHandle: {
+    width: 36, height: 4,
+    backgroundColor: '#e5e7eb',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: 10, marginBottom: 4,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#f3f4f6',
+  },
+  modalTitle: { fontSize: 16, fontWeight: '700', color: '#111827' },
+  modalSubHint: { fontSize: 12, color: '#9ca3af', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4 },
+  modalScroll: { paddingHorizontal: 20 },
+  holdingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#f3f4f6',
+    gap: 10,
+  },
+  holdingRank: { width: 22, fontSize: 12, color: '#9ca3af', textAlign: 'right' },
+  holdingName: { flex: 1, fontSize: 13, color: '#111827' },
+  holdingPct: { fontSize: 13, fontWeight: '600', color: '#374151', width: 56, textAlign: 'right' },
+  modalCenter: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40, gap: 10 },
+  modalHint: { fontSize: 13, color: '#9ca3af' },
+  modalInfoText: { fontSize: 14, color: '#374151', textAlign: 'center', paddingHorizontal: 24, lineHeight: 22 },
+  modalErrorText: { fontSize: 13, color: '#dc2626', textAlign: 'center', paddingHorizontal: 24 },
+  modalLastUpdated: { fontSize: 11, color: '#d1d5db', textAlign: 'right', paddingVertical: 12 },
 });

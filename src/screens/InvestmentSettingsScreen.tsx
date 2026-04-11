@@ -1,0 +1,252 @@
+/**
+ * 投資設定頁
+ * - Alpha Vantage API Key 管理（用於 ETF 持股資料）
+ */
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  Alert,
+  Platform,
+  ActivityIndicator,
+  Linking,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { getAlphaVantageApiKey, setAlphaVantageApiKey } from '../utils/storage';
+
+export default function InvestmentSettingsScreen(): React.JSX.Element {
+  const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
+
+  const [apiKey, setApiKey] = useState('');
+  const [savedKey, setSavedKey] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    getAlphaVantageApiKey().then(k => {
+      setApiKey(k);
+      setSavedKey(k);
+      setLoading(false);
+    });
+  }, []);
+
+  async function handleSave() {
+    if (!apiKey.trim()) {
+      const msg = '請輸入 API Key';
+      if (Platform.OS === 'web') { window.alert(msg); return; }
+      Alert.alert('', msg);
+      return;
+    }
+    setSaving(true);
+    await setAlphaVantageApiKey(apiKey.trim());
+    setSavedKey(apiKey.trim());
+    setSaving(false);
+    const msg = 'API Key 已儲存';
+    if (Platform.OS === 'web') { window.alert(msg); return; }
+    Alert.alert('', msg);
+  }
+
+  function handleClear() {
+    const doClear = async () => {
+      await setAlphaVantageApiKey('');
+      setApiKey('');
+      setSavedKey('');
+    };
+    if (Platform.OS === 'web') {
+      if (window.confirm('確定要清除 API Key 嗎？')) doClear();
+      return;
+    }
+    Alert.alert('清除 API Key', '確定要清除嗎？', [
+      { text: '取消', style: 'cancel' },
+      { text: '清除', style: 'destructive', onPress: doClear },
+    ]);
+  }
+
+  const isDirty = apiKey.trim() !== savedKey;
+
+  return (
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Ionicons name="chevron-back" size={24} color="#111827" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>投資設定</Text>
+        <View style={{ width: 36 }} />
+      </View>
+
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#2563eb" />
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 24 }]}>
+          {/* Alpha Vantage 說明區塊 */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Alpha Vantage API Key</Text>
+            <Text style={styles.sectionDesc}>
+              用於抓取 ETF 持股明細（QQQ、SMH）。{'\n'}
+              免費方案每日 25 次，對每月更新一次的快取策略完全足夠。
+            </Text>
+
+            <View style={styles.stepBox}>
+              <Text style={styles.stepTitle}>如何取得免費 API Key</Text>
+              <Text style={styles.stepText}>
+                1. 點選下方連結前往官網{'\n'}
+                2. 點選「Get Free API Key」{'\n'}
+                3. 填入 Email（不需信用卡）{'\n'}
+                4. 複製 Key 貼到下方欄位
+              </Text>
+              <TouchableOpacity
+                style={styles.linkBtn}
+                onPress={() => Linking.openURL('https://www.alphavantage.co/support/#api-key')}
+              >
+                <Ionicons name="open-outline" size={14} color="#2563eb" />
+                <Text style={styles.linkText}>前往 alphavantage.co 申請</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* 輸入欄 */}
+            <Text style={styles.inputLabel}>API Key</Text>
+            <View style={styles.inputRow}>
+              <TextInput
+                style={styles.input}
+                value={apiKey}
+                onChangeText={setApiKey}
+                placeholder="貼上你的 Alpha Vantage API Key"
+                placeholderTextColor="#9ca3af"
+                autoCapitalize="characters"
+                autoCorrect={false}
+              />
+              {apiKey.length > 0 && (
+                <TouchableOpacity style={styles.clearBtn} onPress={() => setApiKey('')}>
+                  <Ionicons name="close-circle" size={18} color="#9ca3af" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* 狀態標籤 */}
+            {savedKey ? (
+              <View style={styles.statusRow}>
+                <Ionicons name="checkmark-circle" size={14} color="#16a34a" />
+                <Text style={styles.statusSaved}>已設定（{savedKey.slice(0, 4)}…{savedKey.slice(-4)}）</Text>
+              </View>
+            ) : (
+              <View style={styles.statusRow}>
+                <Ionicons name="warning-outline" size={14} color="#d97706" />
+                <Text style={styles.statusEmpty}>尚未設定，ETF 持股資料無法顯示</Text>
+              </View>
+            )}
+
+            {/* 儲存按鈕 */}
+            <TouchableOpacity
+              style={[styles.saveBtn, (!isDirty || saving) && styles.saveBtnDisabled]}
+              onPress={handleSave}
+              disabled={!isDirty || saving}
+            >
+              {saving ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.saveBtnText}>儲存</Text>
+              )}
+            </TouchableOpacity>
+
+            {/* 清除按鈕 */}
+            {savedKey.length > 0 && (
+              <TouchableOpacity style={styles.clearKeyBtn} onPress={handleClear}>
+                <Text style={styles.clearKeyBtnText}>清除 API Key</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#f9fafb' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e5e7eb',
+  },
+  backBtn: { padding: 6 },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#111827' },
+  scroll: { padding: 16, gap: 16 },
+  section: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  sectionTitle: { fontSize: 15, fontWeight: '700', color: '#111827' },
+  sectionDesc: { fontSize: 13, color: '#6b7280', lineHeight: 20 },
+  stepBox: {
+    backgroundColor: '#f0f9ff',
+    borderRadius: 8,
+    padding: 12,
+    gap: 6,
+  },
+  stepTitle: { fontSize: 12, fontWeight: '600', color: '#0369a1' },
+  stepText: { fontSize: 12, color: '#0c4a6e', lineHeight: 20 },
+  linkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+    alignSelf: 'flex-start',
+  },
+  linkText: { fontSize: 12, color: '#2563eb', fontWeight: '600' },
+  inputLabel: { fontSize: 12, fontWeight: '600', color: '#374151' },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    backgroundColor: '#f9fafb',
+    paddingHorizontal: 12,
+  },
+  input: {
+    flex: 1,
+    fontSize: 14,
+    color: '#111827',
+    paddingVertical: 10,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  clearBtn: { padding: 4 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  statusSaved: { fontSize: 12, color: '#16a34a' },
+  statusEmpty: { fontSize: 12, color: '#d97706' },
+  saveBtn: {
+    backgroundColor: '#2563eb',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  saveBtnDisabled: { backgroundColor: '#93c5fd' },
+  saveBtnText: { fontSize: 14, fontWeight: '600', color: '#fff' },
+  clearKeyBtn: {
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  clearKeyBtnText: { fontSize: 13, color: '#dc2626' },
+});

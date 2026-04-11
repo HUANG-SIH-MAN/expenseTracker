@@ -38,6 +38,7 @@ export const STORAGE_KEYS = {
   STOCK_PRICES_CACHE: "@expense_tracker/stock_prices_cache",
   STOCK_WATCHLIST: "@expense_tracker/stock_watchlist",
   ETF_HOLDINGS: "@expense_tracker/etf_holdings",
+  ALPHAVANTAGE_API_KEY: "@expense_tracker/alphavantage_api_key",
 } as const;
 
 /** 預設支出類別（之後可改為使用者自訂） */

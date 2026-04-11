@@ -9,8 +9,10 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import type { MainStackParamList } from '../navigation/MainStack';
 import { useBudget } from '../contexts/BudgetContext';
 import { MonthlyBudgetTab, AnnualBudgetTab, BottomBar } from '../components';
 
@@ -23,6 +25,7 @@ type BudgetTab = 'monthly' | 'annual';
 
 export default function BudgetSettingsScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList, 'BudgetSettings'>>();
   const { refreshBudget } = useBudget();
   const [tab, setTab] = useState<BudgetTab>('monthly');
 

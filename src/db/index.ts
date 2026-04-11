@@ -8,6 +8,7 @@ import * as SQLite from "expo-sqlite";
 const DB_NAME = "expense_tracker.db";
 
 let dbInstance: SQLite.SQLiteDatabase | null = null;
+let dbInitPromise: Promise<SQLite.SQLiteDatabase | null> | null = null;
 
 function getSchemaSql(): string {
   return `
@@ -205,12 +206,9 @@ CREATE INDEX IF NOT EXISTS idx_stock_transactions_date ON stock_transactions(dat
  * 取得已初始化的 DB 實例（首次呼叫時開庫並執行 schema）。
  * Web 環境回傳 null，呼叫端應改用 AsyncStorage。
  */
-export async function getDb(): Promise<SQLite.SQLiteDatabase | null> {
+async function initDb(): Promise<SQLite.SQLiteDatabase | null> {
   if (Platform.OS === "web") {
     return null;
-  }
-  if (dbInstance != null) {
-    return dbInstance;
   }
   const db = await SQLite.openDatabaseAsync(DB_NAME);
   await db.execAsync(getSchemaSql());
@@ -418,4 +416,17 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase | null> {
   }
   dbInstance = db;
   return db;
+}
+
+export async function getDb(): Promise<SQLite.SQLiteDatabase | null> {
+  if (Platform.OS === "web") {
+    return null;
+  }
+  if (dbInstance != null) {
+    return dbInstance;
+  }
+  if (dbInitPromise == null) {
+    dbInitPromise = initDb();
+  }
+  return dbInitPromise;
 }

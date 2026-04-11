@@ -1783,13 +1783,29 @@ export async function clearAllData(): Promise<void> {
     await db.runAsync("DELETE FROM exchange_rates");
     await db.runAsync("DELETE FROM categories");
     await db.runAsync("DELETE FROM accounts");
-    await setSetting(db, SETTINGS_KEY_ONBOARDING, "false");
-    await setSetting(db, STORAGE_KEYS.CUSTOM_CURRENCIES, "[]");
-    await saveBudgetSettings({
-      defaultMonthlyIncome: 0,
-      weekdayWeight: BUDGET_DEFAULT_WEEKDAY_WEIGHT,
-      weekendWeight: BUDGET_DEFAULT_WEEKEND_WEIGHT,
-    });
+    await db.runAsync("DELETE FROM stock_watchlist");
+    await db.runAsync("DELETE FROM stock_transactions");
+    await db.runAsync("DELETE FROM stock_prices_cache");
+    await db.runAsync("DELETE FROM etf_holdings");
+    await db.runAsync(
+      "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+      [SETTINGS_KEY_ONBOARDING, "false"],
+    );
+    await db.runAsync(
+      "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+      [STORAGE_KEYS.CUSTOM_CURRENCIES, "[]"],
+    );
+    await db.runAsync(
+      "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+      [BUDGET_SETTINGS_KEY, JSON.stringify({
+        defaultMonthlyIncome: 0,
+        weekdayWeight: BUDGET_DEFAULT_WEEKDAY_WEIGHT,
+        weekendWeight: BUDGET_DEFAULT_WEEKEND_WEIGHT,
+      })],
+    );
+    await AsyncStorage.removeItem(STORAGE_KEYS.STOCK_TRANSACTIONS);
+    await AsyncStorage.removeItem(STORAGE_KEYS.STOCK_PRICES_CACHE);
+    await AsyncStorage.removeItem(STORAGE_KEYS.ETF_HOLDINGS);
     return;
   }
   await saveTransactions([]);
@@ -2004,27 +2020,25 @@ function sqlNum(v: number | undefined | null): string {
 export async function saveStockTransactions(txs: StockTransaction[]): Promise<void> {
   const db = await getDb();
   if (db) {
-    await db.withTransactionAsync(async () => {
-      for (const tx of txs) {
-        await db.runAsync(
-          `INSERT OR REPLACE INTO stock_transactions` +
-          ` (id,ticker,name,date,type,shares,price_native,usd_cost,twd_cost,exchange_rate,note,created_at)` +
-          ` VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
-          tx.id,
-          tx.ticker,
-          tx.name,
-          tx.date,
-          tx.type,
-          tx.shares,
-          tx.priceNative,
-          tx.usdCost ?? null,
-          tx.twdCost,
-          tx.exchangeRate ?? null,
-          tx.note ?? null,
-          tx.createdAt,
-        );
-      }
-    });
+    for (const tx of txs) {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO stock_transactions` +
+        ` (id,ticker,name,date,type,shares,price_native,usd_cost,twd_cost,exchange_rate,note,created_at)` +
+        ` VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+        tx.id,
+        tx.ticker,
+        tx.name,
+        tx.date,
+        tx.type,
+        tx.shares,
+        tx.priceNative,
+        tx.usdCost ?? null,
+        tx.twdCost,
+        tx.exchangeRate ?? null,
+        tx.note ?? null,
+        tx.createdAt,
+      );
+    }
     return;
   }
   const existing = await getStockTransactions();
@@ -2257,4 +2271,25 @@ export async function saveETFHoldings(holdings: ETFHolding[]): Promise<void> {
   } catch {
     // ignore
   }
+}
+
+// ─── Alpha Vantage API Key ────────────────────────────────────────────────────
+
+export async function getAlphaVantageApiKey(): Promise<string> {
+  const db = await getDb();
+  if (db) {
+    await ensureMigrationDone(db);
+    const val = await getSetting(db, STORAGE_KEYS.ALPHAVANTAGE_API_KEY);
+    return val ?? '';
+  }
+  return (await AsyncStorage.getItem(STORAGE_KEYS.ALPHAVANTAGE_API_KEY)) ?? '';
+}
+
+export async function setAlphaVantageApiKey(key: string): Promise<void> {
+  const db = await getDb();
+  if (db) {
+    await setSetting(db, STORAGE_KEYS.ALPHAVANTAGE_API_KEY, key.trim());
+    return;
+  }
+  await AsyncStorage.setItem(STORAGE_KEYS.ALPHAVANTAGE_API_KEY, key.trim());
 }
