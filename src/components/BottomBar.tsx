@@ -11,10 +11,8 @@ const BOTTOM_BAR_HEIGHT = 56;
 const BOTTOM_ICON_SIZE = 22;
 const BOTTOM_LABEL_FONT_SIZE = 10;
 
-const BOTTOM_LEDGER = '帳本';
 const BOTTOM_STATS = '統計';
 const BOTTOM_ADD_LABEL = '記一筆';
-const BOTTOM_BUDGET = '預算';
 const BOTTOM_INVEST = '投資';
 const BOTTOM_SETTINGS = '設定';
 
@@ -58,19 +56,6 @@ export default function BottomBar({ selectedDate }: BottomBarProps): React.JSX.E
 
       <TouchableOpacity
         style={styles.bottomBarItem}
-        onPress={() => navigation.navigate('LedgerBalance')}
-        activeOpacity={0.7}
-      >
-        <Ionicons
-          name={isActive('LedgerBalance') ? 'book' : 'book-outline'}
-          size={BOTTOM_ICON_SIZE}
-          color={getColor('LedgerBalance')}
-        />
-        <Text style={[styles.bottomBarLabel, { color: getColor('LedgerBalance') }]}>{BOTTOM_LEDGER}</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.bottomBarItem}
         onPress={() => navigation.navigate('Statistics')}
         activeOpacity={0.7}
       >
@@ -91,19 +76,6 @@ export default function BottomBar({ selectedDate }: BottomBarProps): React.JSX.E
           <Ionicons name="add" size={BOTTOM_ICON_SIZE + 4} color="#fff" />
         </View>
         <Text style={styles.bottomBarCenterLabel}>{BOTTOM_ADD_LABEL}</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.bottomBarItem}
-        onPress={() => navigation.navigate('BudgetSettings')}
-        activeOpacity={0.7}
-      >
-        <Ionicons
-          name={isActive('BudgetSettings') ? 'wallet' : 'wallet-outline'}
-          size={BOTTOM_ICON_SIZE}
-          color={getColor('BudgetSettings')}
-        />
-        <Text style={[styles.bottomBarLabel, { color: getColor('BudgetSettings') }]}>{BOTTOM_BUDGET}</Text>
       </TouchableOpacity>
 
       <TouchableOpacity

@@ -35,8 +35,10 @@ const BTN_CANCEL = '取消';
 const BTN_CONTINUE = '繼續';
 const BTN_CONFIRM_CLEAR = '確定清除';
 
-/** 設定子頁的畫面名稱（僅列出無參數的設定頁；預算規劃改由底部導航進入） */
+/** 設定子頁的畫面名稱（僅列出無參數的設定頁） */
 type SettingScreenName =
+  | 'LedgerBalance'
+  | 'BudgetSettings'
   | 'PrimaryCurrency'
   | 'ExchangeRates'
   | 'CurrencySettings'
@@ -48,6 +50,8 @@ type SettingScreenName =
   | 'InvestmentSettings';
 
 const SETTING_ITEMS: { screen: SettingScreenName; title: string; subtitle?: string }[] = [
+  { screen: 'LedgerBalance', title: '帳本餘額', subtitle: '各帳戶目前餘額（含初始金額與收支）' },
+  { screen: 'BudgetSettings', title: '預算設定', subtitle: '每月固定預算與年度預算規劃' },
   { screen: 'PrimaryCurrency', title: '主要貨幣', subtitle: '記帳與餘額顯示使用的貨幣' },
   { screen: 'ExchangeRates', title: '匯率', subtitle: '各幣別對主幣別匯率、立即更新' },
   { screen: 'CurrencySettings', title: '幣別管理', subtitle: '新增或刪除自訂幣別' },
