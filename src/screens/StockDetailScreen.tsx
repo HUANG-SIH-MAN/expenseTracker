@@ -62,21 +62,46 @@ export default function StockDetailScreen(): React.JSX.Element {
   );
 
   const priceTWD = getPriceTWD(ticker, prices, usdTwdRate);
+  const priceNative = prices[ticker]?.price ?? 0;
+  const isUS = pos?.currency === 'USD';
   const valueTWD = pos ? pos.shares * priceTWD : 0;
   const { gainTWD, gainPct } = pos ? calcUnrealizedGain(pos, priceTWD) : { gainTWD: 0, gainPct: 0 };
   const gainColor = gainTWD >= 0 ? '#16a34a' : '#dc2626';
 
-  // XIRR
+  // 美股：USD 原幣損益（排除匯率）
+  const usdGain = (isUS && pos && priceNative > 0)
+    ? pos.shares * (priceNative - pos.avgCostNative)
+    : null;
+  const usdGainPct = (usdGain != null && pos && pos.avgCostNative > 0)
+    ? usdGain / (pos.shares * pos.avgCostNative)
+    : null;
+  // 匯率效果 = TWD損益 - USD損益換算成TWD
+  const fxEffect = (usdGain != null) ? gainTWD - usdGain * usdTwdRate : null;
+
+  // XIRR：美股用 USD 原幣計算（排除匯率），台股用 TWD
   const xirr = useMemo(() => {
-    if (!pos || pos.shares <= 0 || valueTWD === 0) return null;
+    if (!pos || pos.shares <= 0) return null;
     const sortedTx = [...txList].sort((a, b) => a.date.localeCompare(b.date));
-    const { cashFlows, dates } = buildXIRRCashFlows(sortedTx, valueTWD);
-    try {
-      return calcXIRR(cashFlows, dates);
-    } catch {
-      return null;
+
+    if (isUS && priceNative > 0) {
+      // 美股：現金流全用 USD，排除匯率影響
+      const cashFlows: number[] = [];
+      const dates: Date[] = [];
+      for (const tx of sortedTx) {
+        const usd = tx.usdCost ?? tx.twdCost / (usdTwdRate || 31.73);
+        cashFlows.push(tx.type === 'buy' ? -usd : usd);
+        dates.push(new Date(tx.date));
+      }
+      cashFlows.push(pos.shares * priceNative); // 當前市值（USD）
+      dates.push(new Date());
+      try { return calcXIRR(cashFlows, dates); } catch { return null; }
     }
-  }, [txList, pos, valueTWD]);
+
+    // 台股：用 TWD
+    if (valueTWD === 0) return null;
+    const { cashFlows, dates } = buildXIRRCashFlows(sortedTx, valueTWD);
+    try { return calcXIRR(cashFlows, dates); } catch { return null; }
+  }, [txList, pos, valueTWD, isUS, priceNative, usdTwdRate]);
 
   // 各年報酬率
   const yearlyReturns = useMemo(() => {
@@ -144,6 +169,7 @@ export default function StockDetailScreen(): React.JSX.Element {
         {/* 持倉摘要 */}
         {pos && pos.shares > 0 && (
           <View style={styles.summaryCard}>
+            {/* 第一行：股數 + 均成本 */}
             <View style={styles.summaryRow}>
               <View style={styles.summaryItem}>
                 <Text style={styles.summaryLabel}>持有股數</Text>
@@ -152,25 +178,71 @@ export default function StockDetailScreen(): React.JSX.Element {
                 </Text>
               </View>
               <View style={styles.summaryItem}>
-                <Text style={styles.summaryLabel}>平均成本（原幣）</Text>
+                <Text style={styles.summaryLabel}>均成本（原幣/股）</Text>
                 <Text style={styles.summaryVal}>
-                  {pos.currency === 'USD' ? '$' : 'NT$'}{pos.avgCostNative.toFixed(2)}
+                  {isUS ? '$' : 'NT$'}{pos.avgCostNative.toFixed(isUS ? 2 : 0)}
                 </Text>
               </View>
             </View>
+            {/* 第二行：現價 + 市值 */}
             <View style={styles.summaryRow}>
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryLabel}>現價</Text>
+                <Text style={styles.summaryVal}>
+                  {priceNative > 0
+                    ? (isUS ? `$${priceNative.toFixed(2)}` : `NT$${fmtTWD(priceNative)}`)
+                    : '—'}
+                </Text>
+              </View>
               <View style={styles.summaryItem}>
                 <Text style={styles.summaryLabel}>當前市值（台幣）</Text>
                 <Text style={styles.summaryVal}>NT$ {fmtTWD(valueTWD)}</Text>
               </View>
-              <View style={styles.summaryItem}>
-                <Text style={styles.summaryLabel}>未實現損益</Text>
-                <Text style={[styles.summaryVal, { color: gainColor }]}>
-                  {gainTWD >= 0 ? '+' : ''}NT$ {fmtTWD(gainTWD)}
-                  {'\n'}{fmtPct(gainPct)}
-                </Text>
-              </View>
             </View>
+
+            {/* 損益區塊 */}
+            {isUS && usdGain != null ? (
+              <>
+                {/* USD 損益（排除匯率） */}
+                <View style={styles.gainBlock}>
+                  <View style={styles.gainBlockRow}>
+                    <Text style={styles.gainBlockLabel}>USD 損益（股票漲跌）</Text>
+                    <Text style={[styles.gainBlockVal, { color: usdGain >= 0 ? '#16a34a' : '#dc2626' }]}>
+                      {usdGain >= 0 ? '+' : ''}${usdGain.toFixed(2)}
+                      {'  '}{fmtPct(usdGainPct ?? 0)}
+                    </Text>
+                  </View>
+                  {/* TWD 損益（含匯率） */}
+                  <View style={styles.gainBlockRow}>
+                    <Text style={styles.gainBlockLabel}>TWD 損益（含匯率）</Text>
+                    <Text style={[styles.gainBlockVal, { color: gainTWD >= 0 ? '#16a34a' : '#dc2626' }]}>
+                      {gainTWD >= 0 ? '+' : ''}NT$ {fmtTWD(gainTWD)}
+                      {'  '}{fmtPct(gainPct)}
+                    </Text>
+                  </View>
+                  {/* 匯率效果 */}
+                  {fxEffect != null && (
+                    <View style={styles.gainBlockRow}>
+                      <Text style={styles.gainBlockLabel}>匯率效果</Text>
+                      <Text style={[styles.gainBlockVal, { color: fxEffect >= 0 ? '#16a34a' : '#dc2626' }]}>
+                        {fxEffect >= 0 ? '+' : ''}NT$ {fmtTWD(fxEffect)}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </>
+            ) : (
+              <View style={styles.summaryRow}>
+                <View style={styles.summaryItem}>
+                  <Text style={styles.summaryLabel}>未實現損益</Text>
+                  <Text style={[styles.summaryVal, { color: gainColor }]}>
+                    {gainTWD >= 0 ? '+' : ''}NT$ {fmtTWD(gainTWD)}
+                    {'\n'}{fmtPct(gainPct)}
+                  </Text>
+                </View>
+              </View>
+            )}
+
             {pos.realizedGainTWD !== 0 && (
               <View style={styles.summaryRow}>
                 <View style={styles.summaryItem}>
@@ -191,7 +263,11 @@ export default function StockDetailScreen(): React.JSX.Element {
             <Text style={[styles.xirrValue, { color: xirr >= 0 ? '#16a34a' : '#dc2626' }]}>
               {fmtPct(xirr)}
             </Text>
-            <Text style={styles.xirrHint}>考量每次投入時間點，最能反映實際投資績效</Text>
+            <Text style={styles.xirrHint}>
+              {isUS
+                ? '以 USD 計算，排除匯率影響，反映股票本身績效'
+                : '考量每次投入時間點，最能反映實際投資績效'}
+            </Text>
           </View>
         )}
 
@@ -293,6 +369,19 @@ const styles = StyleSheet.create({
   summaryItem: { flex: 1 },
   summaryLabel: { fontSize: 11, color: '#9ca3af', marginBottom: 4 },
   summaryVal: { fontSize: 14, fontWeight: '600', color: '#111827' },
+  gainBlock: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#f3f4f6',
+    paddingTop: 12,
+    gap: 8,
+  },
+  gainBlockRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  gainBlockLabel: { fontSize: 12, color: '#6b7280' },
+  gainBlockVal: { fontSize: 13, fontWeight: '600' },
   xirrCard: {
     backgroundColor: '#eff6ff',
     borderRadius: 12,

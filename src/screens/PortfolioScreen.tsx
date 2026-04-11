@@ -183,7 +183,7 @@ export default function PortfolioScreen(): React.JSX.Element {
               <View style={styles.holdingBottom}>
                 <Text style={styles.holdingMeta}>
                   {pos.shares.toLocaleString(undefined, { maximumFractionDigits: 4 })} 股
-                  ．成本 NT$ {(pos.totalCostTWD / pos.shares).toFixed(isUS ? 2 : 0)}
+                  ．均成本 {isUS ? `$${pos.avgCostNative.toFixed(2)}` : `NT$${pos.avgCostNative.toFixed(0)}`}
                 </Text>
                 {priceCache && (
                   <Text style={styles.holdingPrice}>
