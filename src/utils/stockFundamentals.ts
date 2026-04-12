@@ -1,22 +1,23 @@
 import { Platform } from "react-native";
 import type { StockAnnualFinancial, StockFundamentals } from "../types";
-import { getAlphaVantageApiKey } from "./storage";
 import {
   getStockFundamentals as getFromStorage,
   saveStockFundamentals,
 } from "./storage";
-import { fetchWithCORS } from "./stockPrice";
+import { fetchWithCORS, getStockPrice } from "./stockPrice";
+import { fetchAlphaVantageData } from "./alphaVantageApi";
+import {
+  FUNDAMENTALS_CACHE_TTL_MS,
+  FUNDAMENTALS_REFRESH_COOLDOWN_MS,
+} from "./dataRefreshPolicy";
+import { classifyInstrument, normalizeTaiwanTicker, normalizeTicker } from "./instrumentClassification";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-const CACHE_TTL_DAYS = 7;
-const CACHE_TTL_MS = CACHE_TTL_DAYS * DAY_MS;
-const REFRESH_COOLDOWN_MS = 30 * 1000;
 const REFRESH_LOG_PREFIX = "[Stock Fundamentals]";
 const inflightRefreshMap = new Map<string, Promise<StockFundamentals>>();
 const lastRefreshAtMap = new Map<string, number>();
 
 function isCacheValid(lastUpdated: string): boolean {
-  return Date.now() - new Date(lastUpdated).getTime() < CACHE_TTL_MS;
+  return Date.now() - new Date(lastUpdated).getTime() < FUNDAMENTALS_CACHE_TTL_MS;
 }
 
 function toAnnualFinancials(val: unknown): StockAnnualFinancial[] {
@@ -45,18 +46,8 @@ function parseNum(val: unknown): number | null {
 
 async function fetchOverview(
   ticker: string,
-  apiKey: string
 ): Promise<Omit<StockFundamentals, "ticker" | "annualFinancials" | "lastUpdated">> {
-  const url = `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${encodeURIComponent(ticker)}&apikey=${encodeURIComponent(apiKey)}`;
-  const res = await fetchWithCORS(url);
-  const json = await res.json();
-
-  if (json?.Note) {
-    throw new Error("Alpha Vantage 已達每日 25 次上限，請明天再試");
-  }
-  if (json?.Information) {
-    throw new Error("Alpha Vantage API 錯誤：" + json.Information);
-  }
+  const json = await fetchAlphaVantageData("OVERVIEW", ticker);
   if (!json?.Symbol) {
     throw new Error(`找不到 ${ticker} 的基本面資料`);
   }
@@ -73,18 +64,8 @@ async function fetchOverview(
 
 async function fetchIncomeStatement(
   ticker: string,
-  apiKey: string
 ): Promise<StockAnnualFinancial[]> {
-  const url = `https://www.alphavantage.co/query?function=INCOME_STATEMENT&symbol=${encodeURIComponent(ticker)}&apikey=${encodeURIComponent(apiKey)}`;
-  const res = await fetchWithCORS(url);
-  const json = await res.json();
-
-  if (json?.Note) {
-    throw new Error("Alpha Vantage 已達每日 25 次上限，請明天再試");
-  }
-  if (json?.Information) {
-    throw new Error("Alpha Vantage API 錯誤：" + json.Information);
-  }
+  const json = await fetchAlphaVantageData("INCOME_STATEMENT", ticker);
 
   const reports: Record<string, string>[] = json?.annualReports ?? [];
   return reports.slice(0, 5).map((r) => ({
@@ -96,19 +77,58 @@ async function fetchIncomeStatement(
   }));
 }
 
-async function fetchAndSave(ticker: string): Promise<StockFundamentals> {
+function tryGetCellByFieldPattern(
+  fields: string[],
+  row: string[],
+  pattern: RegExp
+): string | null {
+  const index = fields.findIndex((field) => pattern.test(field));
+  if (index < 0) return null;
+  const value = row[index];
+  return typeof value === "string" ? value : null;
+}
+
+async function fetchTaiwanFundamentals(ticker: string): Promise<StockFundamentals> {
+  const twTicker = normalizeTaiwanTicker(ticker);
+  if (!/^\d{4,6}$/.test(twTicker)) {
+    throw new Error(`不支援的台股代號格式：${ticker}`);
+  }
+
+  const date = new Date();
+  const yyyymmdd = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
+  const url = `https://www.twse.com.tw/rwd/zh/afterTrading/BWIBBU_d?date=${yyyymmdd}&stockNo=${encodeURIComponent(twTicker)}&response=json`;
+  const res = await fetchWithCORS(url);
+  const json = await res.json();
+  const rows: string[][] = json?.data ?? [];
+  const fields: string[] = json?.fields ?? [];
+  const row = rows[0] ?? [];
+
+  const peRatio = parseNum(tryGetCellByFieldPattern(fields, row, /本益比/));
+  const eps = parseNum(tryGetCellByFieldPattern(fields, row, /EPS|每股盈餘/i));
+  const latestPrice = await getStockPrice(twTicker, "TWD");
+  const fallbackPrice = latestPrice?.price ?? 0;
+
+  return {
+    ticker,
+    marketCap: 0,
+    peRatio,
+    eps,
+    week52High: fallbackPrice,
+    week52Low: fallbackPrice,
+    beta: null,
+    annualFinancials: [],
+    lastUpdated: new Date().toISOString(),
+  };
+}
+
+async function fetchUSFundamentals(ticker: string): Promise<StockFundamentals> {
   if (Platform.OS === "web") {
     throw new Error("基本面資料僅支援 iOS / Android，網頁版因 CORS 限制無法使用");
   }
 
-  const apiKey = await getAlphaVantageApiKey();
-  if (!apiKey) {
-    throw new Error("請先在設定中輸入 Alpha Vantage API Key");
-  }
-
   const [overview, annualFinancials] = await Promise.all([
-    fetchOverview(ticker, apiKey),
-    fetchIncomeStatement(ticker, apiKey),
+    fetchOverview(ticker),
+    fetchIncomeStatement(ticker),
   ]);
   const safeOverview = overview ?? {
     marketCap: 0,
@@ -130,6 +150,14 @@ async function fetchAndSave(ticker: string): Promise<StockFundamentals> {
     annualFinancials: toAnnualFinancials(annualFinancials),
     lastUpdated: new Date().toISOString(),
   };
+  return data;
+}
+
+async function fetchAndSave(ticker: string): Promise<StockFundamentals> {
+  const classification = classifyInstrument({ ticker });
+  const data = classification.market === "TW"
+    ? await fetchTaiwanFundamentals(ticker)
+    : await fetchUSFundamentals(ticker);
 
   await saveStockFundamentals(data);
   return data;
@@ -152,7 +180,7 @@ function getOrCreateRefreshPromise(ticker: string): Promise<StockFundamentals> {
 function isInRefreshCooldown(ticker: string): boolean {
   const lastRefreshAt = lastRefreshAtMap.get(ticker);
   if (!lastRefreshAt) return false;
-  return Date.now() - lastRefreshAt < REFRESH_COOLDOWN_MS;
+  return Date.now() - lastRefreshAt < FUNDAMENTALS_REFRESH_COOLDOWN_MS;
 }
 
 function triggerStaleRefreshInBackground(ticker: string): void {
@@ -167,23 +195,25 @@ function triggerStaleRefreshInBackground(ticker: string): void {
 export async function getStockFundamentals(
   ticker: string
 ): Promise<StockFundamentals> {
-  const cached = await getFromStorage(ticker);
+  const normalizedTicker = normalizeTicker(ticker);
+  const cached = await getFromStorage(normalizedTicker);
   if (cached) {
     if (!isCacheValid(cached.lastUpdated)) {
-      triggerStaleRefreshInBackground(ticker);
+      triggerStaleRefreshInBackground(normalizedTicker);
     }
     return cached;
   }
-  return getOrCreateRefreshPromise(ticker);
+  return getOrCreateRefreshPromise(normalizedTicker);
 }
 
 /** 強制重新抓取，忽略快取（手動刷新按鈕） */
 export async function refreshStockFundamentals(
   ticker: string
 ): Promise<StockFundamentals> {
-  if (isInRefreshCooldown(ticker)) {
-    const cached = await getFromStorage(ticker);
+  const normalizedTicker = normalizeTicker(ticker);
+  if (isInRefreshCooldown(normalizedTicker)) {
+    const cached = await getFromStorage(normalizedTicker);
     if (cached) return cached;
   }
-  return getOrCreateRefreshPromise(ticker);
+  return getOrCreateRefreshPromise(normalizedTicker);
 }

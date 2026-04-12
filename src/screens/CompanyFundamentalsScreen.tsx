@@ -17,15 +17,17 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { getStockFundamentals, refreshStockFundamentals } from '../utils/stockFundamentals';
+import { classifyInstrument } from '../utils/instrumentClassification';
 import type { MainStackParamList } from '../navigation/MainStack';
 import type { StockFundamentals } from '../types';
 
 type Route = RouteProp<MainStackParamList, 'CompanyFundamentals'>;
 
-function fmtMarketCap(n: number): string {
-  if (n >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
-  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
-  return `$${(n / 1e6).toFixed(0)}M`;
+function fmtMarketCap(n: number, currencySymbol: string): string {
+  if (n <= 0) return '—';
+  if (n >= 1e12) return `${currencySymbol}${(n / 1e12).toFixed(2)}T`;
+  if (n >= 1e9) return `${currencySymbol}${(n / 1e9).toFixed(2)}B`;
+  return `${currencySymbol}${(n / 1e6).toFixed(0)}M`;
 }
 
 function fmtBillions(n: number): string {
@@ -48,6 +50,8 @@ export default function CompanyFundamentalsScreen(): React.JSX.Element {
   const navigation = useNavigation();
   const route = useRoute<Route>();
   const { companyName, stockTicker } = route.params;
+  const classification = classifyInstrument({ ticker: stockTicker });
+  const currencySymbol = classification.market === 'TW' ? 'NT$' : '$';
 
   const [fundamentals, setFundamentals] = useState<StockFundamentals | null>(null);
   const [loading, setLoading] = useState(false);
@@ -117,17 +121,17 @@ export default function CompanyFundamentalsScreen(): React.JSX.Element {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>基本面指標</Text>
             <View style={styles.grid}>
-              <FundamentalItem label="市值" value={fmtMarketCap(fundamentals.marketCap)} />
+              <FundamentalItem label="市值" value={fmtMarketCap(fundamentals.marketCap, currencySymbol)} />
               <FundamentalItem
                 label="本益比 P/E"
                 value={fundamentals.peRatio != null ? `${fundamentals.peRatio.toFixed(2)}x` : '—'}
               />
               <FundamentalItem
                 label="EPS"
-                value={fundamentals.eps != null ? `$${fundamentals.eps.toFixed(2)}` : '—'}
+                value={fundamentals.eps != null ? `${currencySymbol}${fundamentals.eps.toFixed(2)}` : '—'}
               />
-              <FundamentalItem label="52W 最高" value={`$${fundamentals.week52High.toFixed(2)}`} />
-              <FundamentalItem label="52W 最低" value={`$${fundamentals.week52Low.toFixed(2)}`} />
+              <FundamentalItem label="52W 最高" value={`${currencySymbol}${fundamentals.week52High.toFixed(2)}`} />
+              <FundamentalItem label="52W 最低" value={`${currencySymbol}${fundamentals.week52Low.toFixed(2)}`} />
               <FundamentalItem
                 label="Beta"
                 value={fundamentals.beta != null ? fundamentals.beta.toFixed(2) : '—'}

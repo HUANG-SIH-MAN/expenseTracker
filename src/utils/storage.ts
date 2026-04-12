@@ -9,6 +9,7 @@ import { syncCreditCardAutopay } from "./creditCardAutopay";
 import { syncCashTopUp } from "./cashTopUp";
 import type {
   Account,
+  AlphaVantageApiKeyEntry,
   AutoPayExecutionLog,
   AnnualBudgetEntry,
   BudgetSettings,
@@ -2277,23 +2278,137 @@ export async function saveETFHoldings(holdings: ETFHolding[]): Promise<void> {
 
 // ─── Alpha Vantage API Key ────────────────────────────────────────────────────
 
-export async function getAlphaVantageApiKey(): Promise<string> {
+const HOURS_PER_DAY = 24;
+const MINUTES_PER_HOUR = 60;
+const SECONDS_PER_MINUTE = 60;
+const MILLISECONDS_PER_SECOND = 1000;
+const ALPHAVANTAGE_RATE_LIMIT_COOLDOWN_MS =
+  HOURS_PER_DAY *
+  MINUTES_PER_HOUR *
+  SECONDS_PER_MINUTE *
+  MILLISECONDS_PER_SECOND;
+
+function normalizeAlphaVantageApiKeyEntries(
+  input: unknown,
+): AlphaVantageApiKeyEntry[] {
+  if (!Array.isArray(input)) return [];
+  const nowMs = Date.now();
+  const seen = new Set<string>();
+  const normalized: AlphaVantageApiKeyEntry[] = [];
+  for (const row of input) {
+    if (typeof row === "string") {
+      const key = row.trim();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      normalized.push({ key });
+      continue;
+    }
+    if (!row || typeof row !== "object") continue;
+    const entry = row as Partial<AlphaVantageApiKeyEntry>;
+    const key = typeof entry.key === "string" ? entry.key.trim() : "";
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const blockedUntilRaw =
+      typeof entry.blockedUntil === "string" ? entry.blockedUntil : undefined;
+    const blockedUntilMs =
+      blockedUntilRaw != null ? new Date(blockedUntilRaw).getTime() : NaN;
+    const blockedUntil =
+      blockedUntilRaw != null &&
+      Number.isFinite(blockedUntilMs) &&
+      blockedUntilMs > nowMs
+        ? new Date(blockedUntilMs).toISOString()
+        : undefined;
+    const lastRateLimitedAtRaw =
+      typeof entry.lastRateLimitedAt === "string"
+        ? entry.lastRateLimitedAt
+        : undefined;
+    const lastRateLimitedAtMs =
+      lastRateLimitedAtRaw != null ? new Date(lastRateLimitedAtRaw).getTime() : NaN;
+    const lastRateLimitedAt =
+      lastRateLimitedAtRaw != null && Number.isFinite(lastRateLimitedAtMs)
+        ? new Date(lastRateLimitedAtMs).toISOString()
+        : undefined;
+    normalized.push({
+      key,
+      blockedUntil,
+      lastRateLimitedAt,
+    });
+  }
+  return normalized;
+}
+
+async function persistAlphaVantageApiKeyEntries(
+  entries: AlphaVantageApiKeyEntry[],
+): Promise<void> {
+  const payload = JSON.stringify(entries);
+  const db = await getDb();
+  if (db) {
+    await setSetting(db, STORAGE_KEYS.ALPHAVANTAGE_API_KEY, payload);
+    return;
+  }
+  await AsyncStorage.setItem(STORAGE_KEYS.ALPHAVANTAGE_API_KEY, payload);
+}
+
+export async function getAlphaVantageApiKeys(): Promise<
+  AlphaVantageApiKeyEntry[]
+> {
   const db = await getDb();
   if (db) {
     await ensureMigrationDone(db);
-    const val = await getSetting(db, STORAGE_KEYS.ALPHAVANTAGE_API_KEY);
-    return val ?? '';
   }
-  return (await AsyncStorage.getItem(STORAGE_KEYS.ALPHAVANTAGE_API_KEY)) ?? '';
+  const raw = db
+    ? await getSetting(db, STORAGE_KEYS.ALPHAVANTAGE_API_KEY)
+    : await AsyncStorage.getItem(STORAGE_KEYS.ALPHAVANTAGE_API_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return normalizeAlphaVantageApiKeyEntries(parsed);
+  } catch {
+    const key = raw.trim();
+    return key.length > 0 ? [{ key }] : [];
+  }
+}
+
+export async function setAlphaVantageApiKeys(keys: string[]): Promise<void> {
+  const normalized = normalizeAlphaVantageApiKeyEntries(keys);
+  await persistAlphaVantageApiKeyEntries(normalized);
+}
+
+export async function getAlphaVantageApiKey(): Promise<string> {
+  const entries = await getAlphaVantageApiKeys();
+  const nowMs = Date.now();
+  const active = entries.find((entry) => {
+    if (!entry.blockedUntil) return true;
+    return new Date(entry.blockedUntil).getTime() <= nowMs;
+  });
+  return active?.key ?? "";
 }
 
 export async function setAlphaVantageApiKey(key: string): Promise<void> {
-  const db = await getDb();
-  if (db) {
-    await setSetting(db, STORAGE_KEYS.ALPHAVANTAGE_API_KEY, key.trim());
-    return;
-  }
-  await AsyncStorage.setItem(STORAGE_KEYS.ALPHAVANTAGE_API_KEY, key.trim());
+  const normalized = key.trim();
+  await setAlphaVantageApiKeys(normalized ? [normalized] : []);
+}
+
+export async function markAlphaVantageApiKeyRateLimited(
+  apiKey: string,
+): Promise<void> {
+  const normalizedKey = apiKey.trim();
+  if (!normalizedKey) return;
+  const entries = await getAlphaVantageApiKeys();
+  const nowMs = Date.now();
+  const nowIso = new Date(nowMs).toISOString();
+  const blockedUntil = new Date(
+    nowMs + ALPHAVANTAGE_RATE_LIMIT_COOLDOWN_MS,
+  ).toISOString();
+  const next = entries.map((entry) => {
+    if (entry.key !== normalizedKey) return entry;
+    return {
+      ...entry,
+      blockedUntil,
+      lastRateLimitedAt: nowIso,
+    };
+  });
+  await persistAlphaVantageApiKeyEntries(next);
 }
 
 function toStockFundamentalsRecord(

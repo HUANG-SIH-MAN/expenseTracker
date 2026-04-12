@@ -22,12 +22,14 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useInvestment } from '../contexts/InvestmentContext';
 import { getStockWatchlist } from '../utils/storage';
 import { getStockPrice } from '../utils/stockPrice';
+import { classifyInstrument } from '../utils/instrumentClassification';
 import type { StockTransaction, StockWatchlistItem, StockCurrency } from '../types';
 import type { MainStackParamList } from '../navigation/MainStack';
 
 type Nav = NativeStackNavigationProp<MainStackParamList>;
 type Route = RouteProp<MainStackParamList, 'AddStockTransaction'>;
 type PickerMode = 'watchlist' | 'custom';
+const FORM_BOTTOM_PADDING = 24;
 
 function generateId(): string {
   return `stock_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -36,6 +38,11 @@ function generateId(): string {
 function todayISO(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function inferTickerCurrency(ticker: string): StockCurrency {
+  const classification = classifyInstrument({ ticker });
+  return classification.market === 'TW' ? 'TWD' : 'USD';
 }
 
 export default function AddStockTransactionScreen(): React.JSX.Element {
@@ -51,11 +58,12 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
   const [ticker, setTicker] = useState(editingTx?.ticker ?? route.params?.ticker ?? '');
   const [tickerName, setTickerName] = useState(editingTx?.name ?? '');
   const [tickerCurrency, setTickerCurrency] = useState<StockCurrency>(
-    editingTx ? (editingTx.usdCost != null ? 'USD' : 'TWD') : 'USD'
+    editingTx
+      ? (editingTx.usdCost != null ? 'USD' : 'TWD')
+      : inferTickerCurrency(route.params?.ticker ?? '')
   );
   // 自行輸入模式的暫存值
   const [customInput, setCustomInput] = useState('');
-  const [customCurrency, setCustomCurrency] = useState<StockCurrency>('USD');
   const [validating, setValidating] = useState(false);
 
   // ── 交易資料 ──────────────────────────────────
@@ -82,7 +90,7 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
           const first = items[0];
           setTicker(first.ticker);
           setTickerName(first.name);
-          setTickerCurrency(first.currency);
+          setTickerCurrency(inferTickerCurrency(first.ticker));
         }
       });
     }, [isEdit, ticker])
@@ -112,7 +120,7 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
   function selectFromWatchlist(item: StockWatchlistItem) {
     setTicker(item.ticker);
     setTickerName(item.name);
-    setTickerCurrency(item.currency);
+    setTickerCurrency(inferTickerCurrency(item.ticker));
   }
 
   // 自行輸入：驗證並確認
@@ -121,15 +129,16 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
     if (!t) return Alert.alert('請輸入股票代號');
     setValidating(true);
     try {
-      const result = await getStockPrice(t, customCurrency, true);
+      const inferredCurrency = inferTickerCurrency(t);
+      const result = await getStockPrice(t, inferredCurrency, true);
       if (result == null) {
-        Alert.alert('找不到此股票', `無法驗證「${t}」，請確認代號與幣別是否正確。`);
+        Alert.alert('找不到此股票', `無法驗證「${t}」，請確認代號是否正確。`);
         return;
       }
       setTicker(t);
       setTickerName(t);
-      setTickerCurrency(customCurrency);
-      Alert.alert('驗證成功', `已選取「${t}」，現價 ${result.price}`);
+      setTickerCurrency(inferredCurrency);
+      Alert.alert('驗證成功', `已選取「${t}」（${inferredCurrency}），現價 ${result.price}`);
     } finally {
       setValidating(false);
     }
@@ -189,7 +198,8 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={insets.top}
     >
       <View style={[styles.container, { paddingTop: insets.top }]}>
         {/* Header */}
@@ -203,7 +213,11 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
           </TouchableOpacity>
         </View>
 
-        <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 24 }]}>
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + FORM_BOTTOM_PADDING }]}
+        >
           {/* 買/賣切換 */}
           <View style={styles.toggleRow}>
             {(['buy', 'sell'] as const).map(t => (
@@ -287,19 +301,6 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
                     placeholderTextColor="#9ca3af"
                     autoCapitalize="characters"
                   />
-                  <View style={styles.customCurrencyBtns}>
-                    {(['USD', 'TWD'] as StockCurrency[]).map(c => (
-                      <TouchableOpacity
-                        key={c}
-                        style={[styles.customCurrencyBtn, customCurrency === c && styles.customCurrencyBtnActive]}
-                        onPress={() => setCustomCurrency(c)}
-                      >
-                        <Text style={[styles.customCurrencyText, customCurrency === c && styles.customCurrencyTextActive]}>
-                          {c}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
                   <TouchableOpacity
                     style={[styles.validateBtn, validating && { opacity: 0.6 }]}
                     onPress={handleValidateCustom}
@@ -320,6 +321,7 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
                     </Text>
                   </Text>
                 )}
+                <Text style={styles.tickerNameHint}>幣別由系統自動判斷（台股=TWD，美股=USD）</Text>
               </>
             )}
           </View>
@@ -438,7 +440,7 @@ const styles = StyleSheet.create({
   headerTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '600', color: '#111827' },
   saveBtn: { padding: 4 },
   saveBtnText: { fontSize: 16, color: '#2563eb', fontWeight: '600' },
-  scroll: { padding: 16, gap: 16 },
+  scroll: { flexGrow: 1, padding: 16, gap: 16 },
   toggleRow: {
     flexDirection: 'row',
     backgroundColor: '#e5e7eb',
@@ -496,16 +498,6 @@ const styles = StyleSheet.create({
   // 自行輸入
   customRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   customInput: { flex: 1 },
-  customCurrencyBtns: { flexDirection: 'row', gap: 4 },
-  customCurrencyBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: '#f3f4f6',
-  },
-  customCurrencyBtnActive: { backgroundColor: '#2563eb' },
-  customCurrencyText: { fontSize: 13, fontWeight: '600', color: '#374151' },
-  customCurrencyTextActive: { color: '#fff' },
   validateBtn: {
     backgroundColor: '#2563eb',
     borderRadius: 8,

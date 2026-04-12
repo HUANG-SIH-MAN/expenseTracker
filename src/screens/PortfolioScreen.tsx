@@ -115,12 +115,6 @@ export default function PortfolioScreen(): React.JSX.Element {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerBtn}
-            onPress={() => navigation.navigate('ImportStock')}
-          >
-            <Ionicons name="download-outline" size={22} color="#2563eb" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.headerBtn}
             onPress={() => navigation.navigate('AddStockTransaction', {})}
           >
             <Ionicons name="add-circle-outline" size={24} color="#2563eb" />
@@ -172,7 +166,7 @@ export default function PortfolioScreen(): React.JSX.Element {
           <View style={styles.empty}>
             <Ionicons name="bar-chart-outline" size={48} color="#d1d5db" />
             <Text style={styles.emptyText}>尚無持倉紀錄</Text>
-            <Text style={styles.emptyHint}>點右上角 ↓ 匯入 Excel，或 + 新增一筆</Text>
+            <Text style={styles.emptyHint}>點右上角 + 新增一筆</Text>
           </View>
         )}
 

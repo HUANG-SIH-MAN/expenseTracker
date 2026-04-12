@@ -30,7 +30,7 @@ import {
   calcYearlyReturns,
 } from '../utils/stockCalculations';
 import type { MainStackParamList } from '../navigation/MainStack';
-import { getETFHoldings, SUPPORTED_ETF_TICKERS, isSingleAssetETF, getSingleAssetDescription } from '../utils/etfHoldings';
+import { getETFHoldings, isSingleAssetETF, getSingleAssetDescription, isSupportedETFTicker } from '../utils/etfHoldings';
 import { fetchYearEndPriceTWD } from '../utils/stockPrice';
 import type { ETFHolding } from '../types';
 
@@ -167,6 +167,7 @@ export default function StockDetailScreen(): React.JSX.Element {
   const [holdings, setHoldings] = useState<ETFHolding[]>([]);
   const [holdingsLoading, setHoldingsLoading] = useState(false);
   const [holdingsError, setHoldingsError] = useState<string | null>(null);
+  const shouldShowETFInfo = isSupportedETFTicker(ticker);
 
   async function handleOpenHoldings() {
     setHoldingsVisible(true);
@@ -212,7 +213,7 @@ export default function StockDetailScreen(): React.JSX.Element {
           <Text style={styles.headerName}>{pos?.name ?? ticker}</Text>
         </View>
         <View style={styles.headerRight}>
-          {SUPPORTED_ETF_TICKERS.includes(ticker) && (
+          {shouldShowETFInfo && (
             <TouchableOpacity style={styles.headerBtn} onPress={handleOpenHoldings}>
               <Ionicons name="information-circle-outline" size={22} color="#2563eb" />
             </TouchableOpacity>

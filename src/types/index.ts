@@ -236,6 +236,23 @@ export type StockTransactionType = 'buy' | 'sell';
 /** 股票幣別 */
 export type StockCurrency = 'TWD' | 'USD';
 
+/** 股票市場（台股 / 美股） */
+export type InstrumentMarket = 'TW' | 'US';
+
+/** 投資標的類型（個股 / ETF） */
+export type InstrumentType = 'EQUITY' | 'ETF';
+
+/** 四分類代碼：市場 x 類型 */
+export type InstrumentCategory = 'TW_EQUITY' | 'TW_ETF' | 'US_EQUITY' | 'US_ETF';
+
+/** 標的自動分類結果 */
+export interface InstrumentClassification {
+  normalizedTicker: string;
+  market: InstrumentMarket;
+  type: InstrumentType;
+  category: InstrumentCategory;
+}
+
 /** 單筆股票買賣交易 */
 export interface StockTransaction {
   id: string;
@@ -302,6 +319,15 @@ export interface StockFundamentals {
   beta: number | null;
   annualFinancials: StockAnnualFinancial[]; // 最近5年
   lastUpdated: string; // ISO 8601
+}
+
+/** Alpha Vantage API Key 池中的單筆設定 */
+export interface AlphaVantageApiKeyEntry {
+  key: string;
+  /** 此 key 命中每日上限時，封鎖到期時間（ISO 8601） */
+  blockedUntil?: string;
+  /** 最近一次命中每日上限的時間（ISO 8601） */
+  lastRateLimitedAt?: string;
 }
 
 /** 自動扣款執行紀錄 */

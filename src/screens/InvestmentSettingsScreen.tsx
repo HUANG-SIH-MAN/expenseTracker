@@ -18,20 +18,65 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { getAlphaVantageApiKey, setAlphaVantageApiKey } from '../utils/storage';
+import type { MainStackParamList } from '../navigation/MainStack';
+import type { AlphaVantageApiKeyEntry } from '../types';
+import { getAlphaVantageApiKeys, setAlphaVantageApiKeys } from '../utils/storage';
 
 const HEADER_HEIGHT = 48;
 const BOTTOM_PADDING = 24;
 const INPUT_FOCUS_SCROLL_DELAY_MS = 160;
 const DEFAULT_INPUT_HEIGHT = 44;
+const API_KEY_PREVIEW_LIMIT = 3;
+
+type InvestmentSettingsNav = NativeStackNavigationProp<MainStackParamList, 'InvestmentSettings'>;
+
+function parseApiKeysInput(raw: string): string[] {
+  const seen = new Set<string>();
+  const parsed: string[] = [];
+  for (const line of raw.split('\n')) {
+    const key = line.trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    parsed.push(key);
+  }
+  return parsed;
+}
+
+function formatApiKeysInput(keys: string[]): string {
+  return keys.join('\n');
+}
+
+function areKeyListsEqual(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+}
+
+function maskApiKey(key: string): string {
+  if (key.length <= 8) return key;
+  return `${key.slice(0, 4)}…${key.slice(-4)}`;
+}
+
+function isBlockedEntry(entry: AlphaVantageApiKeyEntry): boolean {
+  if (!entry.blockedUntil) return false;
+  const blockedUntilMs = new Date(entry.blockedUntil).getTime();
+  return Number.isFinite(blockedUntilMs) && blockedUntilMs > Date.now();
+}
+
+function formatBlockedUntil(blockedUntil?: string): string {
+  if (!blockedUntil) return '';
+  const blockedUntilMs = new Date(blockedUntil).getTime();
+  if (!Number.isFinite(blockedUntilMs)) return '';
+  return new Date(blockedUntilMs).toLocaleString('zh-TW', { hour12: false });
+}
 
 export default function InvestmentSettingsScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation();
+  const navigation = useNavigation<InvestmentSettingsNav>();
 
-  const [apiKey, setApiKey] = useState('');
-  const [savedKey, setSavedKey] = useState('');
+  const [apiKeysInput, setApiKeysInput] = useState('');
+  const [savedKeyEntries, setSavedKeyEntries] = useState<AlphaVantageApiKeyEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const scrollViewRef = useRef<ScrollView | null>(null);
@@ -39,34 +84,37 @@ export default function InvestmentSettingsScreen(): React.JSX.Element {
   const [inputLayout, setInputLayout] = useState({ y: 0, height: DEFAULT_INPUT_HEIGHT });
 
   useEffect(() => {
-    getAlphaVantageApiKey().then(k => {
-      setApiKey(k);
-      setSavedKey(k);
+    getAlphaVantageApiKeys().then(entries => {
+      setApiKeysInput(formatApiKeysInput(entries.map((entry) => entry.key)));
+      setSavedKeyEntries(entries);
       setLoading(false);
     });
   }, []);
 
   async function handleSave() {
-    if (!apiKey.trim()) {
+    const parsedKeys = parseApiKeysInput(apiKeysInput);
+    if (parsedKeys.length === 0) {
       const msg = '請輸入 API Key';
       if (Platform.OS === 'web') { window.alert(msg); return; }
       Alert.alert('', msg);
       return;
     }
     setSaving(true);
-    await setAlphaVantageApiKey(apiKey.trim());
-    setSavedKey(apiKey.trim());
+    await setAlphaVantageApiKeys(parsedKeys);
+    const refreshedEntries = await getAlphaVantageApiKeys();
+    setApiKeysInput(formatApiKeysInput(refreshedEntries.map((entry) => entry.key)));
+    setSavedKeyEntries(refreshedEntries);
     setSaving(false);
-    const msg = 'API Key 已儲存';
+    const msg = `已儲存 ${refreshedEntries.length} 組 API Key`;
     if (Platform.OS === 'web') { window.alert(msg); return; }
     Alert.alert('', msg);
   }
 
   function handleClear() {
     const doClear = async () => {
-      await setAlphaVantageApiKey('');
-      setApiKey('');
-      setSavedKey('');
+      await setAlphaVantageApiKeys([]);
+      setApiKeysInput('');
+      setSavedKeyEntries([]);
     };
     if (Platform.OS === 'web') {
       if (window.confirm('確定要清除 API Key 嗎？')) doClear();
@@ -78,7 +126,12 @@ export default function InvestmentSettingsScreen(): React.JSX.Element {
     ]);
   }
 
-  const isDirty = apiKey.trim() !== savedKey;
+  const currentKeys = parseApiKeysInput(apiKeysInput);
+  const savedKeys = savedKeyEntries.map((entry) => entry.key);
+  const isDirty = !areKeyListsEqual(currentKeys, savedKeys);
+  const activeKeyCount = savedKeyEntries.filter((entry) => !isBlockedEntry(entry)).length;
+  const previewEntries = savedKeyEntries.slice(0, API_KEY_PREVIEW_LIMIT);
+  const hasMorePreview = savedKeyEntries.length > API_KEY_PREVIEW_LIMIT;
 
   function handleApiKeyFocus() {
     const inputCenterY = inputLayout.y + inputLayout.height / 2;
@@ -118,10 +171,23 @@ export default function InvestmentSettingsScreen(): React.JSX.Element {
           >
             {/* Alpha Vantage 說明區塊 */}
             <View style={styles.section}>
+              <TouchableOpacity
+                style={styles.linkRow}
+                activeOpacity={0.7}
+                onPress={() => navigation.navigate('ImportStock')}
+              >
+                <View style={styles.linkRowContent}>
+                  <Text style={styles.linkRowTitle}>股票交易匯入</Text>
+                  <Text style={styles.linkRowSubtitle}>從 CSV 匯入投資交易紀錄</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+              </TouchableOpacity>
+
               <Text style={styles.sectionTitle}>Alpha Vantage API Key</Text>
               <Text style={styles.sectionDesc}>
                 用於抓取 ETF 持股明細（QQQ、SMH）。{'\n'}
-                免費方案每日 25 次，系統會優先使用舊資料，超過 7 天才背景更新。
+                免費方案每日 25 次，支援多組 key 輪替。{'\n'}
+                某組達上限會先封鎖 24 小時，系統自動切換下一組可用 key。
               </Text>
 
               <View style={styles.stepBox}>
@@ -142,7 +208,7 @@ export default function InvestmentSettingsScreen(): React.JSX.Element {
               </View>
 
               {/* 輸入欄 */}
-              <Text style={styles.inputLabel}>API Key</Text>
+              <Text style={styles.inputLabel}>API Keys（每行一組）</Text>
               <View
                 style={styles.inputRow}
                 onLayout={event => {
@@ -152,32 +218,55 @@ export default function InvestmentSettingsScreen(): React.JSX.Element {
               >
                 <TextInput
                   style={styles.input}
-                  value={apiKey}
-                  onChangeText={setApiKey}
+                  value={apiKeysInput}
+                  onChangeText={setApiKeysInput}
                   onFocus={handleApiKeyFocus}
-                  placeholder="貼上你的 Alpha Vantage API Key"
+                  placeholder={`貼上你的 Alpha Vantage API Key\n每行一組`}
                   placeholderTextColor="#9ca3af"
                   autoCapitalize="characters"
                   autoCorrect={false}
+                  multiline
+                  numberOfLines={4}
+                  scrollEnabled
+                  blurOnSubmit={false}
+                  returnKeyType="default"
                 />
-                {apiKey.length > 0 && (
-                  <TouchableOpacity style={styles.clearBtn} onPress={() => setApiKey('')}>
+                {apiKeysInput.length > 0 && (
+                  <TouchableOpacity style={styles.clearBtn} onPress={() => setApiKeysInput('')}>
                     <Ionicons name="close-circle" size={18} color="#9ca3af" />
                   </TouchableOpacity>
                 )}
               </View>
 
               {/* 狀態標籤 */}
-              {savedKey ? (
+              {savedKeyEntries.length > 0 ? (
                 <View style={styles.statusRow}>
                   <Ionicons name="checkmark-circle" size={14} color="#16a34a" />
-                  <Text style={styles.statusSaved}>已設定（{savedKey.slice(0, 4)}…{savedKey.slice(-4)}）</Text>
+                  <Text style={styles.statusSaved}>
+                    已設定 {savedKeyEntries.length} 組（目前可用 {activeKeyCount} 組）
+                  </Text>
                 </View>
               ) : (
                 <View style={styles.statusRow}>
                   <Ionicons name="warning-outline" size={14} color="#d97706" />
                   <Text style={styles.statusEmpty}>尚未設定，ETF 持股資料無法顯示</Text>
                 </View>
+              )}
+
+              {previewEntries.map((entry) => (
+                <View key={entry.key} style={styles.keyItemRow}>
+                  <Text style={styles.keyItemText}>{maskApiKey(entry.key)}</Text>
+                  {isBlockedEntry(entry) ? (
+                    <Text style={styles.keyBlockedText}>
+                      已達上限，{formatBlockedUntil(entry.blockedUntil)} 後可用
+                    </Text>
+                  ) : (
+                    <Text style={styles.keyActiveText}>可用</Text>
+                  )}
+                </View>
+              ))}
+              {hasMorePreview && (
+                <Text style={styles.moreText}>尚有 {savedKeyEntries.length - API_KEY_PREVIEW_LIMIT} 組未顯示</Text>
               )}
 
               {/* 儲存按鈕 */}
@@ -194,7 +283,7 @@ export default function InvestmentSettingsScreen(): React.JSX.Element {
               </TouchableOpacity>
 
               {/* 清除按鈕 */}
-              {savedKey.length > 0 && (
+              {savedKeyEntries.length > 0 && (
                 <TouchableOpacity style={styles.clearKeyBtn} onPress={handleClear}>
                   <Text style={styles.clearKeyBtnText}>清除 API Key</Text>
                 </TouchableOpacity>
@@ -234,6 +323,20 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
+  linkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  linkRowContent: {
+    flex: 1,
+    marginRight: 8,
+  },
+  linkRowTitle: { fontSize: 15, fontWeight: '700', color: '#111827' },
+  linkRowSubtitle: { fontSize: 12, color: '#6b7280', marginTop: 2 },
   sectionTitle: { fontSize: 15, fontWeight: '700', color: '#111827' },
   sectionDesc: { fontSize: 13, color: '#6b7280', lineHeight: 20 },
   stepBox: {
@@ -255,7 +358,7 @@ const styles = StyleSheet.create({
   inputLabel: { fontSize: 12, fontWeight: '600', color: '#374151' },
   inputRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     borderWidth: 1,
     borderColor: '#d1d5db',
     borderRadius: 8,
@@ -267,12 +370,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#111827',
     paddingVertical: 10,
+    minHeight: 96,
+    maxHeight: 168,
+    textAlignVertical: 'top',
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
-  clearBtn: { padding: 4 },
+  clearBtn: { padding: 4, marginTop: 8 },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   statusSaved: { fontSize: 12, color: '#16a34a' },
   statusEmpty: { fontSize: 12, color: '#d97706' },
+  keyItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  keyItemText: { fontSize: 12, color: '#111827', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  keyActiveText: { fontSize: 12, color: '#16a34a' },
+  keyBlockedText: { fontSize: 12, color: '#b45309', flex: 1, textAlign: 'right' },
+  moreText: { fontSize: 12, color: '#6b7280' },
   saveBtn: {
     backgroundColor: '#2563eb',
     borderRadius: 8,

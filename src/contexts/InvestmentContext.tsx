@@ -21,6 +21,7 @@ import {
   getAllStockPricesCache,
 } from '../utils/storage';
 import { getMultipleStockPrices, getUSDTWDRate } from '../utils/stockPrice';
+import { classifyInstrument, normalizeTicker } from '../utils/instrumentClassification';
 import {
   calculatePositions,
   type HoldingPosition,
@@ -35,10 +36,13 @@ function inferTickerCurrencies(
 ): Record<string, 'TWD' | 'USD'> {
   const result: Record<string, 'TWD' | 'USD'> = {};
   for (const tx of txList) {
-    const inferred = tx.usdCost != null ? 'USD' : 'TWD';
-    const existing = result[tx.ticker];
+    const fallbackCurrency = tx.usdCost != null ? 'USD' : undefined;
+    const classification = classifyInstrument({ ticker: tx.ticker, currency: fallbackCurrency });
+    const inferred = classification.market === 'TW' ? 'TWD' : 'USD';
+    const normalizedTicker = normalizeTicker(tx.ticker);
+    const existing = result[normalizedTicker];
     if (existing == null || inferred === 'USD') {
-      result[tx.ticker] = inferred;
+      result[normalizedTicker] = inferred;
     }
   }
   return result;
@@ -87,7 +91,7 @@ export function InvestmentProvider({ children }: { children: React.ReactNode }) 
     try {
       const targetTxs = txList || transactionsRef.current;
       const tickerCurrencies = inferTickerCurrencies(targetTxs);
-      const tickers = Array.from(new Set(targetTxs.map(t => t.ticker)));
+      const tickers = Array.from(new Set(targetTxs.map(t => normalizeTicker(t.ticker))));
       if (tickers.length === 0) return;
 
       const stocksToFetch = tickers.map(ticker => ({

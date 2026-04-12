@@ -17,7 +17,13 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { MainStackParamList } from '../navigation/MainStack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useInvestment, getPriceTWD } from '../contexts/InvestmentContext';
-import { getETFHoldings, refreshETFHoldings, SUPPORTED_ETF_TICKERS, isSingleAssetETF } from '../utils/etfHoldings';
+import {
+  getETFHoldings,
+  refreshETFHoldings,
+  getSupportedETFHoldingsTickers,
+  isSingleAssetETF,
+  isSupportedETFTicker,
+} from '../utils/etfHoldings';
 import type { ETFHolding } from '../types';
 
 function fmtTWD(n: number): string {
@@ -51,7 +57,7 @@ export default function ETFExposureScreen(): React.JSX.Element {
   // 取得持有的 ETF（在 SUPPORTED_ETF_TICKERS 內）
   const etfPositions = useMemo(() => {
     return Array.from(positions.values()).filter(
-      p => p.shares > 0 && SUPPORTED_ETF_TICKERS.includes(p.ticker) && !isSingleAssetETF(p.ticker)
+      p => p.shares > 0 && isSupportedETFTicker(p.ticker) && !isSingleAssetETF(p.ticker)
     );
   }, [positions]);
 
@@ -185,7 +191,7 @@ export default function ETFExposureScreen(): React.JSX.Element {
           <Ionicons name="analytics-outline" size={48} color="#d1d5db" />
           <Text style={styles.emptyText}>尚無可分析的 ETF 持倉</Text>
           <Text style={styles.emptyHint}>
-            支援：{SUPPORTED_ETF_TICKERS.filter(t => !isSingleAssetETF(t)).join('、')}
+            支援：{getSupportedETFHoldingsTickers().join('、')}
           </Text>
         </View>
       ) : (

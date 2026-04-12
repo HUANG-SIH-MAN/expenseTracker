@@ -7,13 +7,82 @@
  */
 import { Platform } from 'react-native';
 import { getStockPriceCache, setStockPriceCache } from './storage';
+import { STOCK_PRICE_CACHE_TTL_MS, STOCK_PRICE_REFRESH_COOLDOWN_MS } from './dataRefreshPolicy';
+import { normalizeTaiwanTicker, normalizeTicker } from './instrumentClassification';
 import type { StockPriceCache } from '../types';
 
-const CACHE_TTL_MS = 30 * 60 * 1000; // 30 分鐘
+const REFRESH_LOG_PREFIX = '[Stock Price]';
+const inflightRefreshMap = new Map<string, Promise<StockPriceCache | null>>();
+const lastRefreshAtMap = new Map<string, number>();
 
 /** 判斷快取是否仍有效 */
 function isCacheValid(lastUpdated: string): boolean {
-  return Date.now() - new Date(lastUpdated).getTime() < CACHE_TTL_MS;
+  return Date.now() - new Date(lastUpdated).getTime() < STOCK_PRICE_CACHE_TTL_MS;
+}
+
+function buildInflightKey(ticker: string, currency: 'TWD' | 'USD'): string {
+  return `${currency}:${ticker}`;
+}
+
+function isInRefreshCooldown(ticker: string): boolean {
+  const lastRefreshAt = lastRefreshAtMap.get(ticker);
+  if (!lastRefreshAt) return false;
+  return Date.now() - lastRefreshAt < STOCK_PRICE_REFRESH_COOLDOWN_MS;
+}
+
+async function fetchStockPrice(
+  ticker: string,
+  currency: 'TWD' | 'USD',
+  cached: StockPriceCache | null
+): Promise<StockPriceCache | null> {
+  const twTicker = normalizeTaiwanTicker(ticker);
+  const targetTicker = normalizeTicker(ticker);
+  const price = currency === 'USD'
+    ? await fetchUSStockPrice(targetTicker)
+    : await fetchTWStockPrice(twTicker);
+
+  if (price == null) {
+    return cached ?? null;
+  }
+
+  const freshCache: StockPriceCache = {
+    ticker: targetTicker,
+    price,
+    currency,
+    lastUpdated: new Date().toISOString(),
+  };
+  await setStockPriceCache(freshCache);
+  return freshCache;
+}
+
+function getOrCreateRefreshPromise(
+  ticker: string,
+  currency: 'TWD' | 'USD',
+  cached: StockPriceCache | null
+): Promise<StockPriceCache | null> {
+  const inflightKey = buildInflightKey(ticker, currency);
+  const inflight = inflightRefreshMap.get(inflightKey);
+  if (inflight) return inflight;
+
+  const task = (async () => {
+    lastRefreshAtMap.set(ticker, Date.now());
+    return fetchStockPrice(ticker, currency, cached);
+  })().finally(() => {
+    inflightRefreshMap.delete(inflightKey);
+  });
+  inflightRefreshMap.set(inflightKey, task);
+  return task;
+}
+
+function triggerStaleRefreshInBackground(
+  ticker: string,
+  currency: 'TWD' | 'USD',
+  cached: StockPriceCache | null
+): void {
+  if (isInRefreshCooldown(ticker)) return;
+  void getOrCreateRefreshPromise(ticker, currency, cached).catch((error: unknown) => {
+    console.warn(`${REFRESH_LOG_PREFIX} stale refresh failed for ${ticker}:`, error);
+  });
 }
 
 /**
@@ -155,33 +224,23 @@ export async function getStockPrice(
   currency: 'TWD' | 'USD',
   ignoreCache = false
 ): Promise<StockPriceCache | null> {
+  const normalizedTicker = normalizeTicker(ticker);
+
   // 1. 先查快取
-  const cached = await getStockPriceCache(ticker);
-  if (!ignoreCache && cached && isCacheValid(cached.lastUpdated)) {
+  const cached = await getStockPriceCache(normalizedTicker);
+  if (!ignoreCache && cached) {
+    if (isCacheValid(cached.lastUpdated)) {
+      return cached;
+    }
+    triggerStaleRefreshInBackground(normalizedTicker, currency, cached);
     return cached;
   }
 
-  // 重新抓取
-  let price: number | null = null;
-  if (currency === 'USD') {
-    price = await fetchUSStockPrice(ticker);
-  } else {
-    price = await fetchTWStockPrice(ticker);
+  if (ignoreCache && isInRefreshCooldown(normalizedTicker) && cached) {
+    return cached;
   }
 
-  if (price == null) {
-    // 抓取失敗，回傳舊快取（若有）
-    return cached ?? null;
-  }
-
-  const cache: StockPriceCache = {
-    ticker,
-    price,
-    currency,
-    lastUpdated: new Date().toISOString(),
-  };
-  await setStockPriceCache(cache);
-  return cache;
+  return getOrCreateRefreshPromise(normalizedTicker, currency, cached);
 }
 
 /**
@@ -197,7 +256,8 @@ export async function fetchYearEndPriceTWD(
   year: number,
   usdTwdRate: number
 ): Promise<number | null> {
-  const cacheKey = `${ticker}_${year}_ye`;
+  const normalizedTicker = normalizeTicker(ticker);
+  const cacheKey = `${normalizedTicker}_${year}_ye`;
 
   // 查永久快取
   const cached = await getStockPriceCache(cacheKey);
@@ -207,9 +267,10 @@ export async function fetchYearEndPriceTWD(
 
   if (currency === 'TWD') {
     // TWSE：查該年 12 月月底最後收盤
+    const twTicker = normalizeTaiwanTicker(ticker);
     try {
       const yyyymmdd = `${year}1215`; // 12 月中旬，讓 API 回傳整個 12 月
-      const url = `https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?stockNo=${encodeURIComponent(ticker)}&date=${yyyymmdd}&response=json`;
+      const url = `https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?stockNo=${encodeURIComponent(twTicker)}&date=${yyyymmdd}&response=json`;
       const res = await fetchWithCORS(url);
       const json = await res.json();
       const rows: string[][] = json?.data ?? [];
@@ -227,7 +288,7 @@ export async function fetchYearEndPriceTWD(
     try {
       const period1 = Math.floor(new Date(`${year}-12-29T00:00:00Z`).getTime() / 1000);
       const period2 = Math.floor(new Date(`${year + 1}-01-03T00:00:00Z`).getTime() / 1000);
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&period1=${period1}&period2=${period2}`;
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(normalizedTicker)}?interval=1d&period1=${period1}&period2=${period2}`;
       const headers = Platform.OS === 'web' ? {} : { headers: { 'User-Agent': 'Mozilla/5.0' } };
       const res = await fetchWithCORS(url, headers);
       const json = await res.json();
