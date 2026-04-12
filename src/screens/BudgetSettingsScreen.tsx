@@ -7,6 +7,7 @@ import {
   Text,
   View,
   TouchableOpacity,
+  Keyboard,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -28,6 +29,20 @@ export default function BudgetSettingsScreen(): React.JSX.Element {
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList, 'BudgetSettings'>>();
   const { refreshBudget } = useBudget();
   const [tab, setTab] = useState<BudgetTab>('monthly');
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  React.useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => {
+      setIsKeyboardVisible(true);
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      setIsKeyboardVisible(false);
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -73,7 +88,7 @@ export default function BudgetSettingsScreen(): React.JSX.Element {
         <AnnualBudgetTab insets={insets} />
       )}
 
-      <BottomBar />
+      {!isKeyboardVisible ? <BottomBar /> : null}
     </View>
   );
 }

@@ -55,6 +55,7 @@ const YEAR_ROW_ALTERNATE_MODULO = 2;
 const DEFAULT_VISIBLE_TX_COUNT = 10;
 const TX_ACTION_ICON_SIZE = 16;
 const TX_ACTION_GAP = 12;
+const PRICE_WARNING_PCT_DECIMALS = 1;
 
 export default function StockDetailScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
@@ -400,8 +401,12 @@ export default function StockDetailScreen(): React.JSX.Element {
           )}
           {displayTx.map(tx => {
             const isExpanded = expandedTxId === tx.id;
+            const isBuyAboveMarket = tx.type === 'buy' && priceNative > 0 && tx.priceNative > priceNative;
+            const premiumPct = isBuyAboveMarket
+              ? ((tx.priceNative - priceNative) / priceNative) * 100
+              : 0;
             return (
-              <View key={tx.id} style={styles.txItem}>
+              <View key={tx.id} style={[styles.txItem, isBuyAboveMarket && styles.txItemWarning]}>
                 <TouchableOpacity
                   style={styles.txCollapsedRow}
                   onPress={() => setExpandedTxId(prev => (prev === tx.id ? null : tx.id))}
@@ -413,10 +418,15 @@ export default function StockDetailScreen(): React.JSX.Element {
                     </View>
                     <View>
                       <Text style={styles.txDate}>{tx.date}</Text>
-                      <Text style={styles.txMeta}>
+                      <Text style={[styles.txMeta, isBuyAboveMarket && styles.txMetaWarning]}>
                         成交單價：
                         {pos?.currency === 'USD' ? `$${tx.priceNative.toFixed(2)}` : `NT$${tx.priceNative.toFixed(0)}`}
                       </Text>
+                      {isBuyAboveMarket && (
+                        <Text style={styles.txWarningText}>
+                          高於現價 {premiumPct.toFixed(PRICE_WARNING_PCT_DECIMALS)}%
+                        </Text>
+                      )}
                     </View>
                   </View>
                   <Ionicons
@@ -649,6 +659,13 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: '#f3f4f6',
   },
+  txItemWarning: {
+    backgroundColor: '#fef2f2',
+    borderLeftWidth: 3,
+    borderLeftColor: '#dc2626',
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
   txCollapsedRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -663,6 +680,8 @@ const styles = StyleSheet.create({
   txBadgeText: { fontSize: 11, fontWeight: '600', color: '#374151' },
   txDate: { fontSize: 13, fontWeight: '500', color: '#111827' },
   txMeta: { fontSize: 11, color: '#6b7280', marginTop: 2 },
+  txMetaWarning: { color: '#b91c1c', fontWeight: '600' },
+  txWarningText: { fontSize: 11, color: '#dc2626', fontWeight: '700', marginTop: 2 },
   txExpanded: {
     backgroundColor: '#f9fafb',
     borderRadius: 8,

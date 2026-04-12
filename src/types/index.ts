@@ -175,6 +175,14 @@ export interface BudgetSettings {
   weekendWeight: number;
 }
 
+/** 每月預計存款設定（按年月） */
+export interface MonthlySavingTarget {
+  /** 年月（YYYY-MM） */
+  yearMonth: string;
+  /** 預計存款金額（TWD） */
+  amount: number;
+}
+
 /** 遇假日（週末）時的日期調整方式 */
 export type HolidayAdjust = 'none' | 'next_workday' | 'prev_workday';
 

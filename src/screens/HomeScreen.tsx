@@ -43,6 +43,7 @@ const BUDGET_SETTLEMENT_REMAINING = '月底剩餘';
 const BUDGET_SETTLEMENT_SPENT = '日常已花';
 const BUDGET_DISPOSABLE = '月可支配';
 const BUDGET_DAILY_ESTIMATE = '每日預估';
+const BUDGET_SAVING_TARGET_HINT_PREFIX = '已扣本月預計存款';
 const AUTOPAY_NOTICE_PREFIX = '已自動補登信用卡扣款';
 const AUTOPAY_NOTICE_SUFFIX = '筆';
 const BOTTOM_BAR_HEIGHT = 56;
@@ -104,7 +105,7 @@ export default function HomeScreen(): React.JSX.Element {
     }, [refreshTransactions])
   );
   const { getCategoryLabel: getCategoryLabelFromContext, getCategoryIcon: getCategoryIconFromContext } = useCategories();
-  const { monthlyFixedItems, budgetSettings } = useBudget();
+  const { monthlyFixedItems, budgetSettings, getMonthlySavingTargetAmount } = useBudget();
   const [ratesToPrimary, setRatesToPrimary] = useState<Record<string, number>>({});
   const [recurringItems, setRecurringItems] = useState<RecurringItem[]>([]);
   useEffect(() => {
@@ -133,8 +134,25 @@ export default function HomeScreen(): React.JSX.Element {
   }, [selectedDate, today, selectedYM, todayYM]);
   const daysInMonth = new Date(year, month, 0).getDate();
   const budgetSummary = useMemo(() => {
-    return getBudgetSummary(referenceKey, transactions, monthlyFixedItems, budgetSettings, ratesToPrimary, recurringItems);
-  }, [referenceKey, transactions, monthlyFixedItems, budgetSettings, ratesToPrimary, recurringItems]);
+    const savingTarget = getMonthlySavingTargetAmount(referenceKey.slice(0, 7));
+    return getBudgetSummary(
+      referenceKey,
+      transactions,
+      monthlyFixedItems,
+      budgetSettings,
+      savingTarget,
+      ratesToPrimary,
+      recurringItems
+    );
+  }, [
+    referenceKey,
+    transactions,
+    monthlyFixedItems,
+    budgetSettings,
+    getMonthlySavingTargetAmount,
+    ratesToPrimary,
+    recurringItems,
+  ]);
   const datesWithRecords = useMemo(() => {
     const set = new Set<string>();
     for (const t of transactions) {
@@ -368,6 +386,11 @@ export default function HomeScreen(): React.JSX.Element {
                 <Text style={styles.budgetCardLabel}>{row2Label}</Text>
                 <Text style={styles.budgetCardAmount}>{row2Value}</Text>
               </View>
+              {budgetSummary.savingTarget > 0 ? (
+                <Text style={styles.budgetCardHint}>
+                  {BUDGET_SAVING_TARGET_HINT_PREFIX} {Math.round(budgetSummary.savingTarget)}
+                </Text>
+              ) : null}
             </TouchableOpacity>
           );
         })()}
@@ -508,6 +531,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#1e40af',
+  },
+  budgetCardHint: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#4b5563',
   },
   autopayNoticeCard: {
     backgroundColor: '#ecfdf5',

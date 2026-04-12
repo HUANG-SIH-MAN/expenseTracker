@@ -9,6 +9,8 @@ import {
   TouchableOpacity,
   ScrollView,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -28,10 +30,14 @@ const LABEL_INCOME_SOURCE_HINT =
   '月收入會使用「每月固定收入」+「其他收入記帳（不含年度預算與固定收支自動帶入）」';
 const LABEL_WEEKDAY_WEIGHT = '平日權重';
 const LABEL_WEEKEND_WEIGHT = '假日權重';
+const LABEL_MONTHLY_SAVING_TARGET = '本月預計存款';
 const BTN_SAVE_SETTINGS = '儲存設定';
 const EMPTY_HINT = '尚無固定支出項目，可點下方按鈕新增';
 const DEFAULT_WEEKDAY_WEIGHT = 1;
 const DEFAULT_WEEKEND_WEIGHT = 1.5;
+const MONTHLY_SAVING_TARGET_PLACEHOLDER = '0';
+const BOTTOM_BAR_HEIGHT = 56;
+const SCROLL_BOTTOM_GAP = 24;
 
 interface MonthlyBudgetTabProps {
   navigation: NativeStackNavigationProp<MainStackParamList, 'BudgetSettings'>;
@@ -62,6 +68,8 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
     refreshBudget,
     saveBudgetSettings,
     saveMonthlyFixedItems,
+    getMonthlySavingTargetAmount,
+    saveMonthlySavingTarget,
   } = useBudget();
   const { transactions } = useTransactions();
   const todayKey = getTodayKey();
@@ -105,11 +113,14 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
   const [weekdayWeightStr, setWeekdayWeightStr] = useState('');
   const [weekendWeightStr, setWeekendWeightStr] = useState('');
   const [settingsDirty, setSettingsDirty] = useState(false);
+  const [monthlySavingTargetStr, setMonthlySavingTargetStr] = useState('');
+  const currentYearMonth = todayKey.slice(0, 7);
 
   React.useEffect(() => {
     setWeekdayWeightStr(String(budgetSettings.weekdayWeight));
     setWeekendWeightStr(String(budgetSettings.weekendWeight));
-  }, [budgetSettings]);
+    setMonthlySavingTargetStr(String(getMonthlySavingTargetAmount(currentYearMonth)));
+  }, [budgetSettings, currentYearMonth, getMonthlySavingTargetAmount]);
 
   const openAdd = () => {
     navigation.navigate('BudgetFixedEdit', {});
@@ -140,28 +151,43 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
   const handleSaveSettings = useCallback(async () => {
     const weekdayWeight = Number(weekdayWeightStr) || DEFAULT_WEEKDAY_WEIGHT;
     const weekendWeight = Number(weekendWeightStr) || DEFAULT_WEEKEND_WEIGHT;
+    const monthlySavingTarget = Math.max(0, Number(monthlySavingTargetStr) || 0);
     await saveBudgetSettings({
       defaultMonthlyIncome: budgetSettings.defaultMonthlyIncome,
       weekdayWeight,
       weekendWeight,
     });
+    await saveMonthlySavingTarget(currentYearMonth, monthlySavingTarget);
     setSettingsDirty(false);
   }, [
     weekdayWeightStr,
     weekendWeightStr,
+    monthlySavingTargetStr,
+    currentYearMonth,
     budgetSettings.defaultMonthlyIncome,
     saveBudgetSettings,
+    saveMonthlySavingTarget,
   ]);
 
   return (
-    <>
+    <KeyboardAvoidingView
+      style={styles.keyboardContainer}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={insets.top}
+    >
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingBottom: insets.bottom + 24 },
+          {
+            paddingBottom:
+              insets.bottom +
+              BOTTOM_BAR_HEIGHT +
+              SCROLL_BOTTOM_GAP,
+          },
         ]}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
       >
         <Text style={styles.sectionTitle}>{SECTION_FIXED}</Text>
         {(monthlyFixedItems.length > 0 || amortizedItems.length > 0) && (() => {
@@ -347,6 +373,20 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
               keyboardType="numeric"
             />
           </View>
+          <View style={styles.field}>
+            <Text style={styles.fieldLabel}>{LABEL_MONTHLY_SAVING_TARGET}</Text>
+            <TextInput
+              style={styles.input}
+              value={monthlySavingTargetStr}
+              onChangeText={(t) => {
+                setMonthlySavingTargetStr(t);
+                setSettingsDirty(true);
+              }}
+              placeholder={MONTHLY_SAVING_TARGET_PLACEHOLDER}
+              placeholderTextColor="#9ca3af"
+              keyboardType="numeric"
+            />
+          </View>
 
           {settingsDirty && (
             <TouchableOpacity
@@ -385,11 +425,14 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
           </View>
         </View>
       ) : null}
-    </>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboardContainer: {
+    flex: 1,
+  },
   scroll: {
     flex: 1,
   },

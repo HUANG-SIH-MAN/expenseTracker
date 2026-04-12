@@ -42,6 +42,12 @@ interface ExposureRow {
 }
 
 type Nav = NativeStackNavigationProp<MainStackParamList>;
+const EXPOSURE_RANK_COLUMN_WIDTH = 20;
+const EXPOSURE_VALUE_COLUMN_WIDTH = 98;
+const EXPOSURE_PCT_COLUMN_WIDTH = 64;
+const EXPOSURE_NAME_PADDING_HORIZONTAL = 6;
+const EXPOSURE_ROW_PADDING_HORIZONTAL = 10;
+const EXPOSURE_VALUE_COLUMN_GAP = 8;
 
 export default function ETFExposureScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
@@ -305,7 +311,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: EXPOSURE_ROW_PADDING_HORIZONTAL,
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
     backgroundColor: '#f3f4f6',
@@ -317,15 +323,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingHorizontal: EXPOSURE_ROW_PADDING_HORIZONTAL,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#f3f4f6',
   },
   rowAlt: { backgroundColor: '#fafafa' },
-  colRank: { width: 28, fontSize: 12, color: '#9ca3af', textAlign: 'right' },
-  colName: { flex: 1, paddingHorizontal: 8, gap: 4 },
-  colValue: { width: 88, fontSize: 12, fontWeight: '600', color: '#111827', textAlign: 'right' },
-  colPct: { width: 52, fontSize: 12, fontWeight: '500', color: '#6b7280', textAlign: 'right' },
+  colRank: { width: EXPOSURE_RANK_COLUMN_WIDTH, fontSize: 12, color: '#9ca3af', textAlign: 'left' },
+  colName: { flex: 1, paddingHorizontal: EXPOSURE_NAME_PADDING_HORIZONTAL, gap: 4 },
+  colValue: {
+    width: EXPOSURE_VALUE_COLUMN_WIDTH,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#111827',
+    textAlign: 'right',
+    marginRight: EXPOSURE_VALUE_COLUMN_GAP,
+  },
+  colPct: { width: EXPOSURE_PCT_COLUMN_WIDTH, fontSize: 12, fontWeight: '500', color: '#6b7280', textAlign: 'right' },
   companyName: { fontSize: 13, color: '#111827', fontWeight: '500' },
   sourceTags: { flexDirection: 'row', gap: 4, flexWrap: 'wrap' },
   tag: {

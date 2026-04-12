@@ -98,6 +98,11 @@ CREATE TABLE IF NOT EXISTS annual_budget_entries (
   sort_order INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS monthly_saving_targets (
+  year_month TEXT PRIMARY KEY,
+  amount REAL NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS credit_card_autopay_rules (
   id TEXT PRIMARY KEY,
   credit_card_account_id TEXT NOT NULL,

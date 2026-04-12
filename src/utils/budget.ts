@@ -80,9 +80,10 @@ export function getRemainingWeightedDays(
  */
 export function getMonthlyDisposable(
   monthIncome: number,
-  fixedEstimatedTotal: number
+  fixedEstimatedTotal: number,
+  savingTarget: number
 ): number {
-  return Math.max(0, monthIncome - fixedEstimatedTotal);
+  return Math.max(0, monthIncome - fixedEstimatedTotal - Math.max(0, savingTarget));
 }
 
 /**
@@ -299,6 +300,7 @@ export interface BudgetSummary {
   fixedEstimatedTotal: number;
   /** 當月年費分攤合計（已含在 fixedEstimatedTotal 內） */
   amortizedTotal: number;
+  savingTarget: number;
   monthlyDisposable: number;
   dailyExpenseSoFar: number;
   remainingDisposable: number;
@@ -313,6 +315,7 @@ export function getBudgetSummary(
   transactions: Transaction[],
   monthlyFixedItems: MonthlyFixedItem[],
   settings: BudgetSettings,
+  savingTarget: number,
   ratesToPrimary?: Record<string, number>,
   recurringItems?: RecurringItem[]
 ): BudgetSummary | null {
@@ -328,7 +331,8 @@ export function getBudgetSummary(
   const fixedEstimatedTotal = fixedItemsTotal + amortizedTotal;
   const monthlyDisposable = getMonthlyDisposable(
     monthIncome,
-    fixedEstimatedTotal
+    fixedEstimatedTotal,
+    savingTarget
   );
   const dailyExpenseSoFar = getDailyExpenseSoFar(
     transactions,
@@ -354,6 +358,7 @@ export function getBudgetSummary(
     monthlyIncome: monthIncome,
     fixedEstimatedTotal,
     amortizedTotal,
+    savingTarget: Math.max(0, savingTarget),
     monthlyDisposable,
     dailyExpenseSoFar,
     remainingDisposable,

@@ -19,6 +19,7 @@ import type {
   CurrencyCode,
   CurrencyOption,
   ETFHolding,
+  MonthlySavingTarget,
   StockFundamentals,
   MonthlyFixedItem,
   OnboardingData,
@@ -46,8 +47,23 @@ const SETTINGS_KEY_ONBOARDING = "hasCompletedOnboarding";
 const SETTINGS_KEY_PRIMARY_CURRENCY = "primaryCurrency";
 const SETTINGS_KEY_MIGRATED = "migratedFromAsyncStorage";
 const BUDGET_SETTINGS_KEY = `${BUDGET_SETTINGS_KEY_PREFIX}settings`;
+const MONTHLY_SAVING_TARGETS_KEY = `${BUDGET_SETTINGS_KEY_PREFIX}monthlySavingTargets`;
 
 let migrationPromise: Promise<void> | null = null;
+
+const ZERO_AMOUNT = 0;
+
+function normalizeSavingTargetAmount(input: unknown): number {
+  const amount = Number(input);
+  if (!Number.isFinite(amount)) return ZERO_AMOUNT;
+  return Math.max(ZERO_AMOUNT, amount);
+}
+
+function normalizeYearMonth(input: unknown): string {
+  if (typeof input !== "string") return "";
+  const text = input.trim();
+  return /^\d{4}-\d{2}$/.test(text) ? text : "";
+}
 
 async function getSetting(
   db: SQLite.SQLiteDatabase,
@@ -1058,6 +1074,84 @@ export async function saveBudgetSettings(
   );
 }
 
+export async function getMonthlySavingTargets(): Promise<MonthlySavingTarget[]> {
+  const db = await getDb();
+  if (db) {
+    await ensureMigrationDone(db);
+    const rows = await db.getAllAsync<{ year_month: string; amount: number }>(
+      "SELECT year_month, amount FROM monthly_saving_targets ORDER BY year_month ASC",
+    );
+    return rows
+      .map((row) => ({
+        yearMonth: normalizeYearMonth(row.year_month),
+        amount: normalizeSavingTargetAmount(row.amount),
+      }))
+      .filter((item) => item.yearMonth.length > 0);
+  }
+  try {
+    const raw = await AsyncStorage.getItem(MONTHLY_SAVING_TARGETS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return Object.entries(parsed)
+      .map(([yearMonth, amount]) => ({
+        yearMonth: normalizeYearMonth(yearMonth),
+        amount: normalizeSavingTargetAmount(amount),
+      }))
+      .filter((item) => item.yearMonth.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+export async function getMonthlySavingTargetAmount(
+  yearMonth: string,
+): Promise<number> {
+  const normalizedYearMonth = normalizeYearMonth(yearMonth);
+  if (normalizedYearMonth.length === 0) return ZERO_AMOUNT;
+  const db = await getDb();
+  if (db) {
+    await ensureMigrationDone(db);
+    const row = await db.getFirstAsync<{ amount: number }>(
+      "SELECT amount FROM monthly_saving_targets WHERE year_month = ?",
+      normalizedYearMonth,
+    );
+    return normalizeSavingTargetAmount(row?.amount);
+  }
+  try {
+    const raw = await AsyncStorage.getItem(MONTHLY_SAVING_TARGETS_KEY);
+    if (!raw) return ZERO_AMOUNT;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return normalizeSavingTargetAmount(parsed[normalizedYearMonth]);
+  } catch {
+    return ZERO_AMOUNT;
+  }
+}
+
+export async function saveMonthlySavingTarget(
+  yearMonth: string,
+  amount: number,
+): Promise<void> {
+  const normalizedYearMonth = normalizeYearMonth(yearMonth);
+  if (normalizedYearMonth.length === 0) return;
+  const normalizedAmount = normalizeSavingTargetAmount(amount);
+  const db = await getDb();
+  if (db) {
+    await db.runAsync(
+      "INSERT OR REPLACE INTO monthly_saving_targets (year_month, amount) VALUES (?, ?)",
+      normalizedYearMonth,
+      normalizedAmount,
+    );
+    return;
+  }
+  const currentTargets = await getMonthlySavingTargets();
+  const map: Record<string, number> = {};
+  for (const item of currentTargets) {
+    map[item.yearMonth] = normalizeSavingTargetAmount(item.amount);
+  }
+  map[normalizedYearMonth] = normalizedAmount;
+  await AsyncStorage.setItem(MONTHLY_SAVING_TARGETS_KEY, JSON.stringify(map));
+}
+
 // --- 匯率（總資產換算用）---
 
 export interface ExchangeRatesData {
@@ -1778,6 +1872,7 @@ export async function clearAllData(): Promise<void> {
     await db.runAsync("DELETE FROM recurring");
     await db.runAsync("DELETE FROM monthly_fixed_items");
     await db.runAsync("DELETE FROM annual_budget_entries");
+    await db.runAsync("DELETE FROM monthly_saving_targets");
     await db.runAsync("DELETE FROM credit_card_autopay_execution_logs");
     await db.runAsync("DELETE FROM credit_card_autopay_rules");
     await db.runAsync("DELETE FROM cash_topup_rules");
@@ -1808,6 +1903,7 @@ export async function clearAllData(): Promise<void> {
     await AsyncStorage.removeItem(STORAGE_KEYS.STOCK_TRANSACTIONS);
     await AsyncStorage.removeItem(STORAGE_KEYS.STOCK_PRICES_CACHE);
     await AsyncStorage.removeItem(STORAGE_KEYS.ETF_HOLDINGS);
+    await AsyncStorage.removeItem(MONTHLY_SAVING_TARGETS_KEY);
     return;
   }
   await saveTransactions([]);
@@ -1831,6 +1927,7 @@ export async function clearAllData(): Promise<void> {
   await AsyncStorage.removeItem(STORAGE_KEYS.STOCK_TRANSACTIONS);
   await AsyncStorage.removeItem(STORAGE_KEYS.STOCK_PRICES_CACHE);
   await AsyncStorage.removeItem(STORAGE_KEYS.ETF_HOLDINGS);
+  await AsyncStorage.removeItem(MONTHLY_SAVING_TARGETS_KEY);
 }
 
 const MIN_DAY = 1;
