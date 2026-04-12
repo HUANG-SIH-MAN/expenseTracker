@@ -36,6 +36,8 @@ function formatPct(n: number): string {
 const SHARE_DECIMAL_PLACES = 2;
 const USD_DECIMAL_PLACES = 2;
 const TWD_DECIMAL_PLACES = 0;
+const ALLOCATION_PCT_DECIMAL_PLACES = 1;
+const ALLOCATION_TOP_COUNT = 5;
 
 function formatShares(n: number): string {
   const roundedShares = Math.round(n * (10 ** SHARE_DECIMAL_PLACES)) / (10 ** SHARE_DECIMAL_PLACES);
@@ -43,6 +45,10 @@ function formatShares(n: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: SHARE_DECIMAL_PLACES,
   });
+}
+
+function formatAllocationPct(n: number): string {
+  return `${n.toFixed(ALLOCATION_PCT_DECIMAL_PLACES)}%`;
 }
 
 export default function PortfolioScreen(): React.JSX.Element {
@@ -69,6 +75,16 @@ export default function PortfolioScreen(): React.JSX.Element {
   }
   const totalGainTWD = totalValueTWD - totalCostTWD;
   const totalGainPct = totalCostTWD > 0 ? totalGainTWD / totalCostTWD : 0;
+  const allocationRows = posArray
+    .map(pos => {
+      const priceTWD = getPriceTWD(pos.ticker, prices, usdTwdRate);
+      const valueTWD = pos.shares * priceTWD;
+      const weightPct = totalValueTWD > 0 ? (valueTWD / totalValueTWD) * 100 : 0;
+      const displayName = pos.name.trim() !== '' ? pos.name : pos.ticker;
+      return { ticker: pos.ticker, displayName, valueTWD, weightPct };
+    })
+    .sort((a, b) => b.weightPct - a.weightPct)
+    .slice(0, ALLOCATION_TOP_COUNT);
 
   const gainColor = totalGainTWD >= 0 ? '#16a34a' : '#dc2626';
 
@@ -160,6 +176,26 @@ export default function PortfolioScreen(): React.JSX.Element {
             <Text style={styles.rateHint}>USD/TWD ≈ {usdTwdRate.toFixed(2)}</Text>
           )}
         </TouchableOpacity>
+
+        {posArray.length > 0 && (
+          <View style={styles.allocationCard}>
+            <Text style={styles.allocationTitle}>持股比例</Text>
+            {allocationRows.map(row => (
+              <View key={row.ticker} style={styles.allocationRow}>
+                <View style={styles.allocationLeft}>
+                  <Text style={styles.allocationTicker}>{row.ticker}</Text>
+                  {row.displayName !== row.ticker && (
+                    <Text style={styles.allocationName} numberOfLines={1}>{row.displayName}</Text>
+                  )}
+                </View>
+                <View style={styles.allocationRight}>
+                  <Text style={styles.allocationPct}>{formatAllocationPct(row.weightPct)}</Text>
+                  <Text style={styles.allocationValue}>NT$ {formatTWD(row.valueTWD)}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
 
         {/* 無持倉提示 */}
         {posArray.length === 0 && (
@@ -267,6 +303,31 @@ const styles = StyleSheet.create({
   summarySubLabel: { fontSize: 11, color: '#93c5fd', marginBottom: 4 },
   summarySubValue: { fontSize: 15, fontWeight: '600', color: '#fff' },
   rateHint: { fontSize: 11, color: '#64748b', marginTop: 4 },
+  allocationCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    gap: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  allocationTitle: { fontSize: 14, fontWeight: '700', color: '#111827', marginBottom: 2 },
+  allocationRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#f3f4f6',
+    paddingTop: 8,
+  },
+  allocationLeft: { flex: 1, paddingRight: 12 },
+  allocationTicker: { fontSize: 13, fontWeight: '600', color: '#111827' },
+  allocationName: { fontSize: 11, color: '#6b7280', marginTop: 2 },
+  allocationRight: { alignItems: 'flex-end', gap: 1 },
+  allocationPct: { fontSize: 14, fontWeight: '700', color: '#1d4ed8' },
+  allocationValue: { fontSize: 11, color: '#6b7280' },
   empty: { alignItems: 'center', paddingTop: 60, gap: 12 },
   emptyText: { fontSize: 16, color: '#9ca3af', fontWeight: '500' },
   emptyHint: { fontSize: 13, color: '#d1d5db', textAlign: 'center' },
