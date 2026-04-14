@@ -61,8 +61,10 @@ export function calculatePositions(
     if (tx.type === 'buy') {
       // 加權平均成本
       const newShares = pos.shares + tx.shares;
+      // 美股：用實際扣款 USD（含手續費）計算每股成本；台股：用 priceNative
+      const nativeCostThisTx = tx.usdCost ?? tx.priceNative * tx.shares;
       pos.avgCostNative =
-        (pos.avgCostNative * pos.shares + tx.priceNative * tx.shares) / newShares;
+        (pos.avgCostNative * pos.shares + nativeCostThisTx) / newShares;
       pos.avgCostTWD =
         (pos.avgCostTWD * pos.shares + (tx.twdCost / tx.shares) * tx.shares) / newShares;
       pos.shares = newShares;
