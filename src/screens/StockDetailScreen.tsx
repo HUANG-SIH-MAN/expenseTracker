@@ -33,6 +33,7 @@ import type { MainStackParamList } from '../navigation/MainStack';
 import { getETFHoldings, isSingleAssetETF, getSingleAssetDescription, isSupportedETFTicker } from '../utils/etfHoldings';
 import { fetchYearEndPriceTWD } from '../utils/stockPrice';
 import type { ETFHolding } from '../types';
+import { noteIndicatesDividendReinvest } from '../utils/stockDividendReinvest';
 
 type Nav = NativeStackNavigationProp<MainStackParamList>;
 type Route = RouteProp<MainStackParamList, 'StockDetail'>;
@@ -254,9 +255,9 @@ export default function StockDetailScreen(): React.JSX.Element {
                 </Text>
               </View>
               <View style={styles.summaryItem}>
-                <Text style={styles.summaryLabel}>均成本（原幣/股）</Text>
+                <Text style={styles.summaryLabel}>均成本（含費/股）</Text>
                 <Text style={styles.summaryVal}>
-                  {isUS ? '$' : 'NT$'}{pos.avgCostNative.toFixed(isUS ? 2 : 0)}
+                  {isUS ? '$' : 'NT$'}{isUS ? pos.avgCostNative.toFixed(2) : (pos.totalCostTWD / pos.shares).toFixed(2)}
                 </Text>
               </View>
             </View>
@@ -365,6 +366,21 @@ export default function StockDetailScreen(): React.JSX.Element {
         {yearlyReturns.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>各年度損益</Text>
+            {pos && (
+              <View style={styles.totalCostRow}>
+                <Text style={styles.totalCostLabel}>總投入</Text>
+                {isUS ? (
+                  <View>
+                    <Text style={styles.totalCostVal}>
+                      ${pos.totalCostUSD != null ? pos.totalCostUSD.toFixed(2) : '—'}
+                    </Text>
+                    <Text style={[styles.totalCostSub, { marginTop: 4 }]}>NT$ {fmtTWD(pos.totalCostTWD)}</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.totalCostVal}>NT$ {fmtTWD(pos.totalCostTWD)}</Text>
+                )}
+              </View>
+            )}
             <Text style={styles.yearCurrency}>幣別：TWD</Text>
             <View style={styles.yearHeaderRow}>
               <Text style={styles.yearHeaderYear}>年度</Text>
@@ -413,8 +429,15 @@ export default function StockDetailScreen(): React.JSX.Element {
                   activeOpacity={0.7}
                 >
                   <View style={styles.txCollapsedLeft}>
-                    <View style={[styles.txBadge, tx.type === 'buy' ? styles.badgeBuy : styles.badgeSell]}>
-                      <Text style={styles.txBadgeText}>{tx.type === 'buy' ? '買入' : '賣出'}</Text>
+                    <View style={styles.txBadgeRow}>
+                      <View style={[styles.txBadge, tx.type === 'buy' ? styles.badgeBuy : styles.badgeSell]}>
+                        <Text style={styles.txBadgeText}>{tx.type === 'buy' ? '買入' : '賣出'}</Text>
+                      </View>
+                      {tx.type === 'buy' && noteIndicatesDividendReinvest(tx.note) && (
+                        <View style={[styles.txBadge, styles.badgeDrip]}>
+                          <Text style={styles.txBadgeText}>股利再投資</Text>
+                        </View>
+                      )}
                     </View>
                     <View>
                       <Text style={styles.txDate}>{tx.date}</Text>
@@ -452,6 +475,12 @@ export default function StockDetailScreen(): React.JSX.Element {
                       <View style={styles.txExpandedRow}>
                         <Text style={styles.txExpandedLabel}>交易金額（USD）</Text>
                         <Text style={styles.txExpandedValue}>${tx.usdCost.toFixed(2)}</Text>
+                      </View>
+                    )}
+                    {tx.note != null && tx.note.trim() !== '' && (
+                      <View style={styles.txNoteBlock}>
+                        <Text style={styles.txExpandedLabel}>備註</Text>
+                        <Text style={styles.txNoteBody}>{tx.note}</Text>
                       </View>
                     )}
                     <View style={styles.txActions}>
@@ -634,6 +663,10 @@ const styles = StyleSheet.create({
   },
   yearRowOdd: { backgroundColor: '#ffffff' },
   yearRowEven: { backgroundColor: '#f9fafb' },
+  totalCostRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 6 },
+  totalCostLabel: { fontSize: 12, color: '#6b7280', fontWeight: '500', marginTop: 2 },
+  totalCostVal: { fontSize: 13, fontWeight: '600', color: '#111827' },
+  totalCostSub: { fontSize: 12, color: '#6b7280', fontWeight: '400' },
   yearCurrency: { fontSize: 11, color: '#9ca3af', marginBottom: 2 },
   yearHeaderRow: {
     flexDirection: 'row',
@@ -674,9 +707,11 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   txCollapsedLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  txBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   txBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   badgeBuy: { backgroundColor: '#dbeafe' },
   badgeSell: { backgroundColor: '#fce7f3' },
+  badgeDrip: { backgroundColor: '#ede9fe' },
   txBadgeText: { fontSize: 11, fontWeight: '600', color: '#374151' },
   txDate: { fontSize: 13, fontWeight: '500', color: '#111827' },
   txMeta: { fontSize: 11, color: '#6b7280', marginTop: 2 },
@@ -697,6 +732,8 @@ const styles = StyleSheet.create({
   },
   txExpandedLabel: { fontSize: 12, color: '#6b7280' },
   txExpandedValue: { fontSize: 13, fontWeight: '600', color: '#111827' },
+  txNoteBlock: { gap: 4 },
+  txNoteBody: { fontSize: 13, color: '#374151', lineHeight: 20 },
   txActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',

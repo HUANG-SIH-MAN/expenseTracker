@@ -13,6 +13,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Switch,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
@@ -23,6 +24,11 @@ import { useInvestment } from '../contexts/InvestmentContext';
 import { getStockWatchlist } from '../utils/storage';
 import { getStockPrice } from '../utils/stockPrice';
 import { classifyInstrument } from '../utils/instrumentClassification';
+import {
+  applyDividendReinvestToNote,
+  noteIndicatesDividendReinvest,
+  stripDividendReinvestMarker,
+} from '../utils/stockDividendReinvest';
 import type { StockTransaction, StockWatchlistItem, StockCurrency } from '../types';
 import type { MainStackParamList } from '../navigation/MainStack';
 
@@ -74,11 +80,22 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
   const [twdCost, setTwdCost] = useState(editingTx?.twdCost.toString() ?? '');
   const [usdCost, setUsdCost] = useState(editingTx?.usdCost?.toString() ?? '');
   const [exchangeRate, setExchangeRate] = useState(editingTx?.exchangeRate?.toString() ?? '');
-  const [note, setNote] = useState(editingTx?.note ?? '');
+  const [note, setNote] = useState(() => {
+    const raw = editingTx?.note ?? '';
+    if (editingTx?.type === 'sell') return stripDividendReinvestMarker(raw);
+    return raw;
+  });
   const [saving, setSaving] = useState(false);
   const { addTransaction, updateTransaction } = useInvestment();
 
   const isUS = tickerCurrency === 'USD';
+  const isDividendReinvestNote = noteIndicatesDividendReinvest(note);
+
+  React.useEffect(() => {
+    if (txType === 'sell') {
+      setNote(prev => stripDividendReinvestMarker(prev));
+    }
+  }, [txType]);
 
   // 載入自選股清單
   useFocusEffect(
@@ -167,6 +184,9 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return Alert.alert('日期格式應為 YYYY-MM-DD');
 
+    const noteAfterSellStrip =
+      txType === 'sell' ? stripDividendReinvestMarker(note) : note;
+    const finalNoteTrimmed = noteAfterSellStrip.trim();
     const tx: StockTransaction = {
       id: editingTx?.id ?? generateId(),
       ticker,
@@ -178,7 +198,7 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
       usdCost: usdNum,
       twdCost: twdNum,
       exchangeRate: rateNum,
-      note: note.trim() || undefined,
+      note: finalNoteTrimmed || undefined,
       createdAt: editingTx?.createdAt ?? new Date().toISOString(),
     };
 
@@ -232,6 +252,24 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
               </TouchableOpacity>
             ))}
           </View>
+
+          {txType === 'buy' && (
+            <View style={styles.field}>
+              <View style={styles.switchRow}>
+                <Text style={styles.label}>股利再投資（DRIP）</Text>
+                <Switch
+                  accessibilityLabel="股利再投資"
+                  value={isDividendReinvestNote}
+                  onValueChange={v => setNote(prev => applyDividendReinvestToNote(prev, v))}
+                  trackColor={{ false: '#d1d5db', true: '#93c5fd' }}
+                  thumbColor={isDividendReinvestNote ? '#2563eb' : '#f4f4f5'}
+                />
+              </View>
+              <Text style={styles.hintText}>
+                儲存為買入；台幣成本請填券商結單上股利再投資所動用之金額（等同股利金額）。
+              </Text>
+            </View>
+          )}
 
           {/* ── 股票選擇區 ── */}
           <View style={styles.field}>
@@ -356,6 +394,9 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
             <Text style={styles.label}>
               {txType === 'buy' ? '買入股價' : '賣出股價'}（{isUS ? 'USD' : 'TWD'}）
             </Text>
+            {txType === 'buy' && isDividendReinvestNote && (
+              <Text style={styles.hintText}>再投資成交價，依結單填寫。</Text>
+            )}
             <TextInput
               style={styles.input}
               value={priceNative}
@@ -369,6 +410,9 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
           {/* 台幣成本 */}
           <View style={styles.field}>
             <Text style={styles.label}>台幣{txType === 'buy' ? '成本' : '收入'}（NT$）</Text>
+            {txType === 'buy' && isDividendReinvestNote && (
+              <Text style={styles.hintText}>與該次再投資動用之台幣金額一致（勿填 0）。</Text>
+            )}
             <TextInput
               style={styles.input}
               value={twdCost}
@@ -451,6 +495,13 @@ const styles = StyleSheet.create({
   toggleActive: { backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 2, elevation: 1 },
   toggleText: { fontSize: 15, color: '#6b7280', fontWeight: '500' },
   toggleTextActive: { color: '#111827', fontWeight: '600' },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  hintText: { fontSize: 12, color: '#6b7280', lineHeight: 18 },
   field: { gap: 6 },
   label: { fontSize: 13, fontWeight: '500', color: '#374151' },
   // 股票選擇器
