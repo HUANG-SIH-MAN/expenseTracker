@@ -23,6 +23,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { MainStackParamList } from '../navigation/MainStack';
 import type { AlphaVantageApiKeyEntry } from '../types';
 import { getAlphaVantageApiKeys, setAlphaVantageApiKeys } from '../utils/storage';
+import { useInvestment } from '../contexts/InvestmentContext';
 
 const HEADER_HEIGHT = 48;
 const BOTTOM_PADDING = 24;
@@ -74,6 +75,7 @@ function formatBlockedUntil(blockedUntil?: string): string {
 export default function InvestmentSettingsScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<InvestmentSettingsNav>();
+  const { positions, removeAllTransactionsByTicker } = useInvestment();
 
   const [apiKeysInput, setApiKeysInput] = useState('');
   const [savedKeyEntries, setSavedKeyEntries] = useState<AlphaVantageApiKeyEntry[]>([]);
@@ -108,6 +110,27 @@ export default function InvestmentSettingsScreen(): React.JSX.Element {
     const msg = `已儲存 ${refreshedEntries.length} 組 API Key`;
     if (Platform.OS === 'web') { window.alert(msg); return; }
     Alert.alert('', msg);
+  }
+
+  function handleDeleteStockData(ticker: string) {
+    const doDelete = async () => {
+      await removeAllTransactionsByTicker(ticker);
+      const msg = `已刪除 ${ticker} 所有交易紀錄`;
+      if (Platform.OS === 'web') { window.alert(msg); return; }
+      Alert.alert('', msg);
+    };
+    if (Platform.OS === 'web') {
+      if (window.confirm(`確定要刪除 ${ticker} 的所有資料嗎？此操作無法復原。`)) doDelete();
+      return;
+    }
+    Alert.alert(
+      `刪除 ${ticker} 所有資料`,
+      '所有交易紀錄將被永久刪除，此操作無法復原。',
+      [
+        { text: '取消', style: 'cancel' },
+        { text: '刪除', style: 'destructive', onPress: doDelete },
+      ]
+    );
   }
 
   function handleClear() {
@@ -289,6 +312,37 @@ export default function InvestmentSettingsScreen(): React.JSX.Element {
                 </TouchableOpacity>
               )}
             </View>
+
+            {/* 刪除單一股票資料 */}
+            {positions.size > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>刪除股票所有資料</Text>
+                <Text style={styles.sectionDesc}>刪除後所有交易紀錄將永久消失，無法復原。</Text>
+                {Array.from(positions.values()).map((pos, index, arr) => (
+                  <View
+                    key={pos.ticker}
+                    style={[
+                      styles.deleteStockRow,
+                      index === arr.length - 1 && { borderBottomWidth: 0 },
+                    ]}
+                  >
+                    <View>
+                      <Text style={styles.deleteStockTicker}>{pos.ticker}</Text>
+                      {pos.name !== pos.ticker && (
+                        <Text style={styles.deleteStockName}>{pos.name}</Text>
+                      )}
+                    </View>
+                    <TouchableOpacity
+                      style={styles.deleteStockBtn}
+                      onPress={() => handleDeleteStockData(pos.ticker)}
+                    >
+                      <Ionicons name="trash-outline" size={14} color="#dc2626" />
+                      <Text style={styles.deleteStockBtnText}>刪除</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
           </ScrollView>
         )}
       </KeyboardAvoidingView>
@@ -402,4 +456,26 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   clearKeyBtnText: { fontSize: 13, color: '#dc2626' },
+  deleteStockRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#f3f4f6',
+  },
+  deleteStockTicker: { fontSize: 14, fontWeight: '600', color: '#111827' },
+  deleteStockName: { fontSize: 11, color: '#6b7280', marginTop: 1 },
+  deleteStockBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#fca5a5',
+    backgroundColor: '#fff5f5',
+  },
+  deleteStockBtnText: { fontSize: 12, color: '#dc2626', fontWeight: '600' },
 });

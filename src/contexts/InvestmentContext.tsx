@@ -18,6 +18,7 @@ import {
   saveStockTransaction,
   saveStockTransactions,
   deleteStockTransaction,
+  deleteStockTransactionsByTicker,
   getAllStockPricesCache,
 } from '../utils/storage';
 import { getMultipleStockPrices, getUSDTWDRate } from '../utils/stockPrice';
@@ -61,6 +62,7 @@ interface InvestmentContextValue {
   updateTransaction: (tx: StockTransaction) => Promise<void>;
   importTransactions: (txs: StockTransaction[]) => Promise<void>;
   removeTransaction: (id: string) => Promise<void>;
+  removeAllTransactionsByTicker: (ticker: string) => Promise<void>;
 }
 
 const InvestmentContext = createContext<InvestmentContextValue | null>(null);
@@ -174,6 +176,15 @@ export function InvestmentProvider({ children }: { children: React.ReactNode }) 
     });
   }, []);
 
+  const removeAllTransactionsByTicker = useCallback(async (ticker: string) => {
+    await deleteStockTransactionsByTicker(ticker);
+    setTransactions(prev => {
+      const updated = prev.filter(t => t.ticker !== ticker);
+      setPositions(calculatePositions(updated));
+      return updated;
+    });
+  }, []);
+
   useEffect(() => {
     reload(true);
   }, [reload]);
@@ -193,6 +204,7 @@ export function InvestmentProvider({ children }: { children: React.ReactNode }) 
         updateTransaction,
         importTransactions,
         removeTransaction,
+        removeAllTransactionsByTicker,
       }}
     >
       {children}

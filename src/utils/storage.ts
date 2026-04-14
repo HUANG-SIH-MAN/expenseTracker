@@ -2157,6 +2157,17 @@ export async function deleteStockTransaction(id: string): Promise<void> {
   await AsyncStorage.setItem(STORAGE_KEYS.STOCK_TRANSACTIONS, JSON.stringify(next));
 }
 
+export async function deleteStockTransactionsByTicker(ticker: string): Promise<void> {
+  const db = await getDb();
+  if (db) {
+    await db.runAsync('DELETE FROM stock_transactions WHERE ticker = ?', ticker);
+    return;
+  }
+  const all = await getStockTransactions();
+  const next = all.filter(t => t.ticker !== ticker);
+  await AsyncStorage.setItem(STORAGE_KEYS.STOCK_TRANSACTIONS, JSON.stringify(next));
+}
+
 // ─────────────────────────────────────────────
 // Stock price cache
 // ─────────────────────────────────────────────
