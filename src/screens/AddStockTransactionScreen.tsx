@@ -113,16 +113,6 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
     }, [isEdit, ticker])
   );
 
-  // 自動計算 USD 成本
-  React.useEffect(() => {
-    if (!isUS || isEdit) return;
-    const s = parseFloat(shares);
-    const p = parseFloat(priceNative);
-    if (!isNaN(s) && !isNaN(p)) {
-      setUsdCost((s * p).toFixed(2));
-    }
-  }, [shares, priceNative, isUS, isEdit]);
-
   // 自動計算匯率
   React.useEffect(() => {
     if (!isUS) return;

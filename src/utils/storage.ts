@@ -2030,6 +2030,90 @@ export async function syncRecurringToTransactions(): Promise<Transaction[]> {
 // Stock transactions
 // ─────────────────────────────────────────────
 
+/** 舊版僅存 AsyncStorage 的股票交易，在 SQLite 就緒後合併進 DB（程序重啟後會再檢查一次，因模組變數歸零） */
+let stockTransactionsAsyncStorageImportDone = false;
+
+function isPersistableStockTransaction(tx: unknown): tx is StockTransaction {
+  if (tx == null || typeof tx !== "object") return false;
+  const o = tx as Record<string, unknown>;
+  return (
+    typeof o.id === "string" &&
+    o.id.length > 0 &&
+    typeof o.ticker === "string" &&
+    typeof o.name === "string" &&
+    typeof o.date === "string" &&
+    (o.type === "buy" || o.type === "sell") &&
+    typeof o.shares === "number" &&
+    Number.isFinite(o.shares) &&
+    typeof o.priceNative === "number" &&
+    Number.isFinite(o.priceNative) &&
+    typeof o.twdCost === "number" &&
+    Number.isFinite(o.twdCost) &&
+    typeof o.createdAt === "string"
+  );
+}
+
+/**
+ * 若裝置上仍有 @expense_tracker/stock_transactions 的 JSON（例如升級前只寫入 AsyncStorage），
+ * 合併寫入 SQLite 後清除該鍵，避免「畫面／DB 裡像沒存到」的斷裂。
+ */
+async function ensureStockTransactionsImportedFromAsyncStorage(
+  db: SQLite.SQLiteDatabase,
+): Promise<void> {
+  if (stockTransactionsAsyncStorageImportDone) return;
+
+  const raw = await AsyncStorage.getItem(STORAGE_KEYS.STOCK_TRANSACTIONS);
+  if (raw == null || raw === "" || raw === "[]") {
+    stockTransactionsAsyncStorageImportDone = true;
+    return;
+  }
+
+  let list: unknown[];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      stockTransactionsAsyncStorageImportDone = true;
+      return;
+    }
+    list = parsed;
+  } catch {
+    await AsyncStorage.removeItem(STORAGE_KEYS.STOCK_TRANSACTIONS);
+    stockTransactionsAsyncStorageImportDone = true;
+    return;
+  }
+
+  const valid = list.filter(isPersistableStockTransaction);
+  if (valid.length === 0) {
+    await AsyncStorage.removeItem(STORAGE_KEYS.STOCK_TRANSACTIONS);
+    stockTransactionsAsyncStorageImportDone = true;
+    return;
+  }
+
+  await db.withTransactionAsync(async () => {
+    for (const tx of valid) {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO stock_transactions` +
+          ` (id,ticker,name,date,type,shares,price_native,usd_cost,twd_cost,exchange_rate,note,created_at)` +
+          ` VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+        tx.id,
+        tx.ticker,
+        tx.name,
+        tx.date,
+        tx.type,
+        tx.shares,
+        tx.priceNative,
+        tx.usdCost ?? null,
+        tx.twdCost,
+        tx.exchangeRate ?? null,
+        tx.note ?? null,
+        tx.createdAt,
+      );
+    }
+  });
+  await AsyncStorage.removeItem(STORAGE_KEYS.STOCK_TRANSACTIONS);
+  stockTransactionsAsyncStorageImportDone = true;
+}
+
 function rowToStockTransaction(row: Record<string, unknown>): StockTransaction {
   return {
     id: row.id as string,
@@ -2050,6 +2134,8 @@ function rowToStockTransaction(row: Record<string, unknown>): StockTransaction {
 export async function getStockTransactions(): Promise<StockTransaction[]> {
   const db = await getDb();
   if (db) {
+    await ensureMigrationDone(db);
+    await ensureStockTransactionsImportedFromAsyncStorage(db);
     const rows = await db.getAllAsync<Record<string, unknown>>(
       'SELECT * FROM stock_transactions ORDER BY date ASC, created_at ASC'
     );
@@ -2068,6 +2154,8 @@ export async function getStockTransactions(): Promise<StockTransaction[]> {
 export async function getStockTransactionsByTicker(ticker: string): Promise<StockTransaction[]> {
   const db = await getDb();
   if (db) {
+    await ensureMigrationDone(db);
+    await ensureStockTransactionsImportedFromAsyncStorage(db);
     const rows = await db.getAllAsync<Record<string, unknown>>(
       'SELECT * FROM stock_transactions WHERE ticker = ? ORDER BY date ASC',
       ticker,
@@ -2081,6 +2169,8 @@ export async function getStockTransactionsByTicker(ticker: string): Promise<Stoc
 export async function saveStockTransaction(tx: StockTransaction): Promise<void> {
   const db = await getDb();
   if (db) {
+    await ensureMigrationDone(db);
+    await ensureStockTransactionsImportedFromAsyncStorage(db);
     await db.runAsync(
       `INSERT OR REPLACE INTO stock_transactions` +
       ` (id,ticker,name,date,type,shares,price_native,usd_cost,twd_cost,exchange_rate,note,created_at)` +
@@ -2119,6 +2209,8 @@ function sqlNum(v: number | undefined | null): string {
 export async function saveStockTransactions(txs: StockTransaction[]): Promise<void> {
   const db = await getDb();
   if (db) {
+    await ensureMigrationDone(db);
+    await ensureStockTransactionsImportedFromAsyncStorage(db);
     for (const tx of txs) {
       await db.runAsync(
         `INSERT OR REPLACE INTO stock_transactions` +
@@ -2149,6 +2241,8 @@ export async function saveStockTransactions(txs: StockTransaction[]): Promise<vo
 export async function deleteStockTransaction(id: string): Promise<void> {
   const db = await getDb();
   if (db) {
+    await ensureMigrationDone(db);
+    await ensureStockTransactionsImportedFromAsyncStorage(db);
     await db.runAsync('DELETE FROM stock_transactions WHERE id = ?', id);
     return;
   }
@@ -2160,6 +2254,8 @@ export async function deleteStockTransaction(id: string): Promise<void> {
 export async function deleteStockTransactionsByTicker(ticker: string): Promise<void> {
   const db = await getDb();
   if (db) {
+    await ensureMigrationDone(db);
+    await ensureStockTransactionsImportedFromAsyncStorage(db);
     await db.runAsync('DELETE FROM stock_transactions WHERE ticker = ?', ticker);
     return;
   }
