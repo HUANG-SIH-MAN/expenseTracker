@@ -43,14 +43,20 @@ const IMPORT_SUCCESS_ALERT_DELAY_MS = 300;
 const BTN_OK = '確定';
 const MODAL_OVERLAY_ALPHA = 0.45;
 
-// 格式：日期,股票代號,股數,成交價,幣別,TWD成本,USD成本
+/** 預覽列：日期欄寬、代號最短寬（避免 006208 等換行）、金額欄對齊 */
+const PREVIEW_ROW_DATE_WIDTH = 88;
+const PREVIEW_ROW_TICKER_MIN_WIDTH = 72;
+const PREVIEW_ROW_COST_MIN_WIDTH = 80;
+const PREVIEW_ROW_SHARES_TAIL_PADDING = 12;
+
+// 格式：日期,股票代號,類型,股數,成交價,幣別,TWD成本,USD成本
 const STOCK_TEMPLATE_CSV = [
-  '日期,股票代號,股數,成交價,幣別,TWD成本,USD成本',
-  '2024-01-15,006208,10,150,TWD,1500,',
-  '2024-01-15,2330,5,850,TWD,4250,',
-  '2024-01-15,NVDA,1,500,USD,15000,490',
-  '2024-01-20,QQQ,2,138,USD,9000,276',
-  '2024-03-01,GLD,3,185,USD,18200,553',
+  '日期,股票代號,類型,股數,成交價,幣別,TWD成本,USD成本',
+  '2024-01-15,006208,buy,10,150,TWD,1500,',
+  '2024-01-15,2330,buy,5,850,TWD,4250,',
+  '2024-01-15,NVDA,buy,1,500,USD,15000,490',
+  '2024-03-01,NVDA,drip,0.5,820,USD,,411',
+  '2024-06-10,NVDA,sell,5,900,USD,142000,4500',
 ].join('\n');
 
 async function handleDownloadStockTemplate() {
@@ -215,10 +221,11 @@ export default function ImportStockScreen(): React.JSX.Element {
           <View style={{ flex: 1, gap: 4 }}>
             <Text style={styles.instructionTitle}>CSV 格式說明</Text>
             <Text style={styles.instructionText}>
-              欄位順序：日期, 股票代號, 股數, 成交價, 幣別, TWD成本, USD成本{'\n\n'}
+              欄位順序：日期, 股票代號, 類型, 股數, 成交價, 幣別, TWD成本, USD成本{'\n\n'}
               • 日期：YYYY-MM-DD（如 2024-01-15）{'\n'}
+              • 類型：buy（買入）/ sell（賣出）/ drip（股利再投資）{'\n'}
               • 幣別：TWD 或 USD{'\n'}
-              • TWD成本：選填，不填則由股數×成交價估算{'\n'}
+              • TWD成本：選填；drip 可留空{'\n'}
               • USD成本：選填，USD 股票才需填
             </Text>
             <Text style={[styles.instructionText, { color: '#dc2626' }]}>
@@ -282,8 +289,12 @@ export default function ImportStockScreen(): React.JSX.Element {
                 {preview.transactions.slice(0, 5).map(tx => (
                   <View key={tx.id} style={styles.sampleRow}>
                     <Text style={styles.sampleDate}>{tx.date}</Text>
-                    <Text style={styles.sampleTicker}>{tx.ticker}</Text>
-                    <Text style={styles.sampleShares}>{tx.shares} 股</Text>
+                    <Text style={styles.sampleTicker} numberOfLines={1}>
+                      {tx.ticker}
+                    </Text>
+                    <Text style={styles.sampleShares}>
+                      {tx.shares} 股
+                    </Text>
                     <Text style={styles.sampleCost}>NT${tx.twdCost.toFixed(0)}</Text>
                   </View>
                 ))}
@@ -405,15 +416,34 @@ const styles = StyleSheet.create({
   errorText: { fontSize: 11, color: '#991b1b' },
   sampleRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
     paddingVertical: 4,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: '#f3f4f6',
   },
-  sampleDate: { width: 80, fontSize: 12, color: '#374151' },
-  sampleTicker: { width: 50, fontSize: 12, fontWeight: '600', color: '#374151' },
-  sampleShares: { flex: 1, fontSize: 12, color: '#6b7280' },
-  sampleCost: { fontSize: 12, fontWeight: '500', color: '#111827' },
+  sampleDate: { width: PREVIEW_ROW_DATE_WIDTH, fontSize: 12, color: '#374151' },
+  sampleTicker: {
+    minWidth: PREVIEW_ROW_TICKER_MIN_WIDTH,
+    flexShrink: 0,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  sampleShares: {
+    flex: 1,
+    fontSize: 12,
+    color: '#6b7280',
+    textAlign: 'right',
+    paddingRight: PREVIEW_ROW_SHARES_TAIL_PADDING,
+  },
+  sampleCost: {
+    minWidth: PREVIEW_ROW_COST_MIN_WIDTH,
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#111827',
+    textAlign: 'right',
+  },
   confirmBtn: {
     backgroundColor: '#16a34a',
     borderRadius: 10,

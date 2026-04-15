@@ -254,7 +254,7 @@ export default function PortfolioScreen(): React.JSX.Element {
               <View style={styles.holdingMetaRow}>
                 <Text style={styles.holdingMeta}>現價 {displayPrice}</Text>
                 <Text style={styles.holdingMeta}>
-                  均成本 {isUS ? `$${pos.avgCostNative.toFixed(2)}` : `NT$${(pos.totalCostTWD / pos.shares).toFixed(2)}`}
+                  均成本 {isUS ? `$${pos.avgCostNative.toFixed(2)}` : `NT$${pos.avgCostTWD.toFixed(2)}`}
                 </Text>
               </View>
               <View style={styles.holdingMetaRow}>

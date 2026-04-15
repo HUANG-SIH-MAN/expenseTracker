@@ -11,6 +11,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Modal,
 } from 'react-native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -400,31 +401,36 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
         </View>
       </ScrollView>
 
-      {confirmDeleteItem != null ? (
-        <View
-          style={[styles.confirmBar, { paddingBottom: insets.bottom + 12 }]}
-        >
-          <Text style={styles.confirmText} numberOfLines={1}>
-            確定要刪除「{confirmDeleteItem.label}」？
-          </Text>
-          <View style={styles.confirmActions}>
-            <TouchableOpacity
-              style={styles.confirmCancelBtn}
-              onPress={cancelDelete}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.confirmCancelText}>取消</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.confirmDeleteBtn}
-              onPress={confirmDelete}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.confirmDeleteText}>刪除</Text>
-            </TouchableOpacity>
+      <Modal
+        visible={confirmDeleteItem != null}
+        transparent
+        animationType="fade"
+        onRequestClose={cancelDelete}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.confirmBar, { paddingBottom: 16 }]}>
+            <Text style={styles.confirmText} numberOfLines={1}>
+              確定要刪除「{confirmDeleteItem?.label}」？
+            </Text>
+            <View style={styles.confirmActions}>
+              <TouchableOpacity
+                style={styles.confirmCancelBtn}
+                onPress={cancelDelete}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.confirmCancelText}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmDeleteBtn}
+                onPress={confirmDelete}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.confirmDeleteText}>刪除</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
-      ) : null}
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -651,16 +657,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
   confirmBar: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
     backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: 20,
   },
   confirmText: {
     fontSize: 15,

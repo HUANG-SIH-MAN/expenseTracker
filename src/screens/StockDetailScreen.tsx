@@ -106,8 +106,13 @@ export default function StockDetailScreen(): React.JSX.Element {
       const cashFlows: number[] = [];
       const dates: Date[] = [];
       for (const tx of sortedTx) {
-        const usd = tx.usdCost ?? tx.twdCost / (usdTwdRate || 31.73);
-        cashFlows.push(tx.type === 'buy' ? -usd : usd);
+        const isDrip = tx.type === 'buy' && noteIndicatesDividendReinvest(tx.note);
+        if (isDrip) {
+          cashFlows.push(0);
+        } else {
+          const usd = tx.usdCost ?? tx.twdCost / (usdTwdRate || 31.73);
+          cashFlows.push(tx.type === 'buy' ? -usd : usd);
+        }
         dates.push(new Date(tx.date));
       }
       cashFlows.push(pos.shares * priceNative); // 當前市值（USD）
@@ -257,7 +262,7 @@ export default function StockDetailScreen(): React.JSX.Element {
               <View style={styles.summaryItem}>
                 <Text style={styles.summaryLabel}>均成本（含費/股）</Text>
                 <Text style={styles.summaryVal}>
-                  {isUS ? '$' : 'NT$'}{isUS ? pos.avgCostNative.toFixed(2) : (pos.totalCostTWD / pos.shares).toFixed(2)}
+                  {isUS ? '$' : 'NT$'}{isUS ? pos.avgCostNative.toFixed(2) : pos.avgCostTWD.toFixed(2)}
                 </Text>
               </View>
             </View>

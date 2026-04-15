@@ -169,17 +169,21 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
 
     if (isNaN(sharesNum) || sharesNum <= 0) return Alert.alert('請輸入有效股數');
     if (isNaN(priceNum) || priceNum <= 0) return Alert.alert('請輸入有效股價');
-    if (isNaN(twdNum) || twdNum <= 0) return Alert.alert('請輸入台幣成本');
+    const isDrip = isDividendReinvestNote && txType === 'buy';
+    if (!isDrip && (isNaN(twdNum) || twdNum <= 0)) return Alert.alert('請輸入台幣成本');
+    const finalTwdCost = (isDrip && isNaN(twdNum)) ? 0 : twdNum;
 
     let usdNum: number | undefined;
     let rateNum: number | undefined;
     if (isUS) {
       usdNum = parseFloat(usdCost);
       rateNum = parseFloat(exchangeRate);
-      if (isNaN(usdNum) || usdNum <= 0) {
-        return Alert.alert(`請輸入有效 USD ${txType === 'buy' ? '成本' : '收入'}`);
+      if (!isDrip) {
+        if (isNaN(usdNum) || usdNum <= 0) {
+          return Alert.alert(`請輸入有效 USD ${txType === 'buy' ? '成本' : '收入'}`);
+        }
+        if (isNaN(rateNum) || rateNum <= 0) return Alert.alert('請輸入有效換匯匯率');
       }
-      if (isNaN(rateNum) || rateNum <= 0) return Alert.alert('請輸入有效換匯匯率');
     }
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return Alert.alert('日期格式應為 YYYY-MM-DD');
@@ -196,7 +200,7 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
       shares: sharesNum,
       priceNative: priceNum,
       usdCost: usdNum,
-      twdCost: twdNum,
+      twdCost: finalTwdCost,
       exchangeRate: rateNum,
       note: finalNoteTrimmed || undefined,
       createdAt: editingTx?.createdAt ?? new Date().toISOString(),
@@ -409,9 +413,12 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
 
           {/* 台幣成本 */}
           <View style={styles.field}>
-            <Text style={styles.label}>台幣{txType === 'buy' ? '成本' : '收入'}（NT$）</Text>
+            <Text style={styles.label}>
+              台幣{txType === 'buy' ? '成本' : '收入'}（NT$）
+              {isDividendReinvestNote && txType === 'buy' ? '（備註用，不計入成本）' : ''}
+            </Text>
             {txType === 'buy' && isDividendReinvestNote && (
-              <Text style={styles.hintText}>與該次再投資動用之台幣金額一致（勿填 0）。</Text>
+              <Text style={styles.hintText}>可填股利金額供參考；此欄位不計入成本計算。</Text>
             )}
             <TextInput
               style={styles.input}
@@ -427,7 +434,11 @@ export default function AddStockTransactionScreen(): React.JSX.Element {
           {isUS && (
             <>
               <View style={styles.field}>
-                <Text style={styles.label}>USD {txType === 'buy' ? '成本' : '收入'}</Text>
+                <Text style={styles.label}>
+                  {isDividendReinvestNote && txType === 'buy'
+                    ? 'USD 股利金額（不計入成本）'
+                    : `USD ${txType === 'buy' ? '成本' : '收入'}`}
+                </Text>
                 <TextInput
                   style={styles.input}
                   value={usdCost}

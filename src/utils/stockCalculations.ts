@@ -8,6 +8,7 @@
  * - 各年度報酬率
  */
 import type { StockTransaction, StockPriceCache } from '../types';
+import { noteIndicatesDividendReinvest } from './stockDividendReinvest';
 
 export interface HoldingPosition {
   ticker: string;
@@ -60,17 +61,21 @@ export function calculatePositions(
 
     if (tx.type === 'buy') {
       // 加權平均成本
+      const isDrip = noteIndicatesDividendReinvest(tx.note);
       const newShares = pos.shares + tx.shares;
-      // 美股：用實際扣款 USD（含手續費）計算每股成本；台股：用 priceNative
-      const nativeCostThisTx = tx.usdCost ?? tx.priceNative * tx.shares;
+      // DRIP：股數加入但成本為零（稀釋均價）；一般買入：用實際成本
+      const nativeCostThisTx = isDrip ? 0 : (tx.usdCost ?? tx.priceNative * tx.shares);
+      const twdCostThisTx    = isDrip ? 0 : tx.twdCost;
       pos.avgCostNative =
         (pos.avgCostNative * pos.shares + nativeCostThisTx) / newShares;
       pos.avgCostTWD =
-        (pos.avgCostTWD * pos.shares + (tx.twdCost / tx.shares) * tx.shares) / newShares;
+        (pos.avgCostTWD * pos.shares + twdCostThisTx) / newShares;
       pos.shares = newShares;
-      pos.totalCostTWD += tx.twdCost;
-      if (pos.totalCostUSD != null && tx.usdCost != null) {
-        pos.totalCostUSD += tx.usdCost;
+      if (!isDrip) {
+        pos.totalCostTWD += tx.twdCost;
+        if (pos.totalCostUSD != null && tx.usdCost != null) {
+          pos.totalCostUSD += tx.usdCost;
+        }
       }
     } else if (tx.type === 'sell') {
       // 賣出：用加權平均成本計算已實現損益
@@ -180,7 +185,8 @@ export function buildXIRRCashFlows(
   const dates: Date[] = [];
 
   for (const tx of sorted) {
-    cashFlows.push(tx.type === 'buy' ? -tx.twdCost : tx.twdCost);
+    const isDrip = tx.type === 'buy' && noteIndicatesDividendReinvest(tx.note);
+    cashFlows.push(isDrip ? 0 : (tx.type === 'buy' ? -tx.twdCost : tx.twdCost));
     dates.push(new Date(tx.date));
   }
 
@@ -249,7 +255,9 @@ export function calcYearlyReturns(
       if (tx.date >= yearStart) {
         if (tx.type === 'buy') {
           sharesHeld += tx.shares;
-          investedThisYear += tx.twdCost;
+          if (!noteIndicatesDividendReinvest(tx.note)) {
+            investedThisYear += tx.twdCost;
+          }
         } else {
           sharesHeld = Math.max(0, sharesHeld - tx.shares);
           investedThisYear -= tx.twdCost;
@@ -379,7 +387,8 @@ export async function calcPortfolioYearlyReturns(
 
     let investedThisYear = 0;
     for (const tx of txsThisYear) {
-      investedThisYear += tx.type === 'buy' ? tx.twdCost : -tx.twdCost;
+      const isDripPortfolio = tx.type === 'buy' && noteIndicatesDividendReinvest(tx.note);
+      investedThisYear += isDripPortfolio ? 0 : (tx.type === 'buy' ? tx.twdCost : -tx.twdCost);
     }
 
     // 若整年都沒持倉且沒投入，跳過
