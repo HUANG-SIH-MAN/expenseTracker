@@ -105,42 +105,24 @@ function parseCsv(csvText: string): string[] {
  */
 export async function fetchTaiwanHolidays(year: number): Promise<string[] | null> {
   try {
-    console.log(`[TaiwanHolidays] 開始取得 ${year} 年假日資料...`);
-
     // Step 1: 查詢 dataset API 取得 CSV 下載網址
     const metaRes = await fetch(DATASET_API);
-    if (!metaRes.ok) {
-      console.warn(`[TaiwanHolidays] dataset API 回應失敗: ${metaRes.status}`);
-      return null;
-    }
+    if (!metaRes.ok) return null;
     const meta = (await metaRes.json()) as DatasetApiResponse;
-    if (!meta.success || !meta.result?.distribution) {
-      console.warn('[TaiwanHolidays] dataset API 回傳格式異常', meta);
-      return null;
-    }
+    if (!meta.success || !meta.result?.distribution) return null;
 
     const rocYear = toRocYear(year);
     const csvUrl = findCsvUrl(meta.result.distribution, rocYear);
-    if (!csvUrl) {
-      console.warn(`[TaiwanHolidays] 找不到 ${rocYear}年（${year}）的 CSV 資源，可能尚未公告`);
-      return null;
-    }
-    console.log(`[TaiwanHolidays] CSV 網址: ${csvUrl}`);
+    if (!csvUrl) return null;
 
     // Step 2: 下載 CSV
     const csvRes = await fetch(csvUrl);
-    if (!csvRes.ok) {
-      console.warn(`[TaiwanHolidays] CSV 下載失敗: ${csvRes.status}`);
-      return null;
-    }
+    if (!csvRes.ok) return null;
     const csvText = await csvRes.text();
 
     // Step 3: 解析
-    const holidays = parseCsv(csvText);
-    console.log(`[TaiwanHolidays] ${year} 年共解析到 ${holidays.length} 個放假日（含六日）`);
-    return holidays;
-  } catch (err) {
-    console.error('[TaiwanHolidays] 取得假日資料時發生例外:', err);
+    return parseCsv(csvText);
+  } catch {
     return null;
   }
 }
@@ -154,20 +136,16 @@ export async function getCachedTaiwanHolidays(year: number): Promise<string[]> {
   try {
     const cached = await AsyncStorage.getItem(cacheKey(year));
     if (cached !== null) {
-      const list = JSON.parse(cached) as string[];
-      console.log(`[TaiwanHolidays] ${year} 年假日從快取載入，共 ${list.length} 筆`);
-      return list;
+      return JSON.parse(cached) as string[];
     }
     const fetched = await fetchTaiwanHolidays(year);
     if (fetched !== null && fetched.length > 0) {
       await AsyncStorage.setItem(cacheKey(year), JSON.stringify(fetched));
-      console.log(`[TaiwanHolidays] ${year} 年假日已寫入快取`);
       return fetched;
     }
-  } catch (err) {
-    console.error('[TaiwanHolidays] 快取讀寫失敗:', err);
+  } catch {
+    // ignore storage / parse errors
   }
-  console.warn(`[TaiwanHolidays] ${year} 年假日無法取得，使用空清單（fallback）`);
   return [];
 }
 
@@ -181,15 +159,10 @@ export async function prefetchNextYearIfDecember(currentYear: number, currentMon
   const nextYear = currentYear + 1;
   try {
     const existing = await AsyncStorage.getItem(cacheKey(nextYear));
-    if (existing !== null) {
-      console.log(`[TaiwanHolidays] ${nextYear} 年假日快取已存在，略過預抓`);
-      return;
-    }
-    console.log(`[TaiwanHolidays] 12月，開始預抓 ${nextYear} 年假日...`);
+    if (existing !== null) return;
     const fetched = await fetchTaiwanHolidays(nextYear);
     if (fetched !== null && fetched.length > 0) {
       await AsyncStorage.setItem(cacheKey(nextYear), JSON.stringify(fetched));
-      console.log(`[TaiwanHolidays] ${nextYear} 年假日預抓完成`);
     }
   } catch {
     // prefetch failure is non-critical
