@@ -4,6 +4,7 @@
 import type { BudgetSettings, MonthlyFixedItem, RecurringItem, Transaction } from '../types';
 import { BUDGET_WEEKEND_DAY_INDICES } from '../constants';
 import { filterTransactionsByPeriod, PERIOD_MONTH } from './statistics';
+import { getCachedTaiwanHolidays, prefetchNextYearIfDecember } from './taiwanHolidays';
 
 const PAD_LEN = 2;
 
@@ -12,21 +13,26 @@ function padMonth(month: number): string {
 }
 
 /**
- * 從今天到當月最後一天的所有日期（含今天），以及是否為假日
+ * 從今天到當月最後一天的所有日期（含今天），以及是否為假日。
+ * isWeekend 為 true 表示應使用假日權重（六日 或 國定假日）。
+ * @param nationalHolidays 當年國定假日日期清單（YYYY-MM-DD），由呼叫方提供以避免在迴圈內 async
  */
 export function getRemainingDateKeysInMonth(
-  todayKey: string
+  todayKey: string,
+  nationalHolidays: string[] = []
 ): { dateKey: string; isWeekend: boolean }[] {
   const [y, m] = todayKey.split('-').map(Number);
   const lastDay = new Date(y, m, 0).getDate();
   const todayDate = parseInt(todayKey.slice(8, 10), 10);
   const result: { dateKey: string; isWeekend: boolean }[] = [];
   const monthStr = padMonth(m);
+  const holidaySet = new Set(nationalHolidays);
   for (let d = todayDate; d <= lastDay; d++) {
     const dateKey = `${y}-${monthStr}-${String(d).padStart(PAD_LEN, '0')}`;
     const date = new Date(y, m - 1, d);
     const dayIndex = date.getDay();
-    const isWeekend = BUDGET_WEEKEND_DAY_INDICES.includes(dayIndex);
+    const isWeekend =
+      BUDGET_WEEKEND_DAY_INDICES.includes(dayIndex) || holidaySet.has(dateKey);
     result.push({ dateKey, isWeekend });
   }
   return result;
@@ -47,13 +53,15 @@ export interface RemainingWeightedDaysResult {
 
 /**
  * 計算當月剩餘日（含今天）的加權總和與今日權重
+ * @param nationalHolidays 當年國定假日日期清單（YYYY-MM-DD）
  */
 export function getRemainingWeightedDays(
   todayKey: string,
   weekdayWeight: number,
-  weekendWeight: number
+  weekendWeight: number,
+  nationalHolidays: string[] = []
 ): RemainingWeightedDaysResult {
-  const days = getRemainingDateKeysInMonth(todayKey);
+  const days = getRemainingDateKeysInMonth(todayKey, nationalHolidays);
   let weightedSum = 0;
   let weekendCount = 0;
   let weekdayCount = 0;
@@ -310,16 +318,22 @@ export interface BudgetSummary {
   todaySuggestedBudget: number;
 }
 
-export function getBudgetSummary(
+export async function getBudgetSummary(
   todayKey: string,
   transactions: Transaction[],
   monthlyFixedItems: MonthlyFixedItem[],
   settings: BudgetSettings,
   savingTarget: number,
   ratesToPrimary?: Record<string, number>,
-  recurringItems?: RecurringItem[]
-): BudgetSummary | null {
+  recurringItems?: RecurringItem[],
+  /** 已載入的國定假日清單；傳入時跳過內部抓取，避免重複讀取 */
+  preloadedHolidays?: string[]
+): Promise<BudgetSummary | null> {
   const [year, month] = todayKey.split('-').map(Number);
+  // 若呼叫方已提供假日清單則直接使用，否則自行取得（讀快取或呼叫 API）
+  const nationalHolidays = preloadedHolidays ?? await getCachedTaiwanHolidays(year);
+  // 12月時非同步預抓次年假日（fire-and-forget）
+  void prefetchNextYearIfDecember(year, month);
   const monthIncome = getMonthIncome(
     transactions,
     year,
@@ -347,7 +361,8 @@ export function getBudgetSummary(
   const weighted = getRemainingWeightedDays(
     todayKey,
     settings.weekdayWeight,
-    settings.weekendWeight
+    settings.weekendWeight,
+    nationalHolidays
   );
   const todaySuggestedBudget = getTodaySuggestedBudget(
     remainingDisposable,

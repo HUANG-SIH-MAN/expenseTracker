@@ -28,6 +28,8 @@ export interface CalendarProps {
   onSelectDate: (date: string) => void;
   /** 有記帳紀錄的日期（YYYY-MM-DD），這些日期會以灰色顯示 */
   datesWithRecords?: Set<string>;
+  /** 國定假日日期（YYYY-MM-DD），以深紅色顯示 */
+  nationalHolidays?: Set<string>;
 }
 
 export default function Calendar({
@@ -36,6 +38,7 @@ export default function Calendar({
   selectedDate,
   onSelectDate,
   datesWithRecords,
+  nationalHolidays,
 }: CalendarProps): React.JSX.Element {
   const daysInMonth = getDaysInMonth(year, month);
   const firstWeekday = getFirstDayWeekday(year, month);
@@ -71,6 +74,11 @@ export default function Calendar({
             const dateKey = toDateKey(year, month, day);
             const isSelected = selectedDate === dateKey;
             const hasRecords = datesWithRecords?.has(dateKey) ?? false;
+            // colIndex 0 = 日, 6 = 六
+            const isWeekend = colIndex === 0 || colIndex === 6;
+            const isNationalHoliday = nationalHolidays?.has(dateKey) ?? false;
+            // 六日 或 國定假日 → 假日文字色
+            const isHoliday = isWeekend || isNationalHoliday;
             return (
               <TouchableOpacity
                 key={index}
@@ -81,8 +89,10 @@ export default function Calendar({
                 <Text
                   style={[
                     styles.dayText,
+                    isHoliday && !isSelected && styles.dayTextHoliday,
+                    isHoliday && hasRecords && !isSelected && styles.dayTextHolidayWithRecords,
+                    !isHoliday && hasRecords && !isSelected && styles.dayTextWithRecords,
                     isSelected && styles.dayTextSelected,
-                    hasRecords && !isSelected && styles.dayTextWithRecords,
                   ]}
                 >
                   {day}
@@ -142,5 +152,15 @@ const styles = StyleSheet.create({
   dayTextSelected: {
     color: '#fff',
     fontWeight: '600',
+  },
+  /** 六日 / 國定假日：深紅 */
+  dayTextHoliday: {
+    color: '#dc2626',
+    fontWeight: '600',
+  },
+  /** 假日 + 有記帳：淡紅（讓記帳點降低顯眼度，同時保留紅色語意） */
+  dayTextHolidayWithRecords: {
+    color: '#f87171',
+    fontWeight: '400',
   },
 });

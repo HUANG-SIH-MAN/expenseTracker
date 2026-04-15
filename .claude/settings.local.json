@@ -3,7 +3,11 @@
     "allow": [
       "Bash(find c:/Users/User/Desktop/expense-tracker/src -name db*)",
       "Bash(xargs grep:*)",
-      "Bash(python -c ':*)"
+      "Bash(python -c ':*)",
+      "Bash(npx vitest:*)",
+      "Bash(curl -s \"https://data.gov.tw/api/v2/rest/datastore/F-D110001-022?sql=SELECT%20*%20FROM%20%22F-D110001-022%22%20WHERE%20date%20%3E%3D%20%2720260101%27%20AND%20date%20%3C%3D%20%2720261231%27&limit=5\")",
+      "Bash(curl -s \"https://data.gov.tw/api/v2/rest/dataset/14718\")",
+      "Bash(curl -s \"https://www.dgpa.gov.tw/FileConversion?filename=dgpa/files/202506/a52331bd-a189-466b-b0f0-cae3062bbf74.csv&nfix=&name=115%e5%b9%b4%e4%b8%ad%e8%8f%af%e6%b0%91%e5%9c%8b%e6%94%bf%e5%ba%9c%e8%a1%8c%e6%94%bf%e6%a9%9f%e9%97%9c%e8%be%a6%e5%85%ac%e6%97%a5%e6%9b%86%e8%a1%a8.csv\")"
     ]
   }
 }

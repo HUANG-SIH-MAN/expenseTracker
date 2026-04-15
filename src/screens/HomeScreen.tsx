@@ -22,6 +22,7 @@ import { useBudget } from '../contexts/BudgetContext';
 import { getTodayKey } from '../utils/date';
 import { getStoredAccounts, getExchangeRates, getStoredRecurring } from '../utils/storage';
 import { getBudgetSummary } from '../utils/budget';
+import { getCachedTaiwanHolidays } from '../utils/taiwanHolidays';
 import type { MainStackParamList } from '../navigation/MainStack';
 
 const MONTH_PREV = '‹';
@@ -133,18 +134,35 @@ export default function HomeScreen(): React.JSX.Element {
     return 'current';
   }, [selectedDate, today, selectedYM, todayYM]);
   const daysInMonth = new Date(year, month, 0).getDate();
-  const budgetSummary = useMemo(() => {
-    const savingTarget = getMonthlySavingTargetAmount(referenceKey.slice(0, 7));
-    return getBudgetSummary(
-      referenceKey,
-      transactions,
-      monthlyFixedItems,
-      budgetSettings,
-      savingTarget,
-      ratesToPrimary,
-      recurringItems
-    );
+  const [nationalHolidays, setNationalHolidays] = useState<Set<string>>(new Set());
+  const [budgetSummary, setBudgetSummary] = useState<Awaited<ReturnType<typeof getBudgetSummary>>>(null);
+
+  // 先載入國定假日（有快取直接用，無快取則背景抓取一次；失敗就算了），
+  // 再計算預算，確保假日載入後預算能正確使用假日權重。
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      const holidays = await getCachedTaiwanHolidays(year);
+      if (cancelled) return;
+      setNationalHolidays(new Set(holidays));
+      const savingTarget = getMonthlySavingTargetAmount(referenceKey.slice(0, 7));
+      const summary = await getBudgetSummary(
+        referenceKey,
+        transactions,
+        monthlyFixedItems,
+        budgetSettings,
+        savingTarget,
+        ratesToPrimary,
+        recurringItems,
+        holidays
+      );
+      if (cancelled) return;
+      setBudgetSummary(summary);
+    }
+    void load();
+    return () => { cancelled = true; };
   }, [
+    year,
     referenceKey,
     transactions,
     monthlyFixedItems,
@@ -408,6 +426,7 @@ export default function HomeScreen(): React.JSX.Element {
           selectedDate={selectedDate}
           onSelectDate={setSelectedDate}
           datesWithRecords={datesWithRecords}
+          nationalHolidays={nationalHolidays}
         />
 
         <View style={styles.section}>
