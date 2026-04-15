@@ -133,7 +133,8 @@ export default function StockDetailScreen(): React.JSX.Element {
   const yearlyReturns = useMemo(() => {
     if (txList.length === 0) return [];
     const sortedTx = [...txList].sort((a, b) => a.date.localeCompare(b.date));
-    return calcYearlyReturns(sortedTx, endOfYearPrices, priceTWD);
+    const rows = calcYearlyReturns(sortedTx, endOfYearPrices, priceTWD);
+    return [...rows].sort((a, b) => b.year - a.year);
   }, [txList, endOfYearPrices, priceTWD]);
 
   useEffect(() => {
