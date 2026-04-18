@@ -18,7 +18,8 @@ import { useTransactions } from '../contexts/TransactionsContext';
 import { useCategories } from '../contexts/CategoriesContext';
 import { filterTransactionsByPeriodAndCategory } from '../utils/statistics';
 import { formatDateShort } from '../utils/date';
-import { getStoredAccounts } from '../utils/storage';
+import { getStoredAccounts, getStoredPrimaryCurrency } from '../utils/storage';
+import { buildAccountCostBasisMap } from '../utils/balance';
 import type { MainStackParamList } from '../navigation/MainStack';
 
 const DEFAULT_ACCOUNT_LABEL = '現金';
@@ -50,10 +51,17 @@ export default function CategoryExpensesScreen(): React.JSX.Element {
   const { transactions } = useTransactions();
   const { getCategoryLabel } = useCategories();
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [primaryCurrency, setPrimaryCurrency] = useState<string>('TWD');
 
   useEffect(() => {
     getStoredAccounts().then(setAccounts);
+    getStoredPrimaryCurrency().then(setPrimaryCurrency);
   }, []);
+
+  const costBasisMap = useMemo(
+    () => buildAccountCostBasisMap(accounts, transactions, primaryCurrency),
+    [accounts, transactions, primaryCurrency]
+  );
 
   const getAccountName = useCallback(
     (accountId?: string): string => {
@@ -85,7 +93,10 @@ export default function CategoryExpensesScreen(): React.JSX.Element {
     [list]
   );
 
-  const total = useMemo(() => sortedList.reduce((sum, t) => sum + t.amount, 0), [sortedList]);
+  const total = useMemo(() => sortedList.reduce((sum, t) => {
+    const rate = transactionType === 'expense' ? (costBasisMap.get(t.accountId ?? '') ?? 1) : 1;
+    return sum + t.amount * rate;
+  }, 0), [sortedList, transactionType, costBasisMap]);
 
   const isIncome = transactionType === 'income';
 
@@ -123,7 +134,10 @@ export default function CategoryExpensesScreen(): React.JSX.Element {
           <Text style={styles.emptyText}>{EMPTY_HINT}</Text>
         ) : (
           <View style={styles.listCard}>
-            {sortedList.map((item) => (
+            {sortedList.map((item) => {
+              const costRate = !isIncome ? costBasisMap.get(item.accountId ?? '') : undefined;
+              const twdEquiv = costRate != null ? Math.round(item.amount * costRate) : null;
+              return (
               <TouchableOpacity
                 key={item.id}
                 style={styles.row}
@@ -136,11 +150,17 @@ export default function CategoryExpensesScreen(): React.JSX.Element {
                     ? `${item.note.trim()} | ${getAccountName(item.accountId)}`
                     : getAccountName(item.accountId)}
                 </Text>
-                <Text style={[styles.rowAmount, isIncome ? styles.amountIncome : styles.amountExpense]}>
-                  {isIncome ? '+' : '-'}{formatAmount(item.amount)}
-                </Text>
+                <View style={styles.rowAmountCol}>
+                  <Text style={[styles.rowAmount, isIncome ? styles.amountIncome : styles.amountExpense]}>
+                    {isIncome ? '+' : '-'}{formatAmount(item.amount)}
+                  </Text>
+                  {twdEquiv != null ? (
+                    <Text style={styles.rowCostBasis}>≈ NT${twdEquiv.toLocaleString()}</Text>
+                  ) : null}
+                </View>
               </TouchableOpacity>
-            ))}
+              );
+            })}
           </View>
         )}
       </ScrollView>
@@ -244,8 +264,16 @@ const styles = StyleSheet.create({
     fontSize: LIST_ROW_FONT_SIZE,
     color: '#1f2937',
   },
+  rowAmountCol: {
+    alignItems: 'flex-end',
+  },
   rowAmount: {
     fontSize: LIST_ROW_FONT_SIZE,
     fontWeight: '600',
+  },
+  rowCostBasis: {
+    fontSize: 11,
+    color: '#6b7280',
+    marginTop: 1,
   },
 });

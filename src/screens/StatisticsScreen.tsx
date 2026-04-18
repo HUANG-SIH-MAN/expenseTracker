@@ -1,7 +1,7 @@
 /**
  * 統計圖表頁：月/年總收支、支出/收入類別占比圓餅圖
  */
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -15,9 +15,11 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PieChart, BottomBar } from '../components';
-import type { TransactionType } from '../types';
+import type { Account, TransactionType } from '../types';
 import { useTransactions } from '../contexts/TransactionsContext';
 import { useCategories } from '../contexts/CategoriesContext';
+import { getStoredAccounts, getStoredPrimaryCurrency } from '../utils/storage';
+import { buildAccountCostBasisMap } from '../utils/balance';
 import {
   PERIOD_MONTH,
   PERIOD_YEAR,
@@ -105,6 +107,18 @@ export default function StatisticsScreen(): React.JSX.Element {
   const [selectedYear, setSelectedYear] = useState(initialYear);
   const [selectedMonth, setSelectedMonth] = useState(initialMonth);
   const [chartType, setChartType] = useState<TransactionType>('expense');
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [primaryCurrency, setPrimaryCurrency] = useState<string>('TWD');
+
+  useEffect(() => {
+    getStoredAccounts().then(setAccounts);
+    getStoredPrimaryCurrency().then(setPrimaryCurrency);
+  }, []);
+
+  const costBasisMap = useMemo(
+    () => buildAccountCostBasisMap(accounts, transactions, primaryCurrency),
+    [accounts, transactions, primaryCurrency]
+  );
 
   const totals = useMemo(
     () =>
@@ -112,9 +126,10 @@ export default function StatisticsScreen(): React.JSX.Element {
         transactions,
         period,
         selectedYear,
-        period === PERIOD_MONTH ? selectedMonth : undefined
+        period === PERIOD_MONTH ? selectedMonth : undefined,
+        costBasisMap,
       ),
-    [transactions, period, selectedYear, selectedMonth]
+    [transactions, period, selectedYear, selectedMonth, costBasisMap]
   );
 
   const categorySlices = useMemo(
@@ -124,9 +139,10 @@ export default function StatisticsScreen(): React.JSX.Element {
         period,
         selectedYear,
         chartType,
-        period === PERIOD_MONTH ? selectedMonth : undefined
+        period === PERIOD_MONTH ? selectedMonth : undefined,
+        costBasisMap,
       ),
-    [transactions, period, selectedYear, selectedMonth, chartType]
+    [transactions, period, selectedYear, selectedMonth, chartType, costBasisMap]
   );
 
   const pieData = useMemo(() => {

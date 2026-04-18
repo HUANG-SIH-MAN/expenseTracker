@@ -1,7 +1,7 @@
 /**
  * 帳本餘額頁：顯示每個帳本的目前餘額與總資產（主幣別）
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -23,7 +23,8 @@ import {
   getCurrencyOptions,
 } from '../utils/storage';
 import { useTransactions } from '../contexts/TransactionsContext';
-import { getAccountBalancesWithPrimary, getTotalAssetsInPrimary } from '../utils/balance';
+import { getAccountBalancesWithPrimary, getTotalAssetsInPrimary, calculateForeignAccountCostBasis } from '../utils/balance';
+import type { ForeignAccountCostBasis } from '../utils/balance';
 import { fetchRatesToPrimary } from '../utils/exchangeRate';
 import type { CurrencyOption } from '../types';
 import type { MainStackParamList } from '../navigation/MainStack';
@@ -100,6 +101,21 @@ export default function LedgerBalanceScreen(): React.JSX.Element {
     }
     setUpdatingRates(false);
   }, [primaryCurrency, currencyOptions]);
+
+  const costBasisItems = useMemo((): Map<string, ForeignAccountCostBasis> => {
+    const map = new Map<string, ForeignAccountCostBasis>();
+    for (const account of accounts) {
+      if (account.currency === primaryCurrency) continue;
+      const basis = calculateForeignAccountCostBasis(
+        account,
+        transactions,
+        accounts,
+        primaryCurrency as import('../types').CurrencyCode,
+      );
+      if (basis != null) map.set(account.id, basis);
+    }
+    return map;
+  }, [accounts, transactions, primaryCurrency]);
 
   const balanceItems = getAccountBalancesWithPrimary(
     accounts,
@@ -180,7 +196,9 @@ export default function LedgerBalanceScreen(): React.JSX.Element {
               </TouchableOpacity>
             </View>
 
-            {balanceItems.map(({ account, balance, balanceInPrimary }) => (
+            {balanceItems.map(({ account, balance, balanceInPrimary }) => {
+              const costBasis = costBasisItems.get(account.id);
+              return (
               <View key={account.id} style={styles.card}>
                 <View style={styles.cardMain}>
                   <Text style={styles.accountName} numberOfLines={1}>
@@ -202,6 +220,16 @@ export default function LedgerBalanceScreen(): React.JSX.Element {
                       {LABEL_ABOUT} {formatAmount(balanceInPrimary)} {primaryCurrency}
                     </Text>
                   )}
+                  {costBasis != null && (
+                    <>
+                      <Text style={styles.costBasisRate}>
+                        換匯均價：{costBasis.avgRateToPrimary.toFixed(4)} {primaryCurrency}/{account.currency}
+                      </Text>
+                      <Text style={styles.costBasisTotal}>
+                        持有成本：≈ {primaryCurrency} {Math.round(costBasis.currentPrimaryCost).toLocaleString()}
+                      </Text>
+                    </>
+                  )}
                 </View>
                 <TouchableOpacity
                   style={styles.editBtn}
@@ -213,7 +241,8 @@ export default function LedgerBalanceScreen(): React.JSX.Element {
                   <Text style={styles.editBtnText}>{LABEL_EDIT}</Text>
                 </TouchableOpacity>
               </View>
-            ))}
+              );
+            })}
           </>
         )}
       </ScrollView>
@@ -366,5 +395,15 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#2563eb',
     fontWeight: '500',
+  },
+  costBasisRate: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 4,
+  },
+  costBasisTotal: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
   },
 });

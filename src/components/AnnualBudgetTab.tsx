@@ -17,7 +17,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { AnnualBudgetEntry, TransactionType } from '../types';
 import { useCategories } from '../contexts/CategoriesContext';
 import { useTransactions } from '../contexts/TransactionsContext';
-import { getAnnualBudgetEntries, saveAnnualBudgetEntries, getStoredAccounts } from '../utils/storage';
+import { getAnnualBudgetEntries, saveAnnualBudgetEntries, getStoredAccounts, getStoredPrimaryCurrency } from '../utils/storage';
+import { buildAccountCostBasisMap } from '../utils/balance';
 import { generateId } from '../utils/id';
 import type { Account } from '../types';
 
@@ -59,10 +60,17 @@ interface AnnualBudgetTabProps {
   insets: { top: number; bottom: number; left: number; right: number };
 }
 
-function getActualAmount(transactions: { amount: number; annualBudgetEntryId?: string }[], entryId: string): number {
+function getActualAmount(
+  transactions: { amount: number; annualBudgetEntryId?: string; accountId?: string }[],
+  entryId: string,
+  accountCostBasisMap?: Map<string, number>,
+): number {
   return transactions
     .filter((t) => t.annualBudgetEntryId === entryId)
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => {
+      const rate = accountCostBasisMap?.get(t.accountId ?? '') ?? 1;
+      return sum + t.amount * rate;
+    }, 0);
 }
 
 export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Element {
@@ -88,6 +96,8 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
   const [copyTargetEntryCount, setCopyTargetEntryCount] = useState(0);
   const [copyConfirmOverwrite, setCopyConfirmOverwrite] = useState(false);
 
+  const [primaryCurrency, setPrimaryCurrency] = React.useState<string>('TWD');
+
   const loadEntries = useCallback(async () => {
     setLoading(true);
     const list = await getAnnualBudgetEntries(year);
@@ -98,6 +108,7 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
   useEffect(() => {
     loadEntries();
     getStoredAccounts().then(list => setAccounts(list.filter(a => !a.isDeleted)));
+    getStoredPrimaryCurrency().then(setPrimaryCurrency);
   }, [loadEntries]);
 
   useEffect(() => {
@@ -230,6 +241,11 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
     return list.reverse();
   }, []);
 
+  const costBasisMap = React.useMemo(
+    () => buildAccountCostBasisMap(accounts, transactions, primaryCurrency),
+    [accounts, transactions, primaryCurrency]
+  );
+
   const summary = React.useMemo(() => {
     let plannedIncome = 0;
     let plannedExpense = 0;
@@ -238,10 +254,10 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
     for (const e of entries) {
       if (e.type === 'income') {
         plannedIncome += e.estimatedAmount;
-        actualIncome += getActualAmount(transactions, e.id);
+        actualIncome += getActualAmount(transactions, e.id, costBasisMap);
       } else {
         plannedExpense += e.estimatedAmount;
-        actualExpense += getActualAmount(transactions, e.id);
+        actualExpense += getActualAmount(transactions, e.id, costBasisMap);
       }
     }
     return {
@@ -368,7 +384,7 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
           ) : (
             <View style={styles.entryList}>
               {sortedEntries.map((entry) => {
-                const actual = getActualAmount(transactions, entry.id);
+                const actual = getActualAmount(transactions, entry.id, costBasisMap);
                 const categoryLabel = getCategoryLabel(entry.type, entry.categoryKey);
                 const displayName = entry.label
                   ? `${entry.label}（${categoryLabel}）`

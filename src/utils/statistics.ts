@@ -38,20 +38,26 @@ export interface PeriodTotals {
 
 /**
  * 計算當期總收入、總支出、結餘
+ * accountCostBasisMap 有提供時，外幣支出用換匯均價換算成主幣
  */
 export function getPeriodTotals(
   transactions: Transaction[],
   period: PeriodKind,
   year: number,
-  month?: number
+  month?: number,
+  accountCostBasisMap?: Map<string, number>,
 ): PeriodTotals {
   const list = filterTransactionsByPeriod(transactions, period, year, month);
   let totalIncome = 0;
   let totalExpense = 0;
   for (const t of list) {
     if (t.type === 'transfer') continue;
-    if (t.type === 'income') totalIncome += t.amount;
-    else totalExpense += t.amount;
+    if (t.type === 'income') {
+      totalIncome += t.amount;
+    } else {
+      const rate = accountCostBasisMap?.get(t.accountId ?? '') ?? 1;
+      totalExpense += t.amount * rate;
+    }
   }
   return {
     totalIncome,
@@ -69,24 +75,27 @@ export interface CategorySlice {
 /**
  * 依類型（收入/支出）分組加總，回傳各類別金額與占比（百分比）
  * total 為該類型當期總和，用於計算百分比；若為 0 則 percentage 為 0
+ * accountCostBasisMap 有提供時，外幣支出用換匯均價換算成主幣
  */
 export function getCategoryBreakdown(
   transactions: Transaction[],
   period: PeriodKind,
   year: number,
   type: TransactionType,
-  month?: number
+  month?: number,
+  accountCostBasisMap?: Map<string, number>,
 ): CategorySlice[] {
   const list = filterTransactionsByPeriod(transactions, period, year, month);
   const byType = list.filter((t) => t.type === type);
-  const total = byType.reduce((sum, t) => sum + t.amount, 0);
 
   const map = new Map<string, number>();
   for (const t of byType) {
+    const rate = type === 'expense' ? (accountCostBasisMap?.get(t.accountId ?? '') ?? 1) : 1;
     const key = t.category;
-    map.set(key, (map.get(key) ?? 0) + t.amount);
+    map.set(key, (map.get(key) ?? 0) + t.amount * rate);
   }
 
+  const total = Array.from(map.values()).reduce((sum, v) => sum + v, 0);
   const slices: CategorySlice[] = [];
   map.forEach((amount, category) => {
     const percentage = total > 0 ? (amount / total) * 100 : 0;

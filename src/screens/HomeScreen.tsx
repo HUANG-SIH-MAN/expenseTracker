@@ -20,8 +20,9 @@ import { useTransactions } from '../contexts/TransactionsContext';
 import { useCategories } from '../contexts/CategoriesContext';
 import { useBudget } from '../contexts/BudgetContext';
 import { getTodayKey } from '../utils/date';
-import { getStoredAccounts, getExchangeRates, getStoredRecurring } from '../utils/storage';
+import { getStoredAccounts, getExchangeRates, getStoredRecurring, getStoredPrimaryCurrency } from '../utils/storage';
 import { getBudgetSummary } from '../utils/budget';
+import { buildAccountCostBasisMap } from '../utils/balance';
 import { getCachedTaiwanHolidays } from '../utils/taiwanHolidays';
 import type { MainStackParamList } from '../navigation/MainStack';
 
@@ -136,6 +137,17 @@ export default function HomeScreen(): React.JSX.Element {
   const daysInMonth = new Date(year, month, 0).getDate();
   const [nationalHolidays, setNationalHolidays] = useState<Set<string>>(new Set());
   const [budgetSummary, setBudgetSummary] = useState<Awaited<ReturnType<typeof getBudgetSummary>>>(null);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [primaryCurrency, setPrimaryCurrency] = useState<string>('TWD');
+  useEffect(() => {
+    getStoredAccounts().then(setAccounts);
+    getStoredPrimaryCurrency().then(setPrimaryCurrency);
+  }, []);
+
+  const costBasisMap = useMemo(
+    () => buildAccountCostBasisMap(accounts, transactions, primaryCurrency),
+    [accounts, transactions, primaryCurrency]
+  );
 
   // 先載入國定假日（有快取直接用，無快取則背景抓取一次；失敗就算了），
   // 再計算預算，確保假日載入後預算能正確使用假日權重。
@@ -154,7 +166,8 @@ export default function HomeScreen(): React.JSX.Element {
         savingTarget,
         ratesToPrimary,
         recurringItems,
-        holidays
+        holidays,
+        costBasisMap,
       );
       if (cancelled) return;
       setBudgetSummary(summary);
@@ -170,6 +183,7 @@ export default function HomeScreen(): React.JSX.Element {
     getMonthlySavingTargetAmount,
     ratesToPrimary,
     recurringItems,
+    costBasisMap,
   ]);
   const datesWithRecords = useMemo(() => {
     const set = new Set<string>();
@@ -179,10 +193,6 @@ export default function HomeScreen(): React.JSX.Element {
     }
     return set;
   }, [transactions, year, month]);
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  useEffect(() => {
-    getStoredAccounts().then(setAccounts);
-  }, []);
 
   const dayTransactions = useMemo(() => {
     const list = getTransactionsByDate(selectedDate);
@@ -196,11 +206,15 @@ export default function HomeScreen(): React.JSX.Element {
     let expense = 0;
     for (const t of dayTransactions) {
       if (t.type === 'transfer') continue;
-      if (t.type === 'income') income += t.amount;
-      else expense += t.amount;
+      if (t.type === 'income') {
+        income += t.amount;
+      } else {
+        const rate = costBasisMap.get(t.accountId ?? '') ?? 1;
+        expense += t.amount * rate;
+      }
     }
     return { dailyIncomeTotal: income, dailyExpenseTotal: expense };
-  }, [dayTransactions]);
+  }, [dayTransactions, costBasisMap]);
 
   const getAccountName = (accountId?: string): string => {
     if (!accountId) return DEFAULT_ACCOUNT_LABEL;
@@ -263,6 +277,15 @@ export default function HomeScreen(): React.JSX.Element {
   const renderItem = ({ item }: { item: Transaction }) => {
     const noteLine = item.note?.trim() ?? '';
     const isLockedAutopay = isLockedCreditCardAutopayTransaction(item);
+    const expenseAccount = item.type === 'expense'
+      ? accounts.find(a => a.id === item.accountId)
+      : undefined;
+    const foreignCostRate = expenseAccount?.currency && expenseAccount.currency !== primaryCurrency
+      ? costBasisMap.get(item.accountId ?? '')
+      : undefined;
+    const twdEquivalent = foreignCostRate != null
+      ? Math.round(item.amount * foreignCostRate)
+      : null;
     return (
     <View style={styles.recordRow}>
       <View style={styles.recordLeft}>
@@ -302,6 +325,9 @@ export default function HomeScreen(): React.JSX.Element {
                 ? `+${formatAmount(item.amount)}`
                 : `-${formatAmount(item.amount)}`}
           </Text>
+          {twdEquivalent != null ? (
+            <Text style={styles.recordCostBasis}>≈ NT${twdEquivalent.toLocaleString()}</Text>
+          ) : null}
           <Text style={styles.recordAccount}>
             {item.type === 'transfer'
               ? `${getAccountName(item.accountId)} → ${getAccountName(item.toAccountId)}`
@@ -687,6 +713,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9ca3af',
     marginTop: 2,
+  },
+  recordCostBasis: {
+    fontSize: 11,
+    color: '#6b7280',
+    marginTop: 1,
   },
   confirmBar: {
     position: 'absolute',

@@ -20,7 +20,9 @@ import type { MonthlyFixedItem, RecurringItem } from '../types';
 import { useBudget } from '../contexts/BudgetContext';
 import { useTransactions } from '../contexts/TransactionsContext';
 import { getTodayKey } from '../utils/date';
-import { getStoredRecurring } from '../utils/storage';
+import { getStoredRecurring, getStoredAccounts, getStoredPrimaryCurrency } from '../utils/storage';
+import { buildAccountCostBasisMap } from '../utils/balance';
+import type { Account } from '../types';
 import { getAmortizedItemsForMonth } from '../utils/budget';
 
 const SECTION_FIXED = '每月固定/預估支出';
@@ -46,10 +48,11 @@ interface MonthlyBudgetTabProps {
 }
 
 function getActualForFixedItem(
-  transactions: { amount: number; monthlyFixedItemId?: string; type: string; date: string }[],
+  transactions: { amount: number; monthlyFixedItemId?: string; type: string; date: string; accountId?: string }[],
   itemId: string,
   year: number,
   month: number,
+  accountCostBasisMap?: Map<string, number>,
 ): number {
   const prefix = `${year}-${String(month).padStart(2, '0')}`;
   return transactions
@@ -59,7 +62,10 @@ function getActualForFixedItem(
         t.type === 'expense' &&
         t.date.startsWith(prefix),
     )
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => {
+      const rate = accountCostBasisMap?.get(t.accountId ?? '') ?? 1;
+      return sum + t.amount * rate;
+    }, 0);
 }
 
 export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps): React.JSX.Element {
@@ -85,9 +91,18 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
   );
 
   const [recurringItems, setRecurringItems] = useState<RecurringItem[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [primaryCurrency, setPrimaryCurrency] = useState<string>('TWD');
   React.useEffect(() => {
     getStoredRecurring().then(setRecurringItems);
+    getStoredAccounts().then(setAccounts);
+    getStoredPrimaryCurrency().then(setPrimaryCurrency);
   }, []);
+
+  const costBasisMap = React.useMemo(
+    () => buildAccountCostBasisMap(accounts, transactions, primaryCurrency),
+    [accounts, transactions, primaryCurrency]
+  );
 
   // 每月固定收支（支出）中尚未連結到預算的項目
   const linkedRecurringIds = React.useMemo(
@@ -196,7 +211,7 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
           const amortizedTotal = amortizedItems.reduce((sum, item) => sum + item.monthlyAmount, 0);
           const totalTWD = fixedTotal + amortizedTotal;
           const totalActual = monthlyFixedItems.reduce(
-            (sum, item) => sum + getActualForFixedItem(transactions, item.id, todayYear, todayMonth),
+            (sum, item) => sum + getActualForFixedItem(transactions, item.id, todayYear, todayMonth, costBasisMap),
             0,
           );
           return (
@@ -246,7 +261,7 @@ export function MonthlyBudgetTab({ navigation, insets }: MonthlyBudgetTabProps):
                         : item.estimatedAmount.toLocaleString()}
                     </Text>
                     {(() => {
-                      const actual = getActualForFixedItem(transactions, item.id, todayYear, todayMonth);
+                      const actual = getActualForFixedItem(transactions, item.id, todayYear, todayMonth, costBasisMap);
                       if (actual <= 0) return null;
                       const over = actual > item.estimatedAmount;
                       return (

@@ -138,12 +138,14 @@ export function getFixedEstimatedTotal(
 
 /**
  * 當月至今「日常」已支出（排除已連結月預算或年度預算或年費分攤的交易）
+ * accountCostBasisMap 為外幣帳戶換匯均價表，有提供時外幣支出會換算成主幣後加總
  */
 export function getDailyExpenseSoFar(
   transactions: Transaction[],
   year: number,
   month: number,
   upToDateKey: string,
+  accountCostBasisMap?: Map<string, number>,
 ): number {
   const list = filterTransactionsByPeriod(
     transactions,
@@ -158,7 +160,8 @@ export function getDailyExpenseSoFar(
     if (t.annualBudgetEntryId != null) continue;
     if (t.monthlyFixedItemId != null) continue;
     if (t.amortizationMonths != null) continue;
-    sum += t.amount;
+    const rate = accountCostBasisMap?.get(t.accountId ?? '') ?? 1;
+    sum += t.amount * rate;
   }
   return sum;
 }
@@ -327,7 +330,9 @@ export async function getBudgetSummary(
   ratesToPrimary?: Record<string, number>,
   recurringItems?: RecurringItem[],
   /** 已載入的國定假日清單；傳入時跳過內部抓取，避免重複讀取 */
-  preloadedHolidays?: string[]
+  preloadedHolidays?: string[],
+  /** 外幣帳戶換匯成本均價表，有提供時外幣支出換算成主幣計入預算 */
+  accountCostBasisMap?: Map<string, number>,
 ): Promise<BudgetSummary | null> {
   const [year, month] = todayKey.split('-').map(Number);
   // 若呼叫方已提供假日清單則直接使用，否則自行取得（讀快取或呼叫 API）
@@ -353,6 +358,7 @@ export async function getBudgetSummary(
     year,
     month,
     todayKey,
+    accountCostBasisMap,
   );
   const remainingDisposable = getRemainingDisposable(
     monthlyDisposable,
