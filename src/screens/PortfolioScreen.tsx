@@ -75,7 +75,7 @@ export default function PortfolioScreen(): React.JSX.Element {
   }
   const totalGainTWD = totalValueTWD - totalCostTWD;
   const totalGainPct = totalCostTWD > 0 ? totalGainTWD / totalCostTWD : 0;
-  const allocationRows = posArray
+  const allSortedRows = posArray
     .map(pos => {
       const priceTWD = getPriceTWD(pos.ticker, prices, usdTwdRate);
       const valueTWD = pos.shares * priceTWD;
@@ -83,8 +83,15 @@ export default function PortfolioScreen(): React.JSX.Element {
       const displayName = pos.name.trim() !== '' ? pos.name : pos.ticker;
       return { ticker: pos.ticker, displayName, valueTWD, weightPct };
     })
-    .sort((a, b) => b.weightPct - a.weightPct)
-    .slice(0, ALLOCATION_TOP_COUNT);
+    .sort((a, b) => b.weightPct - a.weightPct);
+
+  const topRows = allSortedRows.slice(0, ALLOCATION_TOP_COUNT);
+  const otherRows = allSortedRows.slice(ALLOCATION_TOP_COUNT);
+  const otherPct = otherRows.reduce((sum, r) => sum + r.weightPct, 0);
+  const otherValueTWD = otherRows.reduce((sum, r) => sum + r.valueTWD, 0);
+  const allocationRows = otherRows.length > 0
+    ? [...topRows, { ticker: '__other__', displayName: '其他', valueTWD: otherValueTWD, weightPct: otherPct }]
+    : topRows;
 
   const gainColor = totalGainTWD >= 0 ? '#16a34a' : '#dc2626';
 
@@ -183,9 +190,15 @@ export default function PortfolioScreen(): React.JSX.Element {
             {allocationRows.map(row => (
               <View key={row.ticker} style={styles.allocationRow}>
                 <View style={styles.allocationLeft}>
-                  <Text style={styles.allocationTicker}>{row.ticker}</Text>
-                  {row.displayName !== row.ticker && (
-                    <Text style={styles.allocationName} numberOfLines={1}>{row.displayName}</Text>
+                  {row.ticker === '__other__' ? (
+                    <Text style={styles.allocationTicker}>{row.displayName}</Text>
+                  ) : (
+                    <>
+                      <Text style={styles.allocationTicker}>{row.ticker}</Text>
+                      {row.displayName !== row.ticker && (
+                        <Text style={styles.allocationName} numberOfLines={1}>{row.displayName}</Text>
+                      )}
+                    </>
                   )}
                 </View>
                 <View style={styles.allocationRight}>

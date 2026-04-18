@@ -453,6 +453,26 @@ async function initDb(): Promise<SQLite.SQLiteDatabase | null> {
   } catch {
     // Table already exists
   }
+  try {
+    await db.runAsync("ALTER TABLE stock_fundamentals ADD COLUMN return_1y REAL");
+  } catch {
+    // Column already exists
+  }
+  try {
+    await db.runAsync("ALTER TABLE stock_fundamentals ADD COLUMN annualized_volatility REAL");
+  } catch {
+    // Column already exists
+  }
+  try {
+    await db.runAsync("ALTER TABLE stock_fundamentals ADD COLUMN avg_daily_volume REAL");
+  } catch {
+    // Column already exists
+  }
+  try {
+    await db.runAsync("ALTER TABLE stock_fundamentals ADD COLUMN price_history TEXT");
+  } catch {
+    // Column already exists
+  }
   dbInstance = db;
   return db;
 }

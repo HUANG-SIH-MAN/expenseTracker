@@ -31,6 +31,7 @@ type Route = RouteProp<MainStackParamList, 'CompanyFundamentals'>;
 const ONE_TRILLION = 1e12;
 const ONE_BILLION = 1e9;
 const ONE_MILLION = 1e6;
+const ONE_THOUSAND = 1e3;
 const NO_VALUE = '—';
 const PERCENT_MULTIPLIER = 100;
 const PERCENT_DECIMAL_PLACES = 1;
@@ -87,6 +88,18 @@ function fmtMarketCap(n: number, currencySymbol: string): string {
   if (n >= ONE_TRILLION) return `${currencySymbol}${(n / ONE_TRILLION).toFixed(2)}T`;
   if (n >= ONE_BILLION) return `${currencySymbol}${(n / ONE_BILLION).toFixed(2)}B`;
   return `${currencySymbol}${(n / ONE_MILLION).toFixed(0)}M`;
+}
+
+function fmtVolume(n: number): string {
+  if (n >= ONE_BILLION) return `${(n / ONE_BILLION).toFixed(2)}B`;
+  if (n >= ONE_MILLION) return `${(n / ONE_MILLION).toFixed(1)}M`;
+  if (n >= ONE_THOUSAND) return `${(n / ONE_THOUSAND).toFixed(0)}K`;
+  return `${n.toFixed(0)}`;
+}
+
+function fmtReturn(ratio: number): string {
+  const sign = ratio >= 0 ? '+' : '';
+  return `${sign}${(ratio * PERCENT_MULTIPLIER).toFixed(PERCENT_DECIMAL_PLACES)}%`;
 }
 
 function fmtBillions(n: number): string {
@@ -549,27 +562,37 @@ export default function CompanyFundamentalsScreen(): React.JSX.Element {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>基本面指標</Text>
             <View style={styles.grid}>
-              <FundamentalItem label="市值" value={fmtMarketCap(fundamentals.marketCap, currencySymbol)} />
-              <FundamentalItem
-                label="本益比 P/E"
-                value={fundamentals.peRatio != null ? `${fundamentals.peRatio.toFixed(PE_DECIMAL_PLACES)}x` : NO_VALUE}
-              />
-              <FundamentalItem
-                label="P/E 位階"
-                value={peBand.label}
-                hint={peBand.hint}
-                valueColor={peBand.valueColor}
-              />
-              <FundamentalItem
-                label="EPS"
-                value={fundamentals.eps != null ? fmtEpsDisplay(fundamentals.eps, classification.market, currencySymbol) : NO_VALUE}
-              />
+              {fundamentals.marketCap > 0 && (
+                <FundamentalItem label="市值" value={fmtMarketCap(fundamentals.marketCap, currencySymbol)} />
+              )}
+              {fundamentals.peRatio != null && (
+                <FundamentalItem
+                  label="本益比 P/E"
+                  value={`${fundamentals.peRatio.toFixed(PE_DECIMAL_PLACES)}x`}
+                />
+              )}
+              {fundamentals.peRatio != null && (
+                <FundamentalItem
+                  label="P/E 位階"
+                  value={peBand.label}
+                  hint={peBand.hint}
+                  valueColor={peBand.valueColor}
+                />
+              )}
+              {fundamentals.eps != null && (
+                <FundamentalItem
+                  label="EPS"
+                  value={fmtEpsDisplay(fundamentals.eps, classification.market, currencySymbol)}
+                />
+              )}
               <FundamentalItem label="52W 最高" value={`${currencySymbol}${fmtPrice(fundamentals.week52High, classification.market)}`} />
               <FundamentalItem label="52W 最低" value={`${currencySymbol}${fmtPrice(fundamentals.week52Low, classification.market)}`} />
-              <FundamentalItem
-                label="Beta"
-                value={fundamentals.beta != null ? fundamentals.beta.toFixed(PE_DECIMAL_PLACES) : NO_VALUE}
-              />
+              {fundamentals.beta != null && (
+                <FundamentalItem
+                  label="Beta"
+                  value={fundamentals.beta.toFixed(PE_DECIMAL_PLACES)}
+                />
+              )}
             </View>
 
             <View style={styles.rangeSection}>
@@ -599,6 +622,48 @@ export default function CompanyFundamentalsScreen(): React.JSX.Element {
               )}
             </View>
           </View>
+
+          {/* ETF 1年走勢 & 績效（僅 single-asset ETF） */}
+          {isSingleAssetETF(stockTicker) && (
+            fundamentals.priceHistory != null ||
+            fundamentals.return1Y != null ||
+            fundamentals.annualizedVolatility != null ||
+            fundamentals.avgDailyVolume != null
+          ) && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>1年走勢 & 績效</Text>
+              {(fundamentals.priceHistory?.length ?? 0) >= 2 && (
+                <View style={styles.trendSection}>
+                  <Sparkline
+                    values={fundamentals.priceHistory!}
+                    width={Math.max(SPARKLINE_MIN_WIDTH, windowWidth - SPARKLINE_HORIZONTAL_PADDING)}
+                    height={SPARKLINE_HEIGHT}
+                  />
+                </View>
+              )}
+              <View style={styles.grid}>
+                {fundamentals.return1Y != null && (
+                  <FundamentalItem
+                    label="1年報酬率"
+                    value={fmtReturn(fundamentals.return1Y)}
+                    valueColor={fundamentals.return1Y >= 0 ? '#15803d' : '#dc2626'}
+                  />
+                )}
+                {fundamentals.annualizedVolatility != null && (
+                  <FundamentalItem
+                    label="年化波動率"
+                    value={`${(fundamentals.annualizedVolatility * PERCENT_MULTIPLIER).toFixed(PERCENT_DECIMAL_PLACES)}%`}
+                  />
+                )}
+                {fundamentals.avgDailyVolume != null && (
+                  <FundamentalItem
+                    label="均日成交量"
+                    value={fmtVolume(fundamentals.avgDailyVolume)}
+                  />
+                )}
+              </View>
+            </View>
+          )}
 
           {(classification.market === 'US' || classification.market === 'TW') &&
             (fundamentals.peRatio != null || fundamentals.eps != null) && (

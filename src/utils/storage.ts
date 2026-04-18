@@ -2645,6 +2645,15 @@ export async function getStockFundamentals(
         annualFinancials = [];
       }
     }
+    let priceHistory: number[] | undefined;
+    if (typeof row.price_history === "string") {
+      try {
+        const parsed = JSON.parse(row.price_history);
+        priceHistory = Array.isArray(parsed) ? (parsed as number[]) : undefined;
+      } catch {
+        priceHistory = undefined;
+      }
+    }
     return {
       ticker: row.ticker as string,
       marketCap: row.market_cap as number,
@@ -2655,6 +2664,10 @@ export async function getStockFundamentals(
       beta: row.beta as number | null,
       annualFinancials,
       lastUpdated: row.last_updated as string,
+      return1Y: row.return_1y != null ? (row.return_1y as number) : null,
+      annualizedVolatility: row.annualized_volatility != null ? (row.annualized_volatility as number) : null,
+      avgDailyVolume: row.avg_daily_volume != null ? (row.avg_daily_volume as number) : null,
+      priceHistory,
     };
   }
   try {
@@ -2674,8 +2687,9 @@ export async function saveStockFundamentals(
   if (db) {
     await db.runAsync(
       `INSERT OR REPLACE INTO stock_fundamentals
-        (ticker, market_cap, pe_ratio, eps, week52_high, week52_low, beta, annual_financials, last_updated)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (ticker, market_cap, pe_ratio, eps, week52_high, week52_low, beta, annual_financials, last_updated,
+         return_1y, annualized_volatility, avg_daily_volume, price_history)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.ticker,
         data.marketCap,
@@ -2686,6 +2700,10 @@ export async function saveStockFundamentals(
         data.beta,
         JSON.stringify(data.annualFinancials),
         data.lastUpdated,
+        data.return1Y ?? null,
+        data.annualizedVolatility ?? null,
+        data.avgDailyVolume ?? null,
+        data.priceHistory != null ? JSON.stringify(data.priceHistory) : null,
       ]
     );
     return;

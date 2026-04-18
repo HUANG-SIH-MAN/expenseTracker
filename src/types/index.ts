@@ -327,6 +327,14 @@ export interface StockFundamentals {
   beta: number | null;
   annualFinancials: StockAnnualFinancial[]; // 最近5年
   lastUpdated: string; // ISO 8601
+  /** 1年報酬率（小數，如 0.35 = +35%）；僅 single-asset ETF 有值 */
+  return1Y?: number | null;
+  /** 年化波動率（小數，如 0.60 = 60%）；僅 single-asset ETF 有值 */
+  annualizedVolatility?: number | null;
+  /** 平均日成交量；僅 single-asset ETF 有值 */
+  avgDailyVolume?: number | null;
+  /** 1年每日收盤價（供 Sparkline）；僅 single-asset ETF 有值 */
+  priceHistory?: number[];
 }
 
 /** Alpha Vantage API Key 池中的單筆設定 */

@@ -530,6 +530,8 @@ async function fetchTaiwanFundamentals(ticker: string): Promise<StockFundamental
   };
 }
 
+const TRADING_DAYS_PER_YEAR = 252;
+
 async function fetchSingleAssetETFFundamentals(ticker: string): Promise<StockFundamentals> {
   console.log(`${REFRESH_LOG_PREFIX} fetchSingleAssetETFFundamentals START ticker=${ticker}`);
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1y`;
@@ -540,17 +542,53 @@ async function fetchSingleAssetETFFundamentals(ticker: string): Promise<StockFun
   const meta = result?.meta as Record<string, unknown> | undefined;
   const quotes = (result?.indicators as Record<string, unknown> | undefined)?.quote as unknown[] | undefined;
   const quote = Array.isArray(quotes) ? quotes[0] as Record<string, unknown> : undefined;
-  const highs = Array.isArray(quote?.high) ? (quote!.high as (number | null)[]) : [];
-  const lows  = Array.isArray(quote?.low)  ? (quote!.low  as (number | null)[]) : [];
-  const validHighs = highs.filter((h): h is number => h != null && Number.isFinite(h));
-  const validLows  = lows.filter((l): l is number => l != null && Number.isFinite(l));
+
+  const highs   = Array.isArray(quote?.high)   ? (quote!.high   as (number | null)[]) : [];
+  const lows    = Array.isArray(quote?.low)    ? (quote!.low    as (number | null)[]) : [];
+  const closes  = Array.isArray(quote?.close)  ? (quote!.close  as (number | null)[]) : [];
+  const volumes = Array.isArray(quote?.volume) ? (quote!.volume as (number | null)[]) : [];
+
+  const validHighs   = highs.filter((h): h is number => h != null && Number.isFinite(h));
+  const validLows    = lows.filter((l): l is number => l != null && Number.isFinite(l));
+  const validCloses  = closes.filter((c): c is number => c != null && Number.isFinite(c) && c > 0);
+  const validVolumes = volumes.filter((v): v is number => v != null && Number.isFinite(v) && v > 0);
+
   const week52High = validHighs.length > 0
     ? Math.max(...validHighs)
     : (typeof meta?.fiftyTwoWeekHigh === 'number' ? meta.fiftyTwoWeekHigh : 0);
   const week52Low = validLows.length > 0
     ? Math.min(...validLows)
     : (typeof meta?.fiftyTwoWeekLow === 'number' ? meta.fiftyTwoWeekLow : 0);
-  console.log(`${REFRESH_LOG_PREFIX} fetchSingleAssetETFFundamentals 52W high=${week52High} low=${week52Low}`);
+
+  // 1年報酬率
+  let return1Y: number | null = null;
+  if (validCloses.length >= 2) {
+    const first = validCloses[0];
+    const last = validCloses[validCloses.length - 1];
+    return1Y = (last - first) / first;
+  }
+
+  // 年化波動率（log return std dev × sqrt(252)）
+  let annualizedVolatility: number | null = null;
+  if (validCloses.length >= 2) {
+    const logReturns: number[] = [];
+    for (let i = 1; i < validCloses.length; i += 1) {
+      logReturns.push(Math.log(validCloses[i] / validCloses[i - 1]));
+    }
+    const mean = logReturns.reduce((sum, r) => sum + r, 0) / logReturns.length;
+    const variance = logReturns.reduce((sum, r) => sum + (r - mean) ** 2, 0) / logReturns.length;
+    annualizedVolatility = Math.sqrt(variance) * Math.sqrt(TRADING_DAYS_PER_YEAR);
+  }
+
+  // 平均日成交量
+  const avgDailyVolume = validVolumes.length > 0
+    ? validVolumes.reduce((sum, v) => sum + v, 0) / validVolumes.length
+    : null;
+
+  // 1年收盤價歷史（供 Sparkline，最多保留 252 點）
+  const priceHistory = validCloses.slice(-TRADING_DAYS_PER_YEAR);
+
+  console.log(`${REFRESH_LOG_PREFIX} fetchSingleAssetETFFundamentals 52W high=${week52High} low=${week52Low} return1Y=${return1Y?.toFixed(4)} vol=${annualizedVolatility?.toFixed(4)}`);
   return {
     ticker,
     marketCap: typeof meta?.marketCap === 'number' ? meta.marketCap : 0,
@@ -561,6 +599,10 @@ async function fetchSingleAssetETFFundamentals(ticker: string): Promise<StockFun
     beta: null,
     annualFinancials: [],
     lastUpdated: new Date().toISOString(),
+    return1Y,
+    annualizedVolatility,
+    avgDailyVolume,
+    priceHistory,
   };
 }
 
