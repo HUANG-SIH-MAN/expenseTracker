@@ -11,6 +11,7 @@ import {
   FUNDAMENTALS_REFRESH_COOLDOWN_MS,
 } from "./dataRefreshPolicy";
 import { classifyInstrument, normalizeTaiwanTicker, normalizeTicker } from "./instrumentClassification";
+import { isSingleAssetETF } from "./etfHoldings";
 
 const REFRESH_LOG_PREFIX = "[Stock Fundamentals]";
 const inflightRefreshMap = new Map<string, Promise<StockFundamentals>>();
@@ -428,8 +429,17 @@ async function fetchTaiwanAnnualFinancials(stockNo: string): Promise<StockAnnual
 async function fetchOverview(
   ticker: string,
 ): Promise<Omit<StockFundamentals, "ticker" | "annualFinancials" | "lastUpdated">> {
-  const json = await fetchAlphaVantageData("OVERVIEW", ticker);
+  console.log(`${REFRESH_LOG_PREFIX} fetchOverview START ticker=${ticker}`);
+  let json: Record<string, unknown>;
+  try {
+    json = await fetchAlphaVantageData("OVERVIEW", ticker);
+  } catch (e) {
+    console.error(`${REFRESH_LOG_PREFIX} fetchOverview FETCH_ERROR ticker=${ticker}`, e);
+    throw e;
+  }
+  console.log(`${REFRESH_LOG_PREFIX} fetchOverview RAW Symbol=${json?.Symbol} MarketCap=${json?.MarketCapitalization} 52WH=${json?.["52WeekHigh"]} 52WL=${json?.["52WeekLow"]}`);
   if (!json?.Symbol) {
+    console.error(`${REFRESH_LOG_PREFIX} fetchOverview NO_SYMBOL ticker=${ticker} keys=${Object.keys(json ?? {}).join(',')}`);
     throw new Error(`找不到 ${ticker} 的基本面資料`);
   }
 
@@ -520,7 +530,42 @@ async function fetchTaiwanFundamentals(ticker: string): Promise<StockFundamental
   };
 }
 
+async function fetchSingleAssetETFFundamentals(ticker: string): Promise<StockFundamentals> {
+  console.log(`${REFRESH_LOG_PREFIX} fetchSingleAssetETFFundamentals START ticker=${ticker}`);
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1y`;
+  const headers = Platform.OS === 'web' ? {} : { headers: { 'User-Agent': 'Mozilla/5.0' } };
+  const res = await fetchWithCORS(url, headers);
+  const json = await res.json() as Record<string, unknown>;
+  const result = (json as { chart?: { result?: unknown[] } })?.chart?.result?.[0] as Record<string, unknown> | undefined;
+  const meta = result?.meta as Record<string, unknown> | undefined;
+  const quotes = (result?.indicators as Record<string, unknown> | undefined)?.quote as unknown[] | undefined;
+  const quote = Array.isArray(quotes) ? quotes[0] as Record<string, unknown> : undefined;
+  const highs = Array.isArray(quote?.high) ? (quote!.high as (number | null)[]) : [];
+  const lows  = Array.isArray(quote?.low)  ? (quote!.low  as (number | null)[]) : [];
+  const validHighs = highs.filter((h): h is number => h != null && Number.isFinite(h));
+  const validLows  = lows.filter((l): l is number => l != null && Number.isFinite(l));
+  const week52High = validHighs.length > 0
+    ? Math.max(...validHighs)
+    : (typeof meta?.fiftyTwoWeekHigh === 'number' ? meta.fiftyTwoWeekHigh : 0);
+  const week52Low = validLows.length > 0
+    ? Math.min(...validLows)
+    : (typeof meta?.fiftyTwoWeekLow === 'number' ? meta.fiftyTwoWeekLow : 0);
+  console.log(`${REFRESH_LOG_PREFIX} fetchSingleAssetETFFundamentals 52W high=${week52High} low=${week52Low}`);
+  return {
+    ticker,
+    marketCap: typeof meta?.marketCap === 'number' ? meta.marketCap : 0,
+    peRatio: null,
+    eps: null,
+    week52High,
+    week52Low,
+    beta: null,
+    annualFinancials: [],
+    lastUpdated: new Date().toISOString(),
+  };
+}
+
 async function fetchUSFundamentals(ticker: string): Promise<StockFundamentals> {
+  console.log(`${REFRESH_LOG_PREFIX} fetchUSFundamentals START ticker=${ticker} platform=${Platform.OS}`);
   if (Platform.OS === "web") {
     throw new Error("基本面資料僅支援 iOS / Android，網頁版因 CORS 限制無法使用");
   }
@@ -554,12 +599,23 @@ async function fetchUSFundamentals(ticker: string): Promise<StockFundamentals> {
 
 async function fetchAndSave(ticker: string): Promise<StockFundamentals> {
   const classification = classifyInstrument({ ticker });
-  const data = classification.market === "TW"
-    ? await fetchTaiwanFundamentals(ticker)
-    : await fetchUSFundamentals(ticker);
-
-  await saveStockFundamentals(data);
-  return data;
+  console.log(`${REFRESH_LOG_PREFIX} fetchAndSave ticker=${ticker} market=${classification.market} singleAsset=${isSingleAssetETF(ticker)}`);
+  try {
+    let data: StockFundamentals;
+    if (isSingleAssetETF(ticker)) {
+      data = await fetchSingleAssetETFFundamentals(ticker);
+    } else if (classification.market === "TW") {
+      data = await fetchTaiwanFundamentals(ticker);
+    } else {
+      data = await fetchUSFundamentals(ticker);
+    }
+    await saveStockFundamentals(data);
+    console.log(`${REFRESH_LOG_PREFIX} fetchAndSave SUCCESS ticker=${ticker}`);
+    return data;
+  } catch (e) {
+    console.error(`${REFRESH_LOG_PREFIX} fetchAndSave ERROR ticker=${ticker}`, e);
+    throw e;
+  }
 }
 
 function getOrCreateRefreshPromise(ticker: string): Promise<StockFundamentals> {
@@ -595,14 +651,20 @@ export async function getStockFundamentals(
   ticker: string
 ): Promise<StockFundamentals> {
   const normalizedTicker = normalizeTicker(ticker);
+  console.log(`${REFRESH_LOG_PREFIX} getStockFundamentals ticker=${normalizedTicker}`);
   const cached = await getFromStorage(normalizedTicker);
   if (cached) {
-    const hasEnoughAnnualFinancials = cached.annualFinancials.length >= TAIWAN_FINANCIAL_YEAR_COUNT;
-    if (!isCacheValid(cached.lastUpdated) || !hasEnoughAnnualFinancials) {
+    const cacheAge = Date.now() - new Date(cached.lastUpdated).getTime();
+    console.log(`${REFRESH_LOG_PREFIX} cache HIT ticker=${normalizedTicker} annualFinancials=${cached.annualFinancials.length} ageMs=${cacheAge}`);
+    const classification = classifyInstrument({ ticker: normalizedTicker });
+    const needsMoreFinancials = classification.market === 'TW' &&
+      cached.annualFinancials.length < TAIWAN_FINANCIAL_YEAR_COUNT;
+    if (!isCacheValid(cached.lastUpdated) || needsMoreFinancials) {
       triggerStaleRefreshInBackground(normalizedTicker);
     }
     return cached;
   }
+  console.log(`${REFRESH_LOG_PREFIX} cache MISS ticker=${normalizedTicker} → fetching`);
   return getOrCreateRefreshPromise(normalizedTicker);
 }
 

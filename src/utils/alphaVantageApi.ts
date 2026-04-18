@@ -64,18 +64,34 @@ export async function fetchAlphaVantageData(
   let latestInformation: string | null = null;
   for (const entry of availableEntries) {
     const url = buildAlphaVantageUrl(functionName, symbol, entry.key);
-    const res = await fetchWithCORS(url, REQUEST_TIMEOUT_HEADERS);
+    console.log(`[AlphaVantage] REQUEST function=${functionName} symbol=${symbol}`);
+    let res: Response;
+    try {
+      res = await fetchWithCORS(url, REQUEST_TIMEOUT_HEADERS);
+    } catch (e) {
+      console.error(`[AlphaVantage] FETCH_ERROR function=${functionName} symbol=${symbol}`, e);
+      throw e;
+    }
+    console.log(`[AlphaVantage] HTTP status=${res.status}`);
     const json = (await res.json()) as AlphaVantageJson;
     const note = readStringField(json, RATE_LIMIT_NOTE_FIELD);
     if (note) {
+      console.warn(`[AlphaVantage] RATE_LIMITED function=${functionName} symbol=${symbol} note=${note}`);
       await markAlphaVantageApiKeyRateLimited(entry.key);
       continue;
     }
     const information = readStringField(json, INFORMATION_FIELD);
     if (information) {
+      console.warn(`[AlphaVantage] INFORMATION function=${functionName} symbol=${symbol} info=${information}`);
       latestInformation = information;
       continue;
     }
+    if (Object.keys(json).length === 0) {
+      console.warn(`[AlphaVantage] EMPTY_RESPONSE function=${functionName} symbol=${symbol} — treating as rate limit`);
+      await markAlphaVantageApiKeyRateLimited(entry.key);
+      continue;
+    }
+    console.log(`[AlphaVantage] SUCCESS function=${functionName} symbol=${symbol} topKeys=${Object.keys(json).slice(0, 5).join(',')}`);
     return json;
   }
 

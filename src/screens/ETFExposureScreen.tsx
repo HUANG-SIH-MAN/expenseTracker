@@ -24,6 +24,7 @@ import {
   isSingleAssetETF,
   isSupportedETFTicker,
 } from '../utils/etfHoldings';
+import { normalizeTicker } from '../utils/instrumentClassification';
 import type { ETFHolding } from '../types';
 
 function fmtTWD(n: number): string {
@@ -33,12 +34,20 @@ function fmtPct(n: number): string {
   return n.toFixed(2) + '%';
 }
 
+interface ExposureSource {
+  ticker: string;
+  contributionTWD: number;
+  isDirect?: boolean;
+}
+
 interface ExposureRow {
   companyName: string;
-  stockTicker?: string; // 成分股代號（來自 ETF holdings 的 stockTicker）
+  stockTicker?: string;
   totalTWD: number;
   portfolioPct: number;
-  sources: { ticker: string; contributionTWD: number }[];
+  sources: ExposureSource[];
+  hasDirectHolding: boolean;
+  isSingleAsset: boolean;
 }
 
 type Nav = NativeStackNavigationProp<MainStackParamList>;
@@ -120,7 +129,7 @@ export default function ETFExposureScreen(): React.JSX.Element {
     setIsRefreshing(false);
   }
 
-  // 計算曝險彙整
+  // 計算曝險彙整（ETF 成分 + 直接持股 + 單一資產 ETF）
   const { exposureRows, totalPortfolioTWD } = useMemo(() => {
     let totalPortfolioTWD = 0;
     for (const pos of Array.from(positions.values())) {
@@ -129,35 +138,100 @@ export default function ETFExposureScreen(): React.JSX.Element {
       }
     }
 
-    const map = new Map<string, { stockTicker?: string; totalTWD: number; sources: { ticker: string; contributionTWD: number }[] }>();
+    type MapEntry = {
+      companyName: string;
+      stockTicker?: string;
+      totalTWD: number;
+      sources: ExposureSource[];
+      hasDirectHolding: boolean;
+      isSingleAsset: boolean;
+    };
 
+    // 以 normalized stockTicker 為 key（快速合併直接持股用）
+    const byStockTicker = new Map<string, MapEntry>();
+    // 以 companyName 為 key（ETF 成分無 stockTicker 時用）
+    const byCompanyName = new Map<string, MapEntry>();
+
+    // Step A：有 holdings 資料的 ETF（QQQ, SMH, 006208）
     for (const pos of etfPositions) {
       const etfValueTWD = pos.shares * getPriceTWD(pos.ticker, prices, usdTwdRate);
       const holdings = holdingsMap.get(pos.ticker) ?? [];
 
       for (const h of holdings) {
         const contributionTWD = etfValueTWD * (h.weightPct / 100);
-        const existing = map.get(h.companyName);
-        if (existing) {
-          existing.totalTWD += contributionTWD;
-          existing.sources.push({ ticker: pos.ticker, contributionTWD });
+        const key = h.stockTicker ? normalizeTicker(h.stockTicker) : null;
+
+        if (key && byStockTicker.has(key)) {
+          const entry = byStockTicker.get(key)!;
+          entry.totalTWD += contributionTWD;
+          entry.sources.push({ ticker: pos.ticker, contributionTWD });
+        } else if (!key && byCompanyName.has(h.companyName)) {
+          const entry = byCompanyName.get(h.companyName)!;
+          entry.totalTWD += contributionTWD;
+          entry.sources.push({ ticker: pos.ticker, contributionTWD });
         } else {
-          map.set(h.companyName, {
+          const entry: MapEntry = {
+            companyName: h.companyName,
             stockTicker: h.stockTicker,
             totalTWD: contributionTWD,
             sources: [{ ticker: pos.ticker, contributionTWD }],
-          });
+            hasDirectHolding: false,
+            isSingleAsset: false,
+          };
+          if (key) byStockTicker.set(key, entry);
+          else byCompanyName.set(h.companyName, entry);
         }
       }
     }
 
-    const rows: ExposureRow[] = Array.from(map.entries())
-      .map(([companyName, data]) => ({
-        companyName,
-        stockTicker: data.stockTicker,
-        totalTWD: data.totalTWD,
-        portfolioPct: totalPortfolioTWD > 0 ? (data.totalTWD / totalPortfolioTWD) * 100 : 0,
-        sources: data.sources.sort((a, b) => b.contributionTWD - a.contributionTWD),
+    // Step B：單一資產 ETF（GLD, IBIT）
+    for (const pos of Array.from(positions.values())) {
+      if (pos.shares <= 0 || !isSingleAssetETF(pos.ticker)) continue;
+      const key = normalizeTicker(pos.ticker);
+      const valueTWD = pos.shares * getPriceTWD(pos.ticker, prices, usdTwdRate);
+      byStockTicker.set(key, {
+        companyName: pos.name,
+        stockTicker: key,
+        totalTWD: valueTWD,
+        sources: [{ ticker: key, contributionTWD: valueTWD }],
+        hasDirectHolding: false,
+        isSingleAsset: true,
+      });
+    }
+
+    // Step C：個股直接持倉（非 ETF 的持倉）
+    for (const pos of Array.from(positions.values())) {
+      if (pos.shares <= 0 || isSupportedETFTicker(pos.ticker)) continue;
+      const key = normalizeTicker(pos.ticker);
+      const valueTWD = pos.shares * getPriceTWD(pos.ticker, prices, usdTwdRate);
+
+      if (byStockTicker.has(key)) {
+        const entry = byStockTicker.get(key)!;
+        entry.totalTWD += valueTWD;
+        entry.sources.push({ ticker: key, contributionTWD: valueTWD, isDirect: true });
+        entry.hasDirectHolding = true;
+      } else {
+        byStockTicker.set(key, {
+          companyName: pos.name,
+          stockTicker: key,
+          totalTWD: valueTWD,
+          sources: [{ ticker: key, contributionTWD: valueTWD, isDirect: true }],
+          hasDirectHolding: true,
+          isSingleAsset: false,
+        });
+      }
+    }
+
+    const allEntries = [
+      ...Array.from(byStockTicker.values()),
+      ...Array.from(byCompanyName.values()),
+    ];
+
+    const rows: ExposureRow[] = allEntries
+      .map(entry => ({
+        ...entry,
+        portfolioPct: totalPortfolioTWD > 0 ? (entry.totalTWD / totalPortfolioTWD) * 100 : 0,
+        sources: entry.sources.sort((a, b) => b.contributionTWD - a.contributionTWD),
       }))
       .sort((a, b) => b.totalTWD - a.totalTWD);
 
@@ -195,9 +269,9 @@ export default function ETFExposureScreen(): React.JSX.Element {
       ) : exposureRows.length === 0 ? (
         <View style={styles.center}>
           <Ionicons name="analytics-outline" size={48} color="#d1d5db" />
-          <Text style={styles.emptyText}>尚無可分析的 ETF 持倉</Text>
+          <Text style={styles.emptyText}>尚無可分析的持倉</Text>
           <Text style={styles.emptyHint}>
-            支援：{getSupportedETFHoldingsTickers().join('、')}
+            支援 ETF：{getSupportedETFHoldingsTickers().join('、')}，或直接持有個股
           </Text>
         </View>
       ) : (
@@ -205,7 +279,7 @@ export default function ETFExposureScreen(): React.JSX.Element {
           {/* 說明列 */}
           <View style={styles.infoBox}>
             <Text style={styles.infoText}>
-              以 ETF 持股比例 × 持倉市值換算，彙整你實際等同持有的公司曝險。持股資料每月更新一次。
+              以 ETF 持股比例 × 持倉市值換算，並加計直接持有個股，彙整你對每家公司的實際曝險。ETF 成分資料每月更新一次。
             </Text>
           </View>
 
@@ -231,7 +305,7 @@ export default function ETFExposureScreen(): React.JSX.Element {
             const RowWrapper = canNavigate ? TouchableOpacity : View;
             return (
               <RowWrapper
-                key={row.companyName}
+                key={row.companyName + row.stockTicker}
                 style={[styles.row, i % 2 === 1 && styles.rowAlt]}
                 {...(canNavigate
                   ? {
@@ -254,9 +328,15 @@ export default function ETFExposureScreen(): React.JSX.Element {
                   </View>
                   <View style={styles.sourceTags}>
                     {row.sources.map(s => (
-                      <View key={s.ticker} style={styles.tag}>
-                        <Text style={styles.tagText}>{s.ticker}</Text>
-                      </View>
+                      s.isDirect ? (
+                        <View key={s.ticker + '_direct'} style={styles.tagDirect}>
+                          <Text style={styles.tagDirectText}>直接持有</Text>
+                        </View>
+                      ) : (
+                        <View key={s.ticker} style={styles.tag}>
+                          <Text style={styles.tagText}>{s.ticker}</Text>
+                        </View>
+                      )
                     ))}
                   </View>
                 </View>
@@ -348,4 +428,11 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
   },
   tagText: { fontSize: 10, color: '#1d4ed8', fontWeight: '600' },
+  tagDirect: {
+    backgroundColor: '#dcfce7',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  tagDirectText: { fontSize: 10, color: '#15803d', fontWeight: '600' },
 });

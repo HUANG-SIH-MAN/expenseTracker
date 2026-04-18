@@ -21,6 +21,7 @@ import { getStockFundamentals, refreshStockFundamentals } from '../utils/stockFu
 import { fetchWithCORS, getStockPrice } from '../utils/stockPrice';
 import { classifyInstrument, normalizeTaiwanTicker } from '../utils/instrumentClassification';
 import { fetchAlphaVantageData } from '../utils/alphaVantageApi';
+import { isSingleAssetETF } from '../utils/etfHoldings';
 import type { MainStackParamList } from '../navigation/MainStack';
 import type { InstrumentMarket, StockFundamentals } from '../types';
 import Sparkline from '../components/Sparkline';
@@ -374,7 +375,7 @@ export default function CompanyFundamentalsScreen(): React.JSX.Element {
   }, [stockTicker, marketCurrency, fundamentals?.lastUpdated]);
 
   useEffect(() => {
-    if (classification.market !== 'US' && classification.market !== 'TW') {
+    if ((classification.market !== 'US' && classification.market !== 'TW') || isSingleAssetETF(stockTicker)) {
       setEpsHistoryRows([]);
       setPeHistorySummary(null);
       setValuationError(null);
@@ -599,7 +600,8 @@ export default function CompanyFundamentalsScreen(): React.JSX.Element {
             </View>
           </View>
 
-          {(classification.market === 'US' || classification.market === 'TW') && (
+          {(classification.market === 'US' || classification.market === 'TW') &&
+            (fundamentals.peRatio != null || fundamentals.eps != null) && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>歷史本益比 / EPS（{valuationMarketLabel}）</Text>
               {valuationLoading ? (
