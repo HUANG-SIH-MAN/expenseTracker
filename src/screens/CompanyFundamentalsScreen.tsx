@@ -138,6 +138,13 @@ function fmtEpsDisplay(eps: number, market: InstrumentMarket, currencySymbol: st
   return `${currencySymbol}${eps.toFixed(decimals)}`;
 }
 
+function fmtQuarterLabel(fiscalQuarter: string): string {
+  const month = parseInt(fiscalQuarter.slice(5, 7), 10);
+  const year = fiscalQuarter.slice(0, 4);
+  const quarter = month <= 3 ? 'Q1' : month <= 6 ? 'Q2' : month <= 9 ? 'Q3' : 'Q4';
+  return `${quarter} ${year}`;
+}
+
 function toOptionalNumber(raw: unknown): number | null {
   if (raw == null) return null;
   const value = parseFloat(String(raw).replace(/,/g, '').trim());
@@ -360,6 +367,7 @@ export default function CompanyFundamentalsScreen(): React.JSX.Element {
   const [valuationError, setValuationError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [financialViewMode, setFinancialViewMode] = useState<'annual' | 'quarterly'>('annual');
 
   useEffect(() => {
     setLoading(true);
@@ -472,6 +480,15 @@ export default function CompanyFundamentalsScreen(): React.JSX.Element {
         netMargin: toPercent(row.netIncome, row.totalRevenue),
       };
     });
+  }, [fundamentals]);
+
+  const quarterlyRows = useMemo(() => {
+    if (!fundamentals) return [];
+    return fundamentals.quarterlyFinancials.slice(0, 12).map((row) => ({
+      ...row,
+      grossMargin: toPercent(row.grossProfit, row.totalRevenue),
+      netMargin: toPercent(row.netIncome, row.totalRevenue),
+    }));
   }, [fundamentals]);
 
   const sparklineValues = useMemo(
@@ -704,45 +721,103 @@ export default function CompanyFundamentalsScreen(): React.JSX.Element {
             </View>
           )}
 
-          {/* 年度營收（最近 5 年） */}
-          {financialRows.length > 0 && (
+          {/* 財務資料（年度/季度） */}
+          {(financialRows.length > 0 || quarterlyRows.length > 0) && (
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>年度財務（最近 5 年）</Text>
+              <Text style={styles.sectionTitle}>
+                {financialViewMode === 'annual' ? '年度財務（最近 5 年）' : '季度財務（最近 12 季）'}
+              </Text>
 
-              <View style={styles.trendSection}>
-                <Text style={styles.trendTitle}>5 年營收趨勢</Text>
-                <Sparkline values={sparklineValues} width={sparklineWidth} height={SPARKLINE_HEIGHT} />
+              {/* 年度/季度 Tab 切換 */}
+              <View style={styles.financialTabs}>
+                <TouchableOpacity
+                  style={[styles.financialTab, financialViewMode === 'annual' && styles.financialTabActive]}
+                  onPress={() => setFinancialViewMode('annual')}
+                >
+                  <Text style={[styles.financialTabText, financialViewMode === 'annual' && styles.financialTabTextActive]}>
+                    年度
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.financialTab, financialViewMode === 'quarterly' && styles.financialTabActive]}
+                  onPress={() => setFinancialViewMode('quarterly')}
+                >
+                  <Text style={[styles.financialTabText, financialViewMode === 'quarterly' && styles.financialTabTextActive]}>
+                    季度
+                  </Text>
+                </TouchableOpacity>
               </View>
 
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View>
-                  <View style={styles.tableHeader}>
-                    <Text style={[styles.cell, styles.yearCell, styles.colLabel]}>年度</Text>
-                    <Text style={[styles.cell, styles.valueCell, styles.colLabel]}>總營收</Text>
-                    <Text style={[styles.cell, styles.percentCell, styles.colLabel, styles.yoyColumnSpacing]}>營收成長率</Text>
-                    <Text style={[styles.cell, styles.percentCell, styles.colLabel, styles.percentColumnSpacing]}>毛利率</Text>
-                    <Text style={[styles.cell, styles.percentCell, styles.colLabel, styles.percentColumnSpacing]}>淨利率</Text>
-                    <Text style={[styles.cell, styles.valueCell, styles.colLabel]}>淨利</Text>
-                  </View>
-                  {financialRows.map((row) => {
-                    const yoyTone = getGrowthToneStyle(row.revenueYoy);
-                    return (
-                      <View key={row.fiscalYear} style={styles.tableRow}>
-                        <Text style={[styles.cell, styles.yearCell]}>{row.fiscalYear.slice(0, 4)}</Text>
-                        <Text style={[styles.cell, styles.valueCell]}>{fmtBillions(row.totalRevenue)}</Text>
-                        <View style={[styles.percentBadge, styles.yoyColumnSpacing, yoyTone.containerStyle]}>
-                          <Text style={[styles.percentBadgeText, yoyTone.textStyle]}>{fmtPercent(row.revenueYoy)}</Text>
-                        </View>
-                        <Text style={[styles.cell, styles.percentCell, styles.percentColumnSpacing]}>{fmtPercent(row.grossMargin)}</Text>
-                        <Text style={[styles.cell, styles.percentCell, styles.percentColumnSpacing]}>{fmtPercent(row.netMargin)}</Text>
-                        <Text style={[styles.cell, styles.valueCell, { color: row.netIncome >= 0 ? '#16a34a' : '#dc2626' }]}>
-                          {fmtBillions(row.netIncome)}
-                        </Text>
+              {financialViewMode === 'annual' ? (
+                <>
+                  {sparklineValues.length > 0 && (
+                    <View style={styles.trendSection}>
+                      <Text style={styles.trendTitle}>5 年營收趨勢</Text>
+                      <Sparkline values={sparklineValues} width={sparklineWidth} height={SPARKLINE_HEIGHT} />
+                    </View>
+                  )}
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View>
+                      <View style={styles.tableHeader}>
+                        <Text style={[styles.cell, styles.yearCell, styles.colLabel]}>年度</Text>
+                        <Text style={[styles.cell, styles.valueCell, styles.colLabel]}>總營收</Text>
+                        <Text style={[styles.cell, styles.percentCell, styles.colLabel, styles.yoyColumnSpacing]}>營收成長率</Text>
+                        <Text style={[styles.cell, styles.percentCell, styles.colLabel, styles.percentColumnSpacing]}>毛利率</Text>
+                        <Text style={[styles.cell, styles.percentCell, styles.colLabel, styles.percentColumnSpacing]}>淨利率</Text>
+                        <Text style={[styles.cell, styles.valueCell, styles.colLabel]}>淨利</Text>
                       </View>
-                    );
-                  })}
-                </View>
-              </ScrollView>
+                      {financialRows.map((row) => {
+                        const yoyTone = getGrowthToneStyle(row.revenueYoy);
+                        return (
+                          <View key={row.fiscalYear} style={styles.tableRow}>
+                            <Text style={[styles.cell, styles.yearCell]}>{row.fiscalYear.slice(0, 4)}</Text>
+                            <Text style={[styles.cell, styles.valueCell]}>{fmtBillions(row.totalRevenue)}</Text>
+                            <View style={[styles.percentBadge, styles.yoyColumnSpacing, yoyTone.containerStyle]}>
+                              <Text style={[styles.percentBadgeText, yoyTone.textStyle]}>{fmtPercent(row.revenueYoy)}</Text>
+                            </View>
+                            <Text style={[styles.cell, styles.percentCell, styles.percentColumnSpacing]}>{fmtPercent(row.grossMargin)}</Text>
+                            <Text style={[styles.cell, styles.percentCell, styles.percentColumnSpacing]}>{fmtPercent(row.netMargin)}</Text>
+                            <Text style={[styles.cell, styles.valueCell, { color: row.netIncome >= 0 ? '#16a34a' : '#dc2626' }]}>
+                              {fmtBillions(row.netIncome)}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </ScrollView>
+                </>
+              ) : (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View>
+                    <View style={styles.tableHeader}>
+                      <Text style={[styles.cell, styles.quarterCell, styles.colLabel]}>季度</Text>
+                      <Text style={[styles.cell, styles.valueCell, styles.colLabel]}>營收</Text>
+                      <Text style={[styles.cell, styles.percentCell, styles.colLabel, styles.percentColumnSpacing]}>毛利率</Text>
+                      <Text style={[styles.cell, styles.percentCell, styles.colLabel, styles.percentColumnSpacing]}>淨利率</Text>
+                      <Text style={[styles.cell, styles.valueCell, styles.colLabel]}>淨利</Text>
+                      <Text style={[styles.cell, styles.epsCell, styles.colLabel]}>EPS</Text>
+                    </View>
+                    {quarterlyRows.length === 0 ? (
+                      <Text style={styles.phase2Hint}>季度資料載入中…</Text>
+                    ) : (
+                      quarterlyRows.map((row) => (
+                        <View key={row.fiscalQuarter} style={styles.tableRow}>
+                          <Text style={[styles.cell, styles.quarterCell]}>{fmtQuarterLabel(row.fiscalQuarter)}</Text>
+                          <Text style={[styles.cell, styles.valueCell]}>{fmtBillions(row.totalRevenue)}</Text>
+                          <Text style={[styles.cell, styles.percentCell, styles.percentColumnSpacing]}>{fmtPercent(row.grossMargin)}</Text>
+                          <Text style={[styles.cell, styles.percentCell, styles.percentColumnSpacing]}>{fmtPercent(row.netMargin)}</Text>
+                          <Text style={[styles.cell, styles.valueCell, { color: row.netIncome >= 0 ? '#16a34a' : '#dc2626' }]}>
+                            {fmtBillions(row.netIncome)}
+                          </Text>
+                          <Text style={[styles.cell, styles.epsCell]}>
+                            {row.eps != null ? `${currencySymbol}${row.eps.toFixed(EPS_DECIMAL_PLACES)}` : NO_VALUE}
+                          </Text>
+                        </View>
+                      ))
+                    )}
+                  </View>
+                </ScrollView>
+              )}
             </View>
           )}
         </ScrollView>
@@ -900,5 +975,29 @@ const styles = StyleSheet.create({
   yoyNeutralContainer: { backgroundColor: '#f3f4f6' },
   yoyNeutralText: { color: '#6b7280' },
   colLabel: { fontSize: 11, fontWeight: '600', color: '#9ca3af' },
-  phase2Hint: { fontSize: 11, color: '#6b7280' },
+  phase2Hint: { fontSize: 11, color: '#6b7280', paddingVertical: 12 },
+  financialTabs: {
+    flexDirection: 'row' as const,
+    gap: 8,
+  },
+  financialTab: {
+    flex: 1,
+    paddingVertical: 7,
+    borderRadius: 8,
+    alignItems: 'center' as const,
+    backgroundColor: '#f3f4f6',
+  },
+  financialTabActive: {
+    backgroundColor: '#2563eb',
+  },
+  financialTabText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+    color: '#6b7280',
+  },
+  financialTabTextActive: {
+    color: '#fff',
+  },
+  quarterCell: { width: 72, fontWeight: '600' as const },
+  epsCell: { width: 72, textAlign: 'right' as const, marginLeft: 8 },
 });

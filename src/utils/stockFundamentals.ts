@@ -1,5 +1,5 @@
 import { Platform } from "react-native";
-import type { StockAnnualFinancial, StockFundamentals } from "../types";
+import type { StockAnnualFinancial, StockFundamentals, StockQuarterlyFinancial } from "../types";
 import {
   getStockFundamentals as getFromStorage,
   saveStockFundamentals,
@@ -18,6 +18,7 @@ const inflightRefreshMap = new Map<string, Promise<StockFundamentals>>();
 const lastRefreshAtMap = new Map<string, number>();
 const TAIWAN_WEEK_52_MONTH_COUNT = 12;
 const TAIWAN_FINANCIAL_YEAR_COUNT = 5;
+const QUARTERLY_COUNT = 12;
 const TAIWAN_FINANCIAL_EXTRA_LOOKBACK_YEARS = 3;
 const TWSE_OPENAPI_BASE_URL = "https://openapi.twse.com.tw/v1";
 const FINMIND_DATA_API_URL = "https://api.finmindtrade.com/api/v4/data";
@@ -55,6 +56,23 @@ function toAnnualFinancials(val: unknown): StockAnnualFinancial[] {
       };
     })
     .filter((row) => row.fiscalYear.length > 0);
+}
+
+function toQuarterlyFinancials(val: unknown): StockQuarterlyFinancial[] {
+  if (!Array.isArray(val)) return [];
+  return val
+    .map((item) => {
+      const row = item as Partial<StockQuarterlyFinancial>;
+      return {
+        fiscalQuarter: typeof row.fiscalQuarter === "string" ? row.fiscalQuarter : "",
+        totalRevenue: typeof row.totalRevenue === "number" ? row.totalRevenue : 0,
+        grossProfit: typeof row.grossProfit === "number" ? row.grossProfit : 0,
+        netIncome: typeof row.netIncome === "number" ? row.netIncome : 0,
+        operatingIncome: typeof row.operatingIncome === "number" ? row.operatingIncome : 0,
+        eps: typeof row.eps === "number" ? row.eps : null,
+      };
+    })
+    .filter((row) => row.fiscalQuarter.length > 0);
 }
 
 function parseNum(val: unknown): number | null {
@@ -101,7 +119,9 @@ function getRecordValueByKeyPattern(
 }
 
 async function fetchTaiwanIssuedShares(stockNo: string): Promise<number | null> {
+  const t0 = Date.now();
   const data = await fetchJsonWithCors(TWSE_PROFILE_ENDPOINT);
+  console.log(`${REFRESH_LOG_PREFIX} fetchTaiwanIssuedShares ms=${Date.now() - t0}`);
   if (!Array.isArray(data)) return null;
   const row = data.find((item) => {
     const record = item as Record<string, unknown>;
@@ -115,6 +135,7 @@ async function fetchTaiwanIssuedShares(stockNo: string): Promise<number | null> 
 }
 
 async function fetchTaiwan52WeekRange(stockNo: string): Promise<{ high: number; low: number } | null> {
+  const t0 = Date.now();
   const prices: number[] = [];
   const now = new Date();
   const requests: Promise<unknown>[] = [];
@@ -143,6 +164,7 @@ async function fetchTaiwan52WeekRange(stockNo: string): Promise<{ high: number; 
     });
   });
 
+  console.log(`${REFRESH_LOG_PREFIX} fetchTaiwan52WeekRange ms=${Date.now() - t0} prices=${prices.length}`);
   if (prices.length === 0) return null;
   return {
     high: Math.max(...prices),
@@ -165,6 +187,7 @@ function addYears(baseDate: Date, years: number): Date {
 }
 
 async function fetchTaiwanLatestEpsFromFinMind(stockNo: string): Promise<number | null> {
+  const t0 = Date.now();
   const startDate = toDateOnly(addYears(new Date(), -3));
   const url = buildFinMindDatasetUrl(
     FINMIND_DATASET_TAIWAN_STOCK_FINANCIAL_STATEMENTS,
@@ -191,10 +214,12 @@ async function fetchTaiwanLatestEpsFromFinMind(stockNo: string): Promise<number 
     }))
     .filter((row) => row.value != null)
     .sort((a, b) => b.date.localeCompare(a.date));
+  console.log(`${REFRESH_LOG_PREFIX} fetchTaiwanLatestEpsFromFinMind ms=${Date.now() - t0} rows=${rows.length}`);
   return epsRows[0]?.value ?? null;
 }
 
 async function fetchTaiwanLatestPerFromFinMind(stockNo: string): Promise<number | null> {
+  const t0 = Date.now();
   const startDate = toDateOnly(addYears(new Date(), -1));
   const url = buildFinMindDatasetUrl(
     FINMIND_DATASET_TAIWAN_STOCK_PER,
@@ -216,6 +241,7 @@ async function fetchTaiwanLatestPerFromFinMind(stockNo: string): Promise<number 
     }))
     .filter((row) => row.value != null)
     .sort((a, b) => b.date.localeCompare(a.date));
+  console.log(`${REFRESH_LOG_PREFIX} fetchTaiwanLatestPerFromFinMind ms=${Date.now() - t0} rows=${rows.length}`);
   return perRows[0]?.value ?? null;
 }
 
@@ -280,6 +306,7 @@ async function fetchYahooDailyCloseMap(symbol: string): Promise<Map<string, numb
 }
 
 async function fetchTaiwanBeta(stockNo: string): Promise<number | null> {
+  const t0 = Date.now();
   const stockSymbols = [`${stockNo}.TW`, `${stockNo}.TWO`];
   let stockCloseMap = new Map<string, number>();
   for (const symbol of stockSymbols) {
@@ -293,16 +320,25 @@ async function fetchTaiwanBeta(stockNo: string): Promise<number | null> {
       // ignore and try next ticker suffix
     }
   }
-  if (stockCloseMap.size < BETA_MIN_SAMPLE_COUNT) return null;
+  if (stockCloseMap.size < BETA_MIN_SAMPLE_COUNT) {
+    console.log(`${REFRESH_LOG_PREFIX} fetchTaiwanBeta ms=${Date.now() - t0} result=null (insufficient stock data)`);
+    return null;
+  }
 
   let marketCloseMap = new Map<string, number>();
   try {
     marketCloseMap = await fetchYahooDailyCloseMap("^TWII");
   } catch {
+    console.log(`${REFRESH_LOG_PREFIX} fetchTaiwanBeta ms=${Date.now() - t0} result=null (TWII fetch failed)`);
     return null;
   }
-  if (marketCloseMap.size < BETA_MIN_SAMPLE_COUNT) return null;
-  return computeBeta(computeDailyReturns(stockCloseMap), computeDailyReturns(marketCloseMap));
+  if (marketCloseMap.size < BETA_MIN_SAMPLE_COUNT) {
+    console.log(`${REFRESH_LOG_PREFIX} fetchTaiwanBeta ms=${Date.now() - t0} result=null (insufficient market data)`);
+    return null;
+  }
+  const beta = computeBeta(computeDailyReturns(stockCloseMap), computeDailyReturns(marketCloseMap));
+  console.log(`${REFRESH_LOG_PREFIX} fetchTaiwanBeta ms=${Date.now() - t0} beta=${beta?.toFixed(3)}`);
+  return beta;
 }
 
 function isFinMindAnnualDate(dateText: string): boolean {
@@ -350,7 +386,54 @@ function parseFinMindAnnualFinancialRows(rows: unknown[], stockNo: string): Stoc
     .slice(0, TAIWAN_FINANCIAL_YEAR_COUNT);
 }
 
-async function fetchTaiwanAnnualFinancialsFromFinMind(stockNo: string): Promise<StockAnnualFinancial[]> {
+function parseFinMindQuarterlyFinancialRows(rows: unknown[], stockNo: string): StockQuarterlyFinancial[] {
+  const quarterMap = new Map<string, Partial<StockQuarterlyFinancial>>();
+  rows.forEach((item) => {
+    if (!item || typeof item !== "object") return;
+    const row = item as Record<string, unknown>;
+    const currentStock = String(row.stock_id ?? "").trim();
+    if (currentStock !== stockNo) return;
+    const dateText = String(row.date ?? "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText)) return;
+
+    const typeText = String(row.type ?? "");
+    const originName = String(row.origin_name ?? "");
+    const value = parseNum(row.value);
+    if (value == null) return;
+
+    const entry = quarterMap.get(dateText) ?? { fiscalQuarter: dateText };
+    if (/Revenue/i.test(typeText) || /營業收入/.test(originName)) {
+      entry.totalRevenue = value;
+    } else if (/GrossProfit/i.test(typeText) || /營業毛利/.test(originName)) {
+      entry.grossProfit = value;
+    } else if (/IncomeAfterTaxes|NetIncome/i.test(typeText) || /本期淨利/.test(originName)) {
+      entry.netIncome = value;
+    } else if (/OperatingIncome/i.test(typeText) || /營業利益/.test(originName)) {
+      entry.operatingIncome = value;
+    } else if (/EPS/i.test(typeText) || /每股盈餘/.test(originName)) {
+      entry.eps = value;
+    }
+    quarterMap.set(dateText, entry);
+  });
+
+  return Array.from(quarterMap.values())
+    .map((entry) => ({
+      fiscalQuarter: entry.fiscalQuarter ?? "",
+      totalRevenue: entry.totalRevenue ?? 0,
+      grossProfit: entry.grossProfit ?? 0,
+      netIncome: entry.netIncome ?? 0,
+      operatingIncome: entry.operatingIncome ?? 0,
+      eps: entry.eps ?? null,
+    }))
+    .filter((entry) => entry.fiscalQuarter.length > 0)
+    .sort((a, b) => b.fiscalQuarter.localeCompare(a.fiscalQuarter))
+    .slice(0, QUARTERLY_COUNT);
+}
+
+async function fetchTaiwanAnnualFinancialsFromFinMind(
+  stockNo: string,
+): Promise<{ annualFinancials: StockAnnualFinancial[]; quarterlyFinancials: StockQuarterlyFinancial[] }> {
+  const t0 = Date.now();
   const currentYear = new Date().getFullYear();
   const lookbackYears = TAIWAN_FINANCIAL_YEAR_COUNT + TAIWAN_FINANCIAL_EXTRA_LOOKBACK_YEARS;
   const startYear = currentYear - lookbackYears;
@@ -361,7 +444,12 @@ async function fetchTaiwanAnnualFinancialsFromFinMind(stockNo: string): Promise<
     ? (json as { data?: unknown })
     : {};
   const rows = Array.isArray(payload.data) ? payload.data : [];
-  return parseFinMindAnnualFinancialRows(rows, stockNo);
+  const result = {
+    annualFinancials: parseFinMindAnnualFinancialRows(rows, stockNo),
+    quarterlyFinancials: parseFinMindQuarterlyFinancialRows(rows, stockNo),
+  };
+  console.log(`${REFRESH_LOG_PREFIX} fetchTaiwanAnnualFinancialsFromFinMind ms=${Date.now() - t0} rows=${rows.length} annual=${result.annualFinancials.length} quarterly=${result.quarterlyFinancials.length}`);
+  return result;
 }
 
 function parseTaiwanIncomeStatementRows(
@@ -393,14 +481,13 @@ function parseTaiwanIncomeStatementRows(
     .map((entry) => entry[1]);
 }
 
-async function fetchTaiwanAnnualFinancials(stockNo: string): Promise<StockAnnualFinancial[]> {
+async function fetchTaiwanAnnualFinancials(
+  stockNo: string,
+): Promise<{ annualFinancials: StockAnnualFinancial[]; quarterlyFinancials: StockQuarterlyFinancial[] }> {
   try {
-    const finMindAnnualFinancials = await fetchTaiwanAnnualFinancialsFromFinMind(stockNo);
-    if (finMindAnnualFinancials.length >= TAIWAN_FINANCIAL_YEAR_COUNT) {
-      return finMindAnnualFinancials;
-    }
-    if (finMindAnnualFinancials.length > 0) {
-      return finMindAnnualFinancials;
+    const finMindResult = await fetchTaiwanAnnualFinancialsFromFinMind(stockNo);
+    if (finMindResult.annualFinancials.length > 0) {
+      return finMindResult;
     }
   } catch {
     // fallback to TWSE OpenAPI snapshots
@@ -421,14 +508,17 @@ async function fetchTaiwanAnnualFinancials(stockNo: string): Promise<StockAnnual
       // ignore and try the next endpoint
     }
   }
-  return annualFinancials
-    .sort((a, b) => b.fiscalYear.localeCompare(a.fiscalYear))
-    .slice(0, TAIWAN_FINANCIAL_YEAR_COUNT);
+  return {
+    annualFinancials: annualFinancials
+      .sort((a, b) => b.fiscalYear.localeCompare(a.fiscalYear))
+      .slice(0, TAIWAN_FINANCIAL_YEAR_COUNT),
+    quarterlyFinancials: [], // TWSE fallback path does not provide quarterly data
+  };
 }
 
 async function fetchOverview(
   ticker: string,
-): Promise<Omit<StockFundamentals, "ticker" | "annualFinancials" | "lastUpdated">> {
+): Promise<Omit<StockFundamentals, "ticker" | "annualFinancials" | "quarterlyFinancials" | "lastUpdated">> {
   console.log(`${REFRESH_LOG_PREFIX} fetchOverview START ticker=${ticker}`);
   let json: Record<string, unknown>;
   try {
@@ -455,19 +545,38 @@ async function fetchOverview(
 
 async function fetchIncomeStatement(
   ticker: string,
-): Promise<StockAnnualFinancial[]> {
+): Promise<{ annualFinancials: StockAnnualFinancial[]; quarterlyFinancials: StockQuarterlyFinancial[] }> {
+  const t0 = Date.now();
   const json = await fetchAlphaVantageData("INCOME_STATEMENT", ticker);
+
   const annualReports = json?.annualReports;
   const reports: Record<string, string>[] = Array.isArray(annualReports)
     ? (annualReports as Record<string, string>[])
     : [];
-  return reports.slice(0, 5).map((r) => ({
+  const annualFinancials = reports.slice(0, 5).map((r) => ({
     fiscalYear: r.fiscalDateEnding ?? "",
     totalRevenue: parseNum(r.totalRevenue) ?? 0,
     grossProfit: parseNum(r.grossProfit) ?? 0,
     netIncome: parseNum(r.netIncome) ?? 0,
     operatingIncome: parseNum(r.operatingIncome) ?? 0,
   }));
+
+  // Alpha Vantage INCOME_STATEMENT does not include EPS in quarterlyReports; EPS comes from OVERVIEW
+  const quarterlyReports = json?.quarterlyReports;
+  const qReports: Record<string, string>[] = Array.isArray(quarterlyReports)
+    ? (quarterlyReports as Record<string, string>[])
+    : [];
+  const quarterlyFinancials = qReports.slice(0, QUARTERLY_COUNT).map((r) => ({
+    fiscalQuarter: r.fiscalDateEnding ?? "",
+    totalRevenue: parseNum(r.totalRevenue) ?? 0,
+    grossProfit: parseNum(r.grossProfit) ?? 0,
+    netIncome: parseNum(r.netIncome) ?? 0,
+    operatingIncome: parseNum(r.operatingIncome) ?? 0,
+    eps: null as number | null,
+  }));
+
+  console.log(`${REFRESH_LOG_PREFIX} fetchIncomeStatement ms=${Date.now() - t0} annual=${annualFinancials.length} quarterly=${quarterlyFinancials.length}`);
+  return { annualFinancials, quarterlyFinancials };
 }
 
 function tryGetCellByFieldPattern(
@@ -482,6 +591,7 @@ function tryGetCellByFieldPattern(
 }
 
 async function fetchTaiwanFundamentals(ticker: string): Promise<StockFundamentals> {
+  const t0 = Date.now();
   const twTicker = normalizeTaiwanTicker(ticker);
   if (!/^\d{4,6}$/.test(twTicker)) {
     throw new Error(`不支援的台股代號格式：${ticker}`);
@@ -489,7 +599,9 @@ async function fetchTaiwanFundamentals(ticker: string): Promise<StockFundamental
 
   const yyyymmdd = toYyyymmdd(new Date());
   const url = `https://www.twse.com.tw/rwd/zh/afterTrading/BWIBBU_d?date=${yyyymmdd}&stockNo=${encodeURIComponent(twTicker)}&response=json`;
+  const tBwibbu = Date.now();
   const json = await fetchJsonWithCors(url);
+  console.log(`${REFRESH_LOG_PREFIX} fetchTaiwanFundamentals BWIBBU_d ms=${Date.now() - tBwibbu}`);
   const payload = json && typeof json === "object"
     ? (json as { data?: unknown; fields?: unknown })
     : {};
@@ -503,7 +615,9 @@ async function fetchTaiwanFundamentals(ticker: string): Promise<StockFundamental
 
   const peRatio = parseNum(tryGetCellByFieldPattern(fields, row, /本益比/));
   const eps = parseNum(tryGetCellByFieldPattern(fields, row, /EPS|每股盈餘/i));
-  const [latestPrice, issuedShares, week52Range, annualFinancials, finMindPer, finMindEps, beta] = await Promise.all([
+  const tParallel = Date.now();
+  console.log(`${REFRESH_LOG_PREFIX} fetchTaiwanFundamentals Promise.all START`);
+  const [latestPrice, issuedShares, week52Range, financialsResult, finMindPer, finMindEps, beta] = await Promise.all([
     getStockPrice(twTicker, "TWD"),
     fetchTaiwanIssuedShares(twTicker),
     fetchTaiwan52WeekRange(twTicker),
@@ -512,6 +626,7 @@ async function fetchTaiwanFundamentals(ticker: string): Promise<StockFundamental
     fetchTaiwanLatestEpsFromFinMind(twTicker).catch(() => null),
     fetchTaiwanBeta(twTicker).catch(() => null),
   ]);
+  console.log(`${REFRESH_LOG_PREFIX} fetchTaiwanFundamentals Promise.all DONE ms=${Date.now() - tParallel} totalMs=${Date.now() - t0}`);
   const fallbackPrice = latestPrice?.price ?? 0;
   const marketCap = issuedShares != null ? fallbackPrice * issuedShares : 0;
   const week52High = week52Range?.high ?? fallbackPrice;
@@ -525,7 +640,8 @@ async function fetchTaiwanFundamentals(ticker: string): Promise<StockFundamental
     week52High,
     week52Low,
     beta,
-    annualFinancials,
+    annualFinancials: financialsResult.annualFinancials,
+    quarterlyFinancials: financialsResult.quarterlyFinancials,
     lastUpdated: new Date().toISOString(),
   };
 }
@@ -598,6 +714,7 @@ async function fetchSingleAssetETFFundamentals(ticker: string): Promise<StockFun
     week52Low,
     beta: null,
     annualFinancials: [],
+    quarterlyFinancials: [],
     lastUpdated: new Date().toISOString(),
     return1Y,
     annualizedVolatility,
@@ -607,15 +724,18 @@ async function fetchSingleAssetETFFundamentals(ticker: string): Promise<StockFun
 }
 
 async function fetchUSFundamentals(ticker: string): Promise<StockFundamentals> {
+  const t0 = Date.now();
   console.log(`${REFRESH_LOG_PREFIX} fetchUSFundamentals START ticker=${ticker} platform=${Platform.OS}`);
   if (Platform.OS === "web") {
     throw new Error("基本面資料僅支援 iOS / Android，網頁版因 CORS 限制無法使用");
   }
 
-  const [overview, annualFinancials] = await Promise.all([
+  const [overview, incomeData, earningsJson] = await Promise.all([
     fetchOverview(ticker),
     fetchIncomeStatement(ticker),
+    fetchAlphaVantageData("EARNINGS", ticker).catch(() => ({})),
   ]);
+  console.log(`${REFRESH_LOG_PREFIX} fetchUSFundamentals Promise.all DONE ms=${Date.now() - t0}`);
   const safeOverview = overview ?? {
     marketCap: 0,
     peRatio: null,
@@ -625,6 +745,21 @@ async function fetchUSFundamentals(ticker: string): Promise<StockFundamentals> {
     beta: null,
   };
 
+  // 從 EARNINGS endpoint 取季度 EPS，對應到 INCOME_STATEMENT 的 fiscalDateEnding
+  const quarterlyEarnings = Array.isArray((earningsJson as Record<string, unknown>)?.quarterlyEarnings)
+    ? ((earningsJson as Record<string, unknown>).quarterlyEarnings as Record<string, string>[])
+    : [];
+  const epsMap = new Map<string, number | null>();
+  quarterlyEarnings.forEach((q) => {
+    epsMap.set(q.fiscalDateEnding ?? "", parseNum(q.reportedEPS));
+  });
+  console.log(`${REFRESH_LOG_PREFIX} fetchUSFundamentals EARNINGS quarterlyEps=${quarterlyEarnings.length}`);
+
+  const quarterlyFinancials = toQuarterlyFinancials(incomeData.quarterlyFinancials).map((row) => ({
+    ...row,
+    eps: epsMap.get(row.fiscalQuarter) ?? null,
+  }));
+
   const data: StockFundamentals = {
     ticker,
     marketCap: safeOverview.marketCap,
@@ -633,7 +768,8 @@ async function fetchUSFundamentals(ticker: string): Promise<StockFundamentals> {
     week52High: safeOverview.week52High,
     week52Low: safeOverview.week52Low,
     beta: safeOverview.beta,
-    annualFinancials: toAnnualFinancials(annualFinancials),
+    annualFinancials: toAnnualFinancials(incomeData.annualFinancials),
+    quarterlyFinancials,
     lastUpdated: new Date().toISOString(),
   };
   return data;
@@ -701,7 +837,10 @@ export async function getStockFundamentals(
     const classification = classifyInstrument({ ticker: normalizedTicker });
     const needsMoreFinancials = classification.market === 'TW' &&
       cached.annualFinancials.length < TAIWAN_FINANCIAL_YEAR_COUNT;
-    if (!isCacheValid(cached.lastUpdated) || needsMoreFinancials) {
+    const needsQuarterlyData = !isSingleAssetETF(normalizedTicker) &&
+      (classification.market === 'US' || classification.market === 'TW') &&
+      cached.quarterlyFinancials.length === 0;
+    if (!isCacheValid(cached.lastUpdated) || needsMoreFinancials || needsQuarterlyData) {
       triggerStaleRefreshInBackground(normalizedTicker);
     }
     return cached;

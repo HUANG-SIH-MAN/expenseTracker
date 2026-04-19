@@ -473,6 +473,11 @@ async function initDb(): Promise<SQLite.SQLiteDatabase | null> {
   } catch {
     // Column already exists
   }
+  try {
+    await db.runAsync("ALTER TABLE stock_fundamentals ADD COLUMN quarterly_financials TEXT");
+  } catch {
+    // Column already exists
+  }
   dbInstance = db;
   return db;
 }

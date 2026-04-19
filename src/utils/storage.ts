@@ -21,6 +21,7 @@ import type {
   ETFHolding,
   MonthlySavingTarget,
   StockFundamentals,
+  StockQuarterlyFinancial,
   MonthlyFixedItem,
   OnboardingData,
   RecurringItem,
@@ -2654,6 +2655,15 @@ export async function getStockFundamentals(
         priceHistory = undefined;
       }
     }
+    let quarterlyFinancials: StockQuarterlyFinancial[] = [];
+    if (typeof row.quarterly_financials === "string") {
+      try {
+        const parsed = JSON.parse(row.quarterly_financials);
+        quarterlyFinancials = Array.isArray(parsed) ? (parsed as StockQuarterlyFinancial[]) : [];
+      } catch {
+        quarterlyFinancials = [];
+      }
+    }
     return {
       ticker: row.ticker as string,
       marketCap: row.market_cap as number,
@@ -2663,6 +2673,7 @@ export async function getStockFundamentals(
       week52Low: row.week52_low as number,
       beta: row.beta as number | null,
       annualFinancials,
+      quarterlyFinancials,
       lastUpdated: row.last_updated as string,
       return1Y: row.return_1y != null ? (row.return_1y as number) : null,
       annualizedVolatility: row.annualized_volatility != null ? (row.annualized_volatility as number) : null,
@@ -2687,9 +2698,9 @@ export async function saveStockFundamentals(
   if (db) {
     await db.runAsync(
       `INSERT OR REPLACE INTO stock_fundamentals
-        (ticker, market_cap, pe_ratio, eps, week52_high, week52_low, beta, annual_financials, last_updated,
+        (ticker, market_cap, pe_ratio, eps, week52_high, week52_low, beta, annual_financials, quarterly_financials, last_updated,
          return_1y, annualized_volatility, avg_daily_volume, price_history)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.ticker,
         data.marketCap,
@@ -2699,6 +2710,7 @@ export async function saveStockFundamentals(
         data.week52Low,
         data.beta,
         JSON.stringify(data.annualFinancials),
+        JSON.stringify(data.quarterlyFinancials),
         data.lastUpdated,
         data.return1Y ?? null,
         data.annualizedVolatility ?? null,

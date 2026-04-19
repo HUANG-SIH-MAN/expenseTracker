@@ -316,6 +316,16 @@ export interface StockAnnualFinancial {
   operatingIncome: number;
 }
 
+/** 股票季度財務資料 */
+export interface StockQuarterlyFinancial {
+  fiscalQuarter: string; // e.g. "2024-09-30"
+  totalRevenue: number;
+  grossProfit: number;
+  netIncome: number;
+  operatingIncome: number;
+  eps: number | null;
+}
+
 /** 股票基本面資料（來自 Alpha Vantage OVERVIEW + INCOME_STATEMENT） */
 export interface StockFundamentals {
   ticker: string;
@@ -326,6 +336,7 @@ export interface StockFundamentals {
   week52Low: number;
   beta: number | null;
   annualFinancials: StockAnnualFinancial[]; // 最近5年
+  quarterlyFinancials: StockQuarterlyFinancial[]; // 最近12季
   lastUpdated: string; // ISO 8601
   /** 1年報酬率（小數，如 0.35 = +35%）；僅 single-asset ETF 有值 */
   return1Y?: number | null;
