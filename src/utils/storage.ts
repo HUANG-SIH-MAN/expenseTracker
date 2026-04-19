@@ -1985,11 +1985,17 @@ function getApplicableDateKeys(
 
 export async function syncRecurringToTransactions(): Promise<Transaction[]> {
   const { generateId } = await import("./id");
-  const [transactions, recurringList, skipList] = await Promise.all([
+  const [transactions, recurringList, skipList, monthlyFixedItems] = await Promise.all([
     getStoredTransactions(),
     getStoredRecurring(),
     getStoredRecurringSkipList(),
+    getMonthlyFixedItems(),
   ]);
+  const recurringToFixedMap = new Map(
+    monthlyFixedItems
+      .filter((x) => x.recurringItemId != null)
+      .map((x) => [x.recurringItemId!, x.id]),
+  );
   const skipSet = new Set(skipList.map((x) => `${x.recurringId}\t${x.date}`));
   const existingSet = new Set(
     transactions
@@ -2014,6 +2020,7 @@ export async function syncRecurringToTransactions(): Promise<Transaction[]> {
         note: item.note,
         accountId: item.accountId,
         recurringId: item.id,
+        monthlyFixedItemId: recurringToFixedMap.get(item.id),
         createdAt: new Date().toISOString(),
       };
       transactions.push(t);
@@ -2021,7 +2028,15 @@ export async function syncRecurringToTransactions(): Promise<Transaction[]> {
       existingSet.add(key);
     }
   }
-  if (added.length > 0) {
+  let backfilled = 0;
+  for (const t of transactions) {
+    if (t.recurringId == null || t.monthlyFixedItemId != null) continue;
+    const fixedId = recurringToFixedMap.get(t.recurringId);
+    if (fixedId == null) continue;
+    t.monthlyFixedItemId = fixedId;
+    backfilled++;
+  }
+  if (added.length > 0 || backfilled > 0) {
     await saveTransactions(transactions);
   }
   return transactions;
