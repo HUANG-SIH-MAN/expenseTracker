@@ -25,6 +25,8 @@ import { isSingleAssetETF } from '../utils/etfHoldings';
 import type { MainStackParamList } from '../navigation/MainStack';
 import type { InstrumentMarket, StockFundamentals } from '../types';
 import Sparkline from '../components/Sparkline';
+import EpsHistoryChart from '../components/EpsHistoryChart';
+import RevenueChart from '../components/RevenueChart';
 
 type Route = RouteProp<MainStackParamList, 'CompanyFundamentals'>;
 
@@ -68,6 +70,11 @@ type FinancialRowMetrics = StockFundamentals['annualFinancials'][number] & {
 interface EpsHistoryRow {
   fiscalYear: string;
   eps: number;
+}
+
+interface PeHistoryRow {
+  fiscalYear: string;
+  pe: number;
 }
 
 interface PeBandViewModel {
@@ -287,16 +294,38 @@ function addYears(baseDate: Date, years: number): Date {
   return next;
 }
 
-async function fetchTaiwanPerValues(stockNo: string): Promise<number[]> {
+async function fetchTaiwanPerData(stockNo: string): Promise<{ values: number[]; annualRows: PeHistoryRow[] }> {
   const startDate = toDateOnly(addYears(new Date(), -PE_HISTORY_YEAR_COUNT - 1));
   const url = buildFinMindDatasetUrl(FINMIND_DATASET_TAIWAN_STOCK_PER, stockNo, startDate);
   const response = await fetchWithCORS(url);
   const json = await response.json();
   const rows = Array.isArray(json?.data) ? (json.data as Array<Record<string, unknown>>) : [];
-  return rows
-    .filter((row) => String(row.stock_id ?? '').trim() === stockNo)
+  const filtered = rows.filter((row) => String(row.stock_id ?? '').trim() === stockNo);
+
+  const values = filtered
     .map((row) => toOptionalNumber(row.PER))
-    .filter((value): value is number => value != null && Number.isFinite(value) && value > 0);
+    .filter((v): v is number => v != null && Number.isFinite(v) && v > 0);
+
+  const yearMap = new Map<string, number[]>();
+  filtered.forEach((row) => {
+    const date = String(row.date ?? '').trim();
+    const year = date.slice(0, 4);
+    const per = toOptionalNumber(row.PER);
+    if (per == null || !Number.isFinite(per) || per <= 0 || year.length !== 4) return;
+    const bucket = yearMap.get(year) ?? [];
+    bucket.push(per);
+    yearMap.set(year, bucket);
+  });
+
+  const annualRows = Array.from(yearMap.entries())
+    .map(([fiscalYear, perValues]) => ({
+      fiscalYear,
+      pe: perValues.reduce((sum, v) => sum + v, 0) / perValues.length,
+    }))
+    .sort((a, b) => b.fiscalYear.localeCompare(a.fiscalYear))
+    .slice(0, PE_HISTORY_YEAR_COUNT);
+
+  return { values, annualRows };
 }
 
 async function fetchTaiwanAnnualEpsHistory(stockNo: string): Promise<EpsHistoryRow[]> {
@@ -362,6 +391,7 @@ export default function CompanyFundamentalsScreen(): React.JSX.Element {
   const [fundamentals, setFundamentals] = useState<StockFundamentals | null>(null);
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
   const [epsHistoryRows, setEpsHistoryRows] = useState<EpsHistoryRow[]>([]);
+  const [peHistoryRows, setPeHistoryRows] = useState<PeHistoryRow[]>([]);
   const [peHistorySummary, setPeHistorySummary] = useState<PeHistorySummary | null>(null);
   const [valuationLoading, setValuationLoading] = useState(false);
   const [valuationError, setValuationError] = useState<string | null>(null);
@@ -398,6 +428,7 @@ export default function CompanyFundamentalsScreen(): React.JSX.Element {
   useEffect(() => {
     if ((classification.market !== 'US' && classification.market !== 'TW') || isSingleAssetETF(stockTicker)) {
       setEpsHistoryRows([]);
+      setPeHistoryRows([]);
       setPeHistorySummary(null);
       setValuationError(null);
       setValuationLoading(false);
@@ -426,34 +457,38 @@ export default function CompanyFundamentalsScreen(): React.JSX.Element {
           .sort((a, b) => b.fiscalYear.localeCompare(a.fiscalYear))
           .slice(0, EPS_HISTORY_YEAR_COUNT);
 
-        const peSamples = epsRows
+        const peMapped = epsRows
           .map((row) => {
             const yearClose = yearCloseMap.get(row.fiscalYear);
             if (yearClose == null || row.eps <= RATIO_EPSILON) return null;
-            return yearClose / row.eps;
+            const pe = yearClose / row.eps;
+            if (!Number.isFinite(pe) || pe <= 0) return null;
+            return { fiscalYear: row.fiscalYear, pe };
           })
-          .filter((value): value is number => value != null && Number.isFinite(value) && value > 0)
+          .filter((row): row is PeHistoryRow => row != null)
           .slice(0, PE_HISTORY_YEAR_COUNT);
 
-        return { epsRows, peSamples };
+        return { epsRows, peSamples: peMapped.map((r) => r.pe), peRows: peMapped };
       })
       : Promise.all([
         fetchTaiwanAnnualEpsHistory(normalizeTaiwanTicker(stockTicker)),
-        fetchTaiwanPerValues(normalizeTaiwanTicker(stockTicker)),
-      ]).then(([epsRows, perValues]) => {
-        const peSamples = perValues.slice(-PE_HISTORY_YEAR_COUNT * TRADING_DAYS_PER_YEAR);
-        return { epsRows, peSamples };
+        fetchTaiwanPerData(normalizeTaiwanTicker(stockTicker)),
+      ]).then(([epsRows, perData]) => {
+        const peSamples = perData.values.slice(-PE_HISTORY_YEAR_COUNT * TRADING_DAYS_PER_YEAR);
+        return { epsRows, peSamples, peRows: perData.annualRows };
       });
 
     task
-      .then(({ epsRows, peSamples }) => {
+      .then(({ epsRows, peSamples, peRows }) => {
         if (!active) return;
         setEpsHistoryRows(epsRows);
+        setPeHistoryRows(peRows);
         setPeHistorySummary(computePeHistorySummary(peSamples));
       })
       .catch((e: unknown) => {
         if (!active) return;
         setEpsHistoryRows([]);
+        setPeHistoryRows([]);
         setPeHistorySummary(null);
         setValuationError(e instanceof Error ? e.message : '無法載入歷史估值資料');
       })
@@ -491,9 +526,20 @@ export default function CompanyFundamentalsScreen(): React.JSX.Element {
     }));
   }, [fundamentals]);
 
-  const sparklineValues = useMemo(
-    () => [...financialRows].reverse().map((row) => row.totalRevenue),
+  const annualRevenueData = useMemo(
+    () => [...financialRows].reverse().map((row) => ({
+      label: row.fiscalYear.slice(0, 4),
+      value: row.totalRevenue,
+    })),
     [financialRows],
+  );
+
+  const quarterlyRevenueData = useMemo(
+    () => [...quarterlyRows].reverse().map((row) => ({
+      label: fmtQuarterLabel(row.fiscalQuarter),
+      value: row.totalRevenue,
+    })),
+    [quarterlyRows],
   );
 
   const sparklineWidth = Math.max(SPARKLINE_MIN_WIDTH, windowWidth - SPARKLINE_HORIZONTAL_PADDING);
@@ -506,17 +552,14 @@ export default function CompanyFundamentalsScreen(): React.JSX.Element {
   }, [fundamentals, currentPrice]);
 
   const peBand = useMemo(() => getPeBand(fundamentals?.peRatio ?? null), [fundamentals?.peRatio]);
-  const epsHistoryValues = useMemo(
-    () => [...epsHistoryRows].reverse().map((row) => row.eps),
+  const epsHistoryChronological = useMemo(
+    () => [...epsHistoryRows].reverse(),
     [epsHistoryRows],
   );
-  const epsHistoryRangeLabel = useMemo(() => {
-    if (epsHistoryRows.length === 0) return NO_VALUE;
-    const chronological = [...epsHistoryRows].reverse();
-    const startYear = chronological[0]?.fiscalYear ?? NO_VALUE;
-    const endYear = chronological[chronological.length - 1]?.fiscalYear ?? NO_VALUE;
-    return `${startYear} - ${endYear}`;
-  }, [epsHistoryRows]);
+  const peHistoryChronological = useMemo(
+    () => [...peHistoryRows].reverse().map((r) => ({ label: r.fiscalYear, value: r.pe })),
+    [peHistoryRows],
+  );
   const peComparisonText = useMemo(
     () => buildPeComparisonText(fundamentals?.peRatio ?? null, peHistorySummary, classification.market),
     [fundamentals?.peRatio, peHistorySummary, classification.market],
@@ -697,23 +740,24 @@ export default function CompanyFundamentalsScreen(): React.JSX.Element {
                 <>
                   <View style={styles.valuationCard}>
                     <Text style={styles.valuationTitle}>EPS 歷史</Text>
-                    <Sparkline values={epsHistoryValues} width={sparklineWidth} height={SPARKLINE_HEIGHT} />
-                    <Text style={styles.valuationHint}>區間：{epsHistoryRangeLabel}</Text>
+                    <EpsHistoryChart
+                      data={epsHistoryChronological}
+                      width={sparklineWidth}
+                      height={110}
+                      market={classification.market}
+                    />
                   </View>
 
                   <View style={styles.valuationCard}>
-                    <Text style={styles.valuationTitle}>P/E 歷史區間</Text>
-                    {peHistorySummary ? (
-                      <>
-                        <View style={styles.peMetricsRow}>
-                          <Text style={styles.peMetricText}>最低 {fmtPe(peHistorySummary.min)}</Text>
-                          <Text style={styles.peMetricText}>平均 {fmtPe(peHistorySummary.avg)}</Text>
-                          <Text style={styles.peMetricText}>最高 {fmtPe(peHistorySummary.max)}</Text>
-                        </View>
-                        <Text style={styles.valuationHint}>{peComparisonText}</Text>
-                      </>
-                    ) : (
-                      <Text style={styles.valuationHint}>歷史 P/E 資料不足</Text>
+                    <Text style={styles.valuationTitle}>P/E 歷史</Text>
+                    <RevenueChart
+                      data={peHistoryChronological}
+                      width={sparklineWidth}
+                      fmtYLabel={(v) => v.toFixed(1)}
+                      emptyText="歷史 P/E 資料不足"
+                    />
+                    {peHistoryChronological.length > 0 && (
+                      <Text style={styles.valuationHint}>{peComparisonText}</Text>
                     )}
                   </View>
                 </>
@@ -750,10 +794,10 @@ export default function CompanyFundamentalsScreen(): React.JSX.Element {
 
               {financialViewMode === 'annual' ? (
                 <>
-                  {sparklineValues.length > 0 && (
+                  {annualRevenueData.length > 0 && (
                     <View style={styles.trendSection}>
                       <Text style={styles.trendTitle}>5 年營收趨勢</Text>
-                      <Sparkline values={sparklineValues} width={sparklineWidth} height={SPARKLINE_HEIGHT} />
+                      <RevenueChart data={annualRevenueData} width={sparklineWidth} />
                     </View>
                   )}
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -787,6 +831,13 @@ export default function CompanyFundamentalsScreen(): React.JSX.Element {
                   </ScrollView>
                 </>
               ) : (
+                <>
+                  {quarterlyRevenueData.length > 0 && (
+                    <View style={styles.trendSection}>
+                      <Text style={styles.trendTitle}>季度營收趨勢</Text>
+                      <RevenueChart data={quarterlyRevenueData} width={sparklineWidth} maxXLabels={4} />
+                    </View>
+                  )}
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   <View>
                     <View style={styles.tableHeader}>
@@ -817,6 +868,7 @@ export default function CompanyFundamentalsScreen(): React.JSX.Element {
                     )}
                   </View>
                 </ScrollView>
+                </>
               )}
             </View>
           )}
