@@ -106,6 +106,8 @@ describe("budget saving target", () => {
     expect(withSaving.monthlyDisposable).toBe(EXPECTED_DISPOSABLE_WITH_SAVING);
     expect(withoutSaving.remainingDisposable).toBe(EXPECTED_REMAINING_WITHOUT_SAVING);
     expect(withSaving.remainingDisposable).toBe(EXPECTED_REMAINING_WITH_SAVING);
+    expect(withSaving.overspentAmount).toBe(0);
+    expect(withSaving.projectedSavingAfterExpenses).toBe(SAVING_TARGET_NORMAL);
     expect(withSaving.todaySuggestedBudget).toBeLessThan(withoutSaving.todaySuggestedBudget);
   });
 
@@ -122,8 +124,39 @@ describe("budget saving target", () => {
     expect(summary).not.toBeNull();
     if (!summary) return;
     expect(summary.monthlyDisposable).toBe(0);
-    expect(summary.remainingDisposable).toBe(0);
+    expect(summary.remainingDisposable).toBe(-DAILY_EXPENSE_AMOUNT);
+    expect(summary.overspentAmount).toBe(DAILY_EXPENSE_AMOUNT);
+    expect(summary.projectedSavingAfterExpenses).toBe(
+      Math.max(0, SAVING_TARGET_TOO_LARGE - DAILY_EXPENSE_AMOUNT)
+    );
     expect(summary.todaySuggestedBudget).toBe(0);
+  });
+
+  it("超支時，會回傳透支金額與扣除超支後的可存金額", async () => {
+    const overspendingTransactions: Transaction[] = [
+      {
+        id: "tx-expense-overspend",
+        type: "expense",
+        amount: 69000,
+        date: "2026-04-08",
+        category: "shopping",
+        createdAt: "2026-04-08T00:00:00.000Z",
+      },
+    ];
+    const summary = await getBudgetSummary(
+      TODAY_KEY,
+      overspendingTransactions,
+      monthlyFixedItems,
+      baseSettings,
+      3000,
+      {},
+      recurringItems
+    );
+    expect(summary).not.toBeNull();
+    if (!summary) return;
+    expect(summary.remainingDisposable).toBe(-2000);
+    expect(summary.overspentAmount).toBe(2000);
+    expect(summary.projectedSavingAfterExpenses).toBe(1000);
   });
 });
 

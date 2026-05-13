@@ -254,7 +254,18 @@ export function getRemainingDisposable(
   monthlyDisposable: number,
   dailyExpenseSoFar: number
 ): number {
-  return Math.max(0, monthlyDisposable - dailyExpenseSoFar);
+  return monthlyDisposable - dailyExpenseSoFar;
+}
+
+export function getOverspentAmount(remainingDisposable: number): number {
+  return Math.max(0, -remainingDisposable);
+}
+
+export function getProjectedSavingAfterExpenses(
+  savingTarget: number,
+  overspentAmount: number
+): number {
+  return Math.max(0, Math.max(0, savingTarget) - overspentAmount);
 }
 
 /**
@@ -315,6 +326,8 @@ export interface BudgetSummary {
   monthlyDisposable: number;
   dailyExpenseSoFar: number;
   remainingDisposable: number;
+  overspentAmount: number;
+  projectedSavingAfterExpenses: number;
   remainingDays: number;
   weekendCount: number;
   weekdayCount: number;
@@ -364,6 +377,7 @@ export async function getBudgetSummary(
     monthlyDisposable,
     dailyExpenseSoFar
   );
+  const overspentAmount = getOverspentAmount(remainingDisposable);
   const weighted = getRemainingWeightedDays(
     todayKey,
     settings.weekdayWeight,
@@ -371,7 +385,7 @@ export async function getBudgetSummary(
     nationalHolidays
   );
   const todaySuggestedBudget = getTodaySuggestedBudget(
-    remainingDisposable,
+    Math.max(0, remainingDisposable),
     weighted.weightedSum,
     weighted.todayWeight
   );
@@ -383,6 +397,8 @@ export async function getBudgetSummary(
     monthlyDisposable,
     dailyExpenseSoFar,
     remainingDisposable,
+    overspentAmount,
+    projectedSavingAfterExpenses: getProjectedSavingAfterExpenses(savingTarget, overspentAmount),
     remainingDays: weighted.remainingDays,
     weekendCount: weighted.weekendCount,
     weekdayCount: weighted.weekdayCount,

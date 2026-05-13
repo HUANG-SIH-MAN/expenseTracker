@@ -56,6 +56,9 @@ const COPY_OVERWRITE_CONFIRM = '覆蓋並複製';
 const COPY_SUCCESS_EMPTY = '已複製完成';
 const BTN_COPY = '複製';
 
+const BOTTOM_BAR_HEIGHT = 56;
+const SCROLL_BOTTOM_GAP = 24;
+
 interface AnnualBudgetTabProps {
   insets: { top: number; bottom: number; left: number; right: number };
 }
@@ -324,7 +327,15 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
       ) : (
         <ScrollView
           style={styles.scroll}
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 24 }]}
+          contentContainerStyle={[
+            styles.scrollContent,
+            {
+              paddingBottom:
+                insets.bottom +
+                BOTTOM_BAR_HEIGHT +
+                SCROLL_BOTTOM_GAP,
+            },
+          ]}
         >
           <View style={styles.listHeader}>
             <TouchableOpacity

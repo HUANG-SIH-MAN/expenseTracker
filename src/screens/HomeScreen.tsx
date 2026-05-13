@@ -45,7 +45,8 @@ const BUDGET_SETTLEMENT_REMAINING = '月底剩餘';
 const BUDGET_SETTLEMENT_SPENT = '日常已花';
 const BUDGET_DISPOSABLE = '月可支配';
 const BUDGET_DAILY_ESTIMATE = '每日預估';
-const BUDGET_SAVING_TARGET_HINT_PREFIX = '已扣本月預計存款';
+const BUDGET_SAVING_TARGET_HINT_PREFIX = '預計可存';
+const BUDGET_PROJECTED_SAVING_HINT_PREFIX = '實際可存';
 const AUTOPAY_NOTICE_PREFIX = '已自動補登信用卡扣款';
 const AUTOPAY_NOTICE_SUFFIX = '筆';
 const BOTTOM_BAR_HEIGHT = 56;
@@ -398,14 +399,24 @@ export default function HomeScreen(): React.JSX.Element {
             budgetMode === 'past' ? `${month}月結算` :
             budgetMode === 'future' ? `${month}月預算` :
             BUDGET_CARD_TITLE_CURRENT;
+          const isOverBudget = budgetMode !== 'future' && budgetSummary.remainingDisposable < 0;
           const row1Label =
             budgetMode === 'past' ? BUDGET_SETTLEMENT_REMAINING :
             budgetMode === 'future' ? BUDGET_DISPOSABLE :
             BUDGET_REMAINING;
-          const row1Value =
+          const row1ValueNumber =
             budgetMode === 'future'
               ? Math.round(budgetSummary.monthlyDisposable)
               : Math.round(budgetSummary.remainingDisposable);
+          const row1Value = isOverBudget
+            ? row1ValueNumber.toLocaleString()
+            : row1ValueNumber.toLocaleString();
+          const savingHintText =
+            budgetSummary.savingTarget > 0
+              ? budgetSummary.overspentAmount > 0
+                ? `${BUDGET_PROJECTED_SAVING_HINT_PREFIX} ${Math.round(budgetSummary.projectedSavingAfterExpenses).toLocaleString()}`
+                : `${BUDGET_SAVING_TARGET_HINT_PREFIX} ${Math.round(budgetSummary.savingTarget).toLocaleString()}`
+              : null;
           const row2Label =
             budgetMode === 'past' ? BUDGET_SETTLEMENT_SPENT :
             budgetMode === 'future' ? BUDGET_DAILY_ESTIMATE :
@@ -424,17 +435,15 @@ export default function HomeScreen(): React.JSX.Element {
               <Text style={styles.budgetCardTitle}>{cardTitle}</Text>
               <View style={styles.budgetCardRow}>
                 <Text style={styles.budgetCardLabel}>{row1Label}</Text>
-                <Text style={styles.budgetCardAmount}>{row1Value}</Text>
+                <Text style={[styles.budgetCardAmount, isOverBudget && styles.budgetCardAmountOver]}>
+                  {row1Value}
+                </Text>
               </View>
               <View style={styles.budgetCardRow}>
                 <Text style={styles.budgetCardLabel}>{row2Label}</Text>
-                <Text style={styles.budgetCardAmount}>{row2Value}</Text>
+                <Text style={styles.budgetCardAmount}>{row2Value.toLocaleString()}</Text>
               </View>
-              {budgetSummary.savingTarget > 0 ? (
-                <Text style={styles.budgetCardHint}>
-                  {BUDGET_SAVING_TARGET_HINT_PREFIX} {Math.round(budgetSummary.savingTarget)}
-                </Text>
-              ) : null}
+              {savingHintText ? <Text style={styles.budgetCardHint}>{savingHintText}</Text> : null}
             </TouchableOpacity>
           );
         })()}
@@ -576,6 +585,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#1e40af',
+  },
+  budgetCardAmountOver: {
+    color: '#dc2626',
   },
   budgetCardHint: {
     marginTop: 8,
