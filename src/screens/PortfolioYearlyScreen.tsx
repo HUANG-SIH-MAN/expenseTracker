@@ -2,7 +2,7 @@
  * 年度績效總覽
  * 顯示投資組合每一年的投入金額、損益、報酬率、期末市值
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useInvestment } from '../contexts/InvestmentContext';
-import { calcPortfolioYearlyReturns, YearlyReturn } from '../utils/stockCalculations';
+import { calcPortfolioXIRR, calcPortfolioYearlyReturns, YearlyReturn } from '../utils/stockCalculations';
 import { fetchYearEndPriceTWD } from '../utils/stockPrice';
 
 function formatTWD(n: number): string {
@@ -58,6 +58,10 @@ export default function PortfolioYearlyScreen(): React.JSX.Element {
   const totalGain = yearlyData.reduce((s, r) => s + r.gainTWD, 0);
   const latestValue = yearlyData.length > 0 ? yearlyData[0].endValueTWD : 0;
   const overallReturn = totalInvested > 0 ? totalGain / totalInvested : 0;
+  const portfolioXirr = useMemo(
+    () => calcPortfolioXIRR(transactions, prices, usdTwdRate),
+    [transactions, prices, usdTwdRate]
+  );
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -105,6 +109,15 @@ export default function PortfolioYearlyScreen(): React.JSX.Element {
               </View>
             </View>
           </View>
+
+          {portfolioXirr != null && (
+            <View style={styles.xirrCard}>
+              <Text style={styles.xirrTitle}>年化報酬率（XIRR）</Text>
+              <Text style={[styles.xirrValue, { color: gainColor(portfolioXirr) }]}>
+                {formatPct(portfolioXirr)}
+              </Text>
+            </View>
+          )}
 
           {/* 各年度卡片 */}
           {yearlyData.length === 0 ? (
@@ -179,6 +192,15 @@ const styles = StyleSheet.create({
   summaryItem: { flex: 1 },
   summaryLabel: { fontSize: 11, color: '#93c5fd', marginBottom: 2 },
   summaryValue: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  xirrCard: {
+    backgroundColor: '#eff6ff',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    gap: 4,
+  },
+  xirrTitle: { fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 4, textAlign: 'center' },
+  xirrValue: { fontSize: 36, fontWeight: '700', textAlign: 'center' },
   empty: { alignItems: 'center', paddingTop: 60, gap: 12 },
   emptyText: { fontSize: 16, color: '#9ca3af', fontWeight: '500' },
   yearCard: {

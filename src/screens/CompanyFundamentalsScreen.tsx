@@ -57,6 +57,7 @@ const YAHOO_CHART_BASE_URL = 'https://query1.finance.yahoo.com/v8/finance/chart'
 const PE_HISTORY_AVERAGE_DECIMAL_PLACES = 2;
 const PE_HISTORY_VALUE_DECIMAL_PLACES = 1;
 const TRADING_DAYS_PER_YEAR = 240;
+const CURRENT_CALENDAR_YEAR = String(new Date().getFullYear());
 const FINMIND_DATA_API_URL = 'https://api.finmindtrade.com/api/v4/data';
 const FINMIND_DATASET_TAIWAN_STOCK_PER = 'TaiwanStockPER';
 const FINMIND_DATASET_TAIWAN_STOCK_FINANCIAL_STATEMENTS = 'TaiwanStockFinancialStatements';
@@ -294,6 +295,10 @@ function addYears(baseDate: Date, years: number): Date {
   return next;
 }
 
+function isCompletedFiscalYear(fiscalYear: string): boolean {
+  return fiscalYear.length === 4 && fiscalYear < CURRENT_CALENDAR_YEAR;
+}
+
 async function fetchTaiwanPerData(stockNo: string): Promise<{ values: number[]; annualRows: PeHistoryRow[] }> {
   const startDate = toDateOnly(addYears(new Date(), -PE_HISTORY_YEAR_COUNT - 1));
   const url = buildFinMindDatasetUrl(FINMIND_DATASET_TAIWAN_STOCK_PER, stockNo, startDate);
@@ -322,6 +327,7 @@ async function fetchTaiwanPerData(stockNo: string): Promise<{ values: number[]; 
       fiscalYear,
       pe: perValues.reduce((sum, v) => sum + v, 0) / perValues.length,
     }))
+    .filter((row) => isCompletedFiscalYear(row.fiscalYear))
     .sort((a, b) => b.fiscalYear.localeCompare(a.fiscalYear))
     .slice(0, PE_HISTORY_YEAR_COUNT);
 
@@ -354,6 +360,7 @@ async function fetchTaiwanAnnualEpsHistory(stockNo: string): Promise<EpsHistoryR
 
   return Array.from(annualEpsMap.entries())
     .map(([fiscalYear, eps]) => ({ fiscalYear, eps }))
+    .filter((row) => isCompletedFiscalYear(row.fiscalYear))
     .sort((a, b) => b.fiscalYear.localeCompare(a.fiscalYear))
     .slice(0, EPS_HISTORY_YEAR_COUNT);
 }
@@ -453,7 +460,9 @@ export default function CompanyFundamentalsScreen(): React.JSX.Element {
             fiscalYear: String(row.fiscalDateEnding ?? '').slice(0, 4),
             eps: toOptionalNumber(row.reportedEPS),
           }))
-          .filter((row): row is EpsHistoryRow => row.fiscalYear.length === 4 && row.eps != null)
+          .filter((row): row is EpsHistoryRow => (
+            isCompletedFiscalYear(row.fiscalYear) && row.eps != null
+          ))
           .sort((a, b) => b.fiscalYear.localeCompare(a.fiscalYear))
           .slice(0, EPS_HISTORY_YEAR_COUNT);
 

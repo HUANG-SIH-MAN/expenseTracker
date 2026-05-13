@@ -197,6 +197,54 @@ export function buildXIRRCashFlows(
   return { cashFlows, dates };
 }
 
+export function buildPortfolioXIRRCashFlows(
+  transactions: StockTransaction[],
+  currentTWDValue: number
+): { cashFlows: number[]; dates: Date[] } {
+  const sorted = [...transactions].sort((a, b) => a.date.localeCompare(b.date));
+  const cashFlows: number[] = [];
+  const dates: Date[] = [];
+
+  for (const tx of sorted) {
+    const isDrip = tx.type === 'buy' && noteIndicatesDividendReinvest(tx.note);
+    cashFlows.push(isDrip ? 0 : (tx.type === 'buy' ? -tx.twdCost : tx.twdCost));
+    dates.push(new Date(tx.date));
+  }
+
+  cashFlows.push(currentTWDValue);
+  dates.push(new Date());
+
+  return { cashFlows, dates };
+}
+
+export function calcPortfolioXIRR(
+  transactions: StockTransaction[],
+  prices: Record<string, StockPriceCache>,
+  usdTwdRate: number
+): number | null {
+  if (transactions.length === 0) return null;
+
+  const positions = calculatePositions(transactions);
+  let currentTWDValue = 0;
+
+  for (const [ticker, pos] of positions.entries()) {
+    if (pos.shares <= 0) continue;
+    const price = prices[ticker];
+    if (!price) return null;
+    const priceTWD = price.currency === 'TWD' ? price.price : price.price * usdTwdRate;
+    currentTWDValue += pos.shares * priceTWD;
+  }
+
+  if (currentTWDValue <= 0) return null;
+
+  const { cashFlows, dates } = buildPortfolioXIRRCashFlows(transactions, currentTWDValue);
+  try {
+    return calcXIRR(cashFlows, dates);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * 各年度損益
  *
