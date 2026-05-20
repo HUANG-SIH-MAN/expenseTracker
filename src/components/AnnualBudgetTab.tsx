@@ -14,7 +14,7 @@ import {
   Platform,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { AnnualBudgetEntry, TransactionType } from '../types';
+import type { AnnualBudgetEntry, Transaction, TransactionType } from '../types';
 import { useCategories } from '../contexts/CategoriesContext';
 import { useTransactions } from '../contexts/TransactionsContext';
 import { getAnnualBudgetEntries, saveAnnualBudgetEntries, getStoredAccounts, getStoredPrimaryCurrency } from '../utils/storage';
@@ -36,6 +36,12 @@ const SUMMARY_PLANNED_BALANCE = '計劃結餘';
 const SUMMARY_ACTUAL_INCOME = '實際收入';
 const SUMMARY_ACTUAL_EXPENSE = '實際支出';
 const SUMMARY_ACTUAL_BALANCE = '實際結餘';
+const SUMMARY_OVERVIEW = '年度收支總覽';
+const SUMMARY_BALANCE = '結餘';
+const SUMMARY_INCOME = '收入';
+const SUMMARY_EXPENSE = '支出';
+const SUMMARY_YEAR_END_ESTIMATE = '年底預估';
+const SUMMARY_ACTUAL_TO_DATE = '目前結餘';
 const INCOME_LABEL = '收入';
 const EXPENSE_LABEL = '支出';
 const MODAL_TITLE_ADD = '新增年度項目';
@@ -71,9 +77,26 @@ function getActualAmount(
   return transactions
     .filter((t) => t.annualBudgetEntryId === entryId)
     .reduce((sum, t) => {
-      const rate = accountCostBasisMap?.get(t.accountId ?? '') ?? 1;
-      return sum + t.amount * rate;
+      return sum + getPrimaryAmount(t, accountCostBasisMap);
     }, 0);
+}
+
+function getPrimaryAmount(
+  transaction: Pick<Transaction, 'amount' | 'accountId'>,
+  accountCostBasisMap?: Map<string, number>,
+): number {
+  const rate = accountCostBasisMap?.get(transaction.accountId ?? '') ?? 1;
+  return transaction.amount * rate;
+}
+
+function getSignedEntryPlannedAmount(entry: AnnualBudgetEntry): number {
+  return entry.type === 'income' ? entry.estimatedAmount : -entry.estimatedAmount;
+}
+
+function formatAnnualAmount(amount: number): string {
+  const rounded = Math.round(amount);
+  const sign = rounded < 0 ? '-' : '';
+  return `${sign}NT$${Math.abs(rounded).toLocaleString()}`;
 }
 
 export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Element {
@@ -250,28 +273,25 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
   );
 
   const summary = React.useMemo(() => {
-    let plannedIncome = 0;
-    let plannedExpense = 0;
-    let actualIncome = 0;
-    let actualExpense = 0;
+    let estimatedYearEndBalance = 0;
+    let actualBalanceToDate = 0;
     for (const e of entries) {
-      if (e.type === 'income') {
-        plannedIncome += e.estimatedAmount;
-        actualIncome += getActualAmount(transactions, e.id, costBasisMap);
-      } else {
-        plannedExpense += e.estimatedAmount;
-        actualExpense += getActualAmount(transactions, e.id, costBasisMap);
-      }
+      const linkedTransactions = transactions.filter((t) => t.annualBudgetEntryId === e.id);
+      const linkedActualTotal = linkedTransactions.reduce(
+        (sum, transaction) => sum + getPrimaryAmount(transaction, costBasisMap),
+        0
+      );
+      const signedLinkedActualTotal = e.type === 'income' ? linkedActualTotal : -linkedActualTotal;
+      estimatedYearEndBalance += linkedTransactions.length > 0
+        ? signedLinkedActualTotal
+        : getSignedEntryPlannedAmount(e);
+      actualBalanceToDate += signedLinkedActualTotal;
     }
     return {
-      plannedIncome,
-      plannedExpense,
-      plannedBalance: plannedIncome - plannedExpense,
-      actualIncome,
-      actualExpense,
-      actualBalance: actualIncome - actualExpense,
+      estimatedYearEndBalance,
+      actualBalanceToDate,
     };
-  }, [entries, transactions]);
+  }, [entries, transactions, costBasisMap]);
 
   return (
     <View style={styles.container}>
@@ -359,34 +379,37 @@ export function AnnualBudgetTab({ insets }: AnnualBudgetTabProps): React.JSX.Ele
           </View>
 
           <View style={styles.summaryCard}>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>{SUMMARY_PLANNED_INCOME}</Text>
-              <Text style={styles.summaryValue}>{summary.plannedIncome}</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>{SUMMARY_PLANNED_EXPENSE}</Text>
-              <Text style={[styles.summaryValue, styles.summaryExpense]}>{summary.plannedExpense}</Text>
-            </View>
-            <View style={[styles.summaryRow, styles.summaryRowHighlight]}>
-              <Text style={styles.summaryLabel}>{SUMMARY_PLANNED_BALANCE}</Text>
-              <Text style={[styles.summaryValue, summary.plannedBalance >= 0 ? styles.summaryPositive : styles.summaryNegative]}>
-                {summary.plannedBalance}
-              </Text>
-            </View>
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>{SUMMARY_ACTUAL_INCOME}</Text>
-              <Text style={styles.summaryValue}>{summary.actualIncome}</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>{SUMMARY_ACTUAL_EXPENSE}</Text>
-              <Text style={[styles.summaryValue, styles.summaryExpense]}>{summary.actualExpense}</Text>
-            </View>
-            <View style={[styles.summaryRow, styles.summaryRowHighlight]}>
-              <Text style={styles.summaryLabel}>{SUMMARY_ACTUAL_BALANCE}</Text>
-              <Text style={[styles.summaryValue, summary.actualBalance >= 0 ? styles.summaryPositive : styles.summaryNegative]}>
-                {summary.actualBalance}
-              </Text>
+            <Text style={styles.summaryTitle}>{SUMMARY_OVERVIEW}</Text>
+            <View style={styles.summaryPanels}>
+              <View style={styles.summaryPanel}>
+                <Text style={styles.summaryPanelTitle}>{SUMMARY_YEAR_END_ESTIMATE}</Text>
+                <Text
+                  style={[
+                    styles.summaryBalanceValue,
+                    summary.estimatedYearEndBalance >= 0 ? styles.summaryPositive : styles.summaryNegative,
+                  ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.72}
+                >
+                  {formatAnnualAmount(summary.estimatedYearEndBalance)}
+                </Text>
+              </View>
+
+              <View style={styles.summaryPanel}>
+                <Text style={styles.summaryPanelTitle}>{SUMMARY_ACTUAL_TO_DATE}</Text>
+                <Text
+                  style={[
+                    styles.summaryBalanceValue,
+                    summary.actualBalanceToDate >= 0 ? styles.summaryPositive : styles.summaryNegative,
+                  ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.72}
+                >
+                  {formatAnnualAmount(summary.actualBalanceToDate)}
+                </Text>
+              </View>
             </View>
           </View>
 
@@ -690,17 +713,24 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e5e7eb',
-    padding: 16,
+    padding: 14,
     marginBottom: 20,
   },
-  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6 },
-  summaryRowHighlight: { paddingVertical: 8, marginTop: 4 },
-  summaryLabel: { fontSize: 14, color: '#6b7280' },
-  summaryValue: { fontSize: 15, fontWeight: '600', color: '#1f2937' },
-  summaryExpense: { color: '#dc2626' },
+  summaryTitle: { fontSize: 14, fontWeight: '700', color: '#1f2937', marginBottom: 12 },
+  summaryPanels: { flexDirection: 'row', gap: 10 },
+  summaryPanel: {
+    flex: 1,
+    minWidth: 0,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#eef2f7',
+    backgroundColor: '#f9fafb',
+    padding: 12,
+  },
+  summaryPanelTitle: { fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 10 },
+  summaryBalanceValue: { fontSize: 20, fontWeight: '800', color: '#1f2937' },
   summaryPositive: { color: '#059669' },
   summaryNegative: { color: '#dc2626' },
-  summaryDivider: { height: 1, backgroundColor: '#e5e7eb', marginVertical: 8 },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 20, paddingTop: 16 },
   listHeader: { marginBottom: 12 },
