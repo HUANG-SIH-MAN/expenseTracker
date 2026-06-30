@@ -21,6 +21,7 @@ import { useBudget } from '../contexts/BudgetContext';
 import { useOnboarding } from '../contexts/OnboardingContext';
 import { clearAllData } from '../utils/storage';
 import { BottomBar } from '../components';
+import { ENABLE_INVESTMENTS } from '../config/features';
 
 const TITLE = '設定';
 const BACK_ICON_SIZE = 28;
@@ -62,6 +63,10 @@ const SETTING_ITEMS: { screen: SettingScreenName; title: string; subtitle?: stri
   { screen: 'TransferTemplateSettings', title: '轉帳模板', subtitle: '儲值時自動帶入帳戶與附加收支' },
   { screen: 'InvestmentSettings', title: '投資設定', subtitle: '股票交易匯入與 ETF API Key 管理' },
 ];
+
+const VISIBLE_SETTING_ITEMS = ENABLE_INVESTMENTS
+  ? SETTING_ITEMS
+  : SETTING_ITEMS.filter((item) => item.screen !== 'InvestmentSettings');
 
 type NavProp = NativeStackNavigationProp<MainStackParamList, 'Settings'>;
 
@@ -138,7 +143,7 @@ export default function SettingsScreen(): React.JSX.Element {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 80 }]}
       >
         <View style={styles.list}>
-          {SETTING_ITEMS.map((item) => (
+          {VISIBLE_SETTING_ITEMS.map((item) => (
             <TouchableOpacity
               key={item.screen}
               style={styles.row}

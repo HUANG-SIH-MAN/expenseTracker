@@ -9,11 +9,17 @@
     },
     "preview": {
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_ENABLE_INVESTMENTS": "true"
+      },
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
+      "env": {
+        "EXPO_PUBLIC_ENABLE_INVESTMENTS": "false"
+      },
       "android": {
         "buildType": "apk"
       }

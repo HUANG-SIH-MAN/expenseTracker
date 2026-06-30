@@ -37,6 +37,7 @@ import InvestmentSettingsScreen from '../screens/InvestmentSettingsScreen';
 import PortfolioYearlyScreen from '../screens/PortfolioYearlyScreen';
 import CompanyFundamentalsScreen from '../screens/CompanyFundamentalsScreen';
 import type { TransactionType, StockTransaction } from '../types';
+import { ENABLE_INVESTMENTS } from '../config/features';
 
 export type MainStackParamList = {
   Home: undefined;
@@ -260,51 +261,55 @@ export default function MainStack(): React.JSX.Element {
         component={TransferTemplateEditScreen}
         options={{ headerShown: false }}
       />
-      <Stack.Screen
-        name="Portfolio"
-        component={PortfolioScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="ETFExposure"
-        component={ETFExposureScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="InvestmentSettings"
-        component={InvestmentSettingsScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="StockDetail"
-        component={StockDetailScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="CompanyFundamentals"
-        component={CompanyFundamentalsScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="AddStockTransaction"
-        component={AddStockTransactionScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="ImportStock"
-        component={ImportStockScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="StockWatchlistSettings"
-        component={StockWatchlistSettingsScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="PortfolioYearly"
-        component={PortfolioYearlyScreen}
-        options={{ headerShown: false }}
-      />
+      {ENABLE_INVESTMENTS && (
+        <>
+          <Stack.Screen
+            name="Portfolio"
+            component={PortfolioScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="ETFExposure"
+            component={ETFExposureScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="InvestmentSettings"
+            component={InvestmentSettingsScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="StockDetail"
+            component={StockDetailScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="CompanyFundamentals"
+            component={CompanyFundamentalsScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="AddStockTransaction"
+            component={AddStockTransactionScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="ImportStock"
+            component={ImportStockScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="StockWatchlistSettings"
+            component={StockWatchlistSettingsScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="PortfolioYearly"
+            component={PortfolioYearlyScreen}
+            options={{ headerShown: false }}
+          />
+        </>
+      )}
     </Stack.Navigator>
   );
 }

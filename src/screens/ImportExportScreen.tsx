@@ -51,15 +51,16 @@ const SECTION_IMPORT = '匯入';
 const BTN_EXPORT = '匯出記帳資料';
 const EXPORT_HINT = '將目前所有記帳匯出為 CSV，可備份或於其他裝置使用。';
 const BTN_IMPORT = '匯入記帳資料';
-const IMPORT_HINT = '從其他記帳 APP 匯出的 CSV（欄位：日期,大類別,類別,金額,帳戶,備註,收支等）可匯入，將加入現有資料。';
+const IMPORT_HINT = '支援本 app 匯出的 CSV 格式（可完整還原收支與轉帳），也相容其他記帳 APP 的 CSV。匯入資料將加入現有記錄。';
 const BTN_TEMPLATE = '下載記帳範本 CSV';
-const TEMPLATE_HINT = '下載欄位格式範本，參考後再整理你的資料匯入。';
+const TEMPLATE_HINT = '下載欄位格式範本，按照格式填寫後即可匯入。';
 
 const LEDGER_TEMPLATE_CSV =
-  '日期,大類別,類別,金額,帳戶,貨幣,成員,備註,收支,上次更新\n' +
-  '2024-01-15,飲食,飲食,150,現金,TWD,,午餐,支出,2024-01-15 12:00:00\n' +
-  '2024-01-16,交通,交通,50,悠遊卡,TWD,,捷運,支出,2024-01-16 08:30:00\n' +
-  '2024-01-20,工作,工資,50000,玉山銀行,TWD,,一月薪水,收入,2024-01-20 09:00:00\n';
+  '日期,收支,類別,金額,帳戶,備註,建立時間,轉入帳戶,轉入金額\n' +
+  '2024-01-15,支出,飲食,150,現金,午餐,2024-01-15 12:00:00,,\n' +
+  '2024-01-16,支出,交通,50,悠遊卡,捷運,2024-01-16 08:30:00,,\n' +
+  '2024-01-20,收入,工資,50000,玉山銀行,一月薪水,2024-01-20 09:00:00,,\n' +
+  '2024-02-01,轉帳,轉帳,1000,現金,,2024-02-01 10:00:00,玉山銀行,1000\n';
 const CONFIRM_IMPORT_TITLE = '確認匯入';
 const CONFIRM_IMPORT_MSG = '將匯入 %d 筆，是否加入現有資料？';
 const BTN_CANCEL = '取消';
@@ -107,7 +108,9 @@ export default function ImportExportScreen(): React.JSX.Element {
           rows,
         );
         const existingAccounts = await getStoredAccounts();
-        const accountNames = rows.map((r) => r.accountName);
+        const accountNames = rows.flatMap((r) =>
+          r.toAccountName ? [r.accountName, r.toAccountName] : [r.accountName]
+        );
         const { accountNameToId, mergedAccounts } = resolveAccountsForImport(
           existingAccounts,
           accountNames,

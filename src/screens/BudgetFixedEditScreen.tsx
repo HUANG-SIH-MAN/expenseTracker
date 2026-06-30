@@ -3,6 +3,8 @@
  */
 import React, { useState, useCallback, useEffect } from 'react';
 import {
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   Text,
   View,
@@ -227,11 +229,12 @@ export default function BudgetFixedEditScreen(): React.JSX.Element {
   }, [isEdit, itemId, monthlyFixedItems, saveMonthlyFixedItems, navigation]);
 
   return (
-    <View
+    <KeyboardAvoidingView
       style={[
         styles.container,
         { paddingTop: insets.top, paddingBottom: insets.bottom },
       ]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.header}>
         <TouchableOpacity
@@ -535,7 +538,7 @@ export default function BudgetFixedEditScreen(): React.JSX.Element {
           </TouchableOpacity>
         )}
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

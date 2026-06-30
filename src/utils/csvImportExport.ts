@@ -56,6 +56,8 @@ export interface ParsedSourceRow {
   accountName: string;
   note: string;
   lastUpdated: string;
+  toAccountName?: string;
+  transferAmount?: number;
 }
 
 /**
@@ -83,12 +85,38 @@ function parseCsvLine(line: string): string[] {
 }
 
 /**
- * 解析對方 APP 匯出的 CSV，回傳可轉成 Transaction 的列陣
+ * 解析本 app 匯出格式（日期,收支,類別,金額,帳戶,備註,建立時間,轉入帳戶,轉入金額）
  */
-export function parseSourceCsv(csvText: string): ParsedSourceRow[] {
-  const text = csvText.startsWith(UTF8_BOM) ? csvText.slice(UTF8_BOM.length) : csvText;
-  const lines = text.split(/\r?\n/).filter((s) => s.trim().length > 0);
-  if (lines.length < 2) return [];
+function parseOwnExportFormat(lines: string[]): ParsedSourceRow[] {
+  const rows: ParsedSourceRow[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseCsvLine(lines[i]);
+    if (cols.length < 5) continue;
+    const date = cols[0]?.trim() ?? '';
+    const typeStr = cols[1]?.trim() ?? '';
+    const categoryName = (cols[2]?.trim() ?? '') || '其他';
+    const amountRaw = cols[3]?.trim() ?? '';
+    const accountName = (cols[4]?.trim() ?? '') || '現金';
+    const note = cols[5]?.trim() ?? '';
+    const lastUpdated = cols[6]?.trim() || date;
+    const toAccountName = (cols[7]?.trim() ?? '') || undefined;
+    const transferAmountRaw = cols[8]?.trim() ?? '';
+    const transferAmount = transferAmountRaw !== '' ? parseFloat(transferAmountRaw) : undefined;
+
+    const type: TransactionType =
+      typeStr === INCOME_LABEL ? 'income' : typeStr === TRANSFER_LABEL ? 'transfer' : 'expense';
+    const amount = parseFloat(amountRaw);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(amount) || amount <= 0) continue;
+
+    rows.push({ date, type, amount, categoryName, accountName, note, lastUpdated, toAccountName, transferAmount });
+  }
+  return rows;
+}
+
+/**
+ * 解析對方 APP 匯出格式（日期,大類別,類別,金額,帳戶,貨幣,成員,備註,收支,上次更新）
+ */
+function parseLegacyFormat(lines: string[]): ParsedSourceRow[] {
   const rows: ParsedSourceRow[] = [];
   for (let i = 1; i < lines.length; i++) {
     const cols = parseCsvLine(lines[i]);
@@ -103,17 +131,22 @@ export function parseSourceCsv(csvText: string): ParsedSourceRow[] {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(amount) || amount <= 0) continue;
     const categoryName = (cols[2]?.trim() ?? '').replace(/^"|"$/g, '') || '其他';
     const lastUpdated = cols[9]?.trim() ?? date;
-    rows.push({
-      date,
-      type,
-      amount,
-      categoryName,
-      accountName,
-      note,
-      lastUpdated,
-    });
+    rows.push({ date, type, amount, categoryName, accountName, note, lastUpdated });
   }
   return rows;
+}
+
+/**
+ * 解析 CSV：自動偵測本 app 匯出格式或對方 APP 格式，回傳可轉成 Transaction 的列陣
+ */
+export function parseSourceCsv(csvText: string): ParsedSourceRow[] {
+  const text = csvText.startsWith(UTF8_BOM) ? csvText.slice(UTF8_BOM.length) : csvText;
+  const lines = text.split(/\r?\n/).filter((s) => s.trim().length > 0);
+  if (lines.length < 2) return [];
+  const headerCols = parseCsvLine(lines[0]);
+  // 本 app 匯出格式：第二欄是「收支」
+  const isOwnFormat = (headerCols[1]?.trim() ?? '') === '收支';
+  return isOwnFormat ? parseOwnExportFormat(lines) : parseLegacyFormat(lines);
 }
 
 /**
@@ -127,7 +160,6 @@ export function parsedRowsToTransactions(
 ): Transaction[] {
   const transactions: Transaction[] = [];
   for (const row of rows) {
-    const categoryKey = resolveCategoryKey(row.type, row.categoryName);
     let createdAt: string;
     try {
       const parsed = new Date(row.lastUpdated.replace(' ', 'T'));
@@ -136,16 +168,33 @@ export function parsedRowsToTransactions(
       createdAt = new Date().toISOString();
     }
     const accountId = accountNameToId[row.accountName] ?? undefined;
-    transactions.push({
-      id: generateId(),
-      type: row.type,
-      amount: row.amount,
-      date: row.date,
-      category: categoryKey,
-      note: row.note || undefined,
-      accountId,
-      createdAt,
-    });
+    if (row.type === 'transfer') {
+      const toAccountId = row.toAccountName ? (accountNameToId[row.toAccountName] ?? undefined) : undefined;
+      transactions.push({
+        id: generateId(),
+        type: 'transfer',
+        amount: row.amount,
+        date: row.date,
+        category: 'transfer',
+        note: row.note || undefined,
+        accountId,
+        toAccountId,
+        transferAmount: Number.isFinite(row.transferAmount) ? row.transferAmount : row.amount,
+        createdAt,
+      });
+    } else {
+      const categoryKey = resolveCategoryKey(row.type, row.categoryName);
+      transactions.push({
+        id: generateId(),
+        type: row.type,
+        amount: row.amount,
+        date: row.date,
+        category: categoryKey,
+        note: row.note || undefined,
+        accountId,
+        createdAt,
+      });
+    }
   }
   return transactions;
 }
@@ -239,6 +288,7 @@ export function resolveCategoriesForImport(
   const seen = new Set<string>();
   const uniquePairs: Array<{ type: TransactionType; categoryName: string }> = [];
   for (const row of rows) {
+    if (row.type === 'transfer') continue;
     const normalizedName = normalizeCategoryNameForImport(row.categoryName);
     const pairKey = `${row.type}:${normalizedName}`;
     if (seen.has(pairKey)) continue;

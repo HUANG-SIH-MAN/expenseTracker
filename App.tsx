@@ -13,6 +13,7 @@ import OnboardingStack from './src/navigation/OnboardingStack';
 import MainStack from './src/navigation/MainStack';
 import { fetchRatesToPrimary } from './src/utils/exchangeRate';
 import { saveExchangeRates } from './src/utils/storage';
+import { ENABLE_INVESTMENTS } from './src/config/features';
 
 function RootNavigator(): React.JSX.Element {
   const { isLoading, hasCompletedOnboarding } = useOnboarding();
@@ -40,9 +41,13 @@ function RootNavigator(): React.JSX.Element {
     <TransactionsProvider>
       <CategoriesProvider>
         <BudgetProvider>
-          <InvestmentProvider>
+          {ENABLE_INVESTMENTS ? (
+            <InvestmentProvider>
+              <MainStack />
+            </InvestmentProvider>
+          ) : (
             <MainStack />
-          </InvestmentProvider>
+          )}
         </BudgetProvider>
       </CategoriesProvider>
     </TransactionsProvider>

@@ -6,6 +6,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { MainStackParamList } from '../navigation/MainStack';
 import { getTodayKey } from '../utils/date';
+import { ENABLE_INVESTMENTS } from '../config/features';
 
 const BOTTOM_BAR_HEIGHT = 56;
 const BOTTOM_ICON_SIZE = 22;
@@ -78,18 +79,20 @@ export default function BottomBar({ selectedDate }: BottomBarProps): React.JSX.E
         <Text style={styles.bottomBarCenterLabel}>{BOTTOM_ADD_LABEL}</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity
-        style={styles.bottomBarItem}
-        onPress={() => navigation.navigate('Portfolio')}
-        activeOpacity={0.7}
-      >
-        <Ionicons
-          name={isActive('Portfolio') ? 'trending-up' : 'trending-up-outline'}
-          size={BOTTOM_ICON_SIZE}
-          color={getColor('Portfolio')}
-        />
-        <Text style={[styles.bottomBarLabel, { color: getColor('Portfolio') }]}>{BOTTOM_INVEST}</Text>
-      </TouchableOpacity>
+      {ENABLE_INVESTMENTS && (
+        <TouchableOpacity
+          style={styles.bottomBarItem}
+          onPress={() => navigation.navigate('Portfolio')}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name={isActive('Portfolio') ? 'trending-up' : 'trending-up-outline'}
+            size={BOTTOM_ICON_SIZE}
+            color={getColor('Portfolio')}
+          />
+          <Text style={[styles.bottomBarLabel, { color: getColor('Portfolio') }]}>{BOTTOM_INVEST}</Text>
+        </TouchableOpacity>
+      )}
 
       <TouchableOpacity
         style={styles.bottomBarItem}

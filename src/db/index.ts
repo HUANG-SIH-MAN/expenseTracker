@@ -217,6 +217,8 @@ CREATE TABLE IF NOT EXISTS stock_fundamentals (
 
 CREATE INDEX IF NOT EXISTS idx_stock_transactions_ticker ON stock_transactions(ticker);
 CREATE INDEX IF NOT EXISTS idx_stock_transactions_date ON stock_transactions(date);
+CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category);
+CREATE INDEX IF NOT EXISTS idx_transactions_account_id ON transactions(account_id);
 `.trim();
 }
 
@@ -478,6 +480,10 @@ async function initDb(): Promise<SQLite.SQLiteDatabase | null> {
   } catch {
     // Column already exists
   }
+  await db.execAsync(`
+    CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category);
+    CREATE INDEX IF NOT EXISTS idx_transactions_account_id ON transactions(account_id);
+  `);
   dbInstance = db;
   return db;
 }

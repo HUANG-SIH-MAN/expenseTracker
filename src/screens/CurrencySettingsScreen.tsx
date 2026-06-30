@@ -3,6 +3,8 @@
  */
 import React, { useState, useCallback } from 'react';
 import {
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   Text,
   View,
@@ -179,7 +181,10 @@ export default function CurrencySettingsScreen(): React.JSX.Element {
         onRequestClose={() => setShowAddModal(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <KeyboardAvoidingView
+            style={styles.modalContent}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
             <Text style={styles.modalTitle}>{BTN_ADD}</Text>
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>{LABEL_CODE}</Text>
@@ -241,7 +246,7 @@ export default function CurrencySettingsScreen(): React.JSX.Element {
                 <Text style={styles.modalSaveText}>{saving ? '儲存中…' : BTN_SAVE}</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
     </View>

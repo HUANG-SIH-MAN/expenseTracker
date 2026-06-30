@@ -3,7 +3,9 @@
  */
 import React, { useState, useCallback, useEffect } from "react";
 import {
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   StyleSheet,
   Text,
   TextInput,
@@ -190,7 +192,10 @@ export default function AddTransferScreen(): React.JSX.Element {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <KeyboardAvoidingView
+      style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} hitSlop={12}>
           <Ionicons name="chevron-back" size={BACK_ICON_SIZE} color="#2563eb" />
@@ -484,7 +489,7 @@ export default function AddTransferScreen(): React.JSX.Element {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

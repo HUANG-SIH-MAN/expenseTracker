@@ -1,57 +1,79 @@
 /**
- * 計算機風格鍵盤：數字、小數點、+ - × ÷、= +/- C OK 倒退
- * 佈局參考：第一列 = +/- C OK，第二列 ÷ 7 8 9，第三列 × 4 5 6，
- * 第四列 - 1 2 3，第五列 + . 0 倒退
+ * 計算機鍵盤
+ * 佈局：C +/- ⌫ ÷ / 7 8 9 × / 4 5 6 - / 1 2 3 + / . 0 = OK
  */
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { parseAmountInput, sanitizeAmountInput } from '../utils/amountExpression';
 
-const KEYPAD_BG = '#ffffff';
-const KEY_BG = '#f3f4f6';
-const KEY_SPECIAL_BG = '#e5e7eb';
-const KEY_TEXT = '#1a1a1a';
-const KEY_OPERATOR = '#0a84ff';
+// ── 色票 ──────────────────────────────────────────────────────────────
+const BG = '#f2f2f7';
 
-const ROW1_KEYS = [
-  { id: 'eq', label: '=', type: 'equals' as const },
-  { id: 'pm', label: '+/-', type: 'toggleSign' as const },
-  { id: 'c', label: 'C', type: 'clear' as const },
-  { id: 'ok', label: 'OK', type: 'confirm' as const },
-];
-const ROW2_KEYS = [
-  { id: 'div', label: '÷', type: 'op' as const, value: '\u00F7' },
-  { id: '7', label: '7', type: 'digit' as const },
-  { id: '8', label: '8', type: 'digit' as const },
-  { id: '9', label: '9', type: 'digit' as const },
-];
-const ROW3_KEYS = [
-  { id: 'mul', label: '×', type: 'op' as const, value: '\u00D7' },
-  { id: '4', label: '4', type: 'digit' as const },
-  { id: '5', label: '5', type: 'digit' as const },
-  { id: '6', label: '6', type: 'digit' as const },
-];
-const ROW4_KEYS = [
-  { id: 'sub', label: '-', type: 'op' as const, value: '-' },
-  { id: '1', label: '1', type: 'digit' as const },
-  { id: '2', label: '2', type: 'digit' as const },
-  { id: '3', label: '3', type: 'digit' as const },
-];
-const ROW5_KEYS = [
-  { id: 'add', label: '+', type: 'op' as const, value: '+' },
-  { id: 'dot', label: '.', type: 'digit' as const, value: '.' },
-  { id: '0', label: '0', type: 'digit' as const },
-  { id: 'back', label: '⌫', type: 'backspace' as const },
-];
+const NUM_BG = '#ffffff';
+const NUM_TEXT = '#1c1c1e';
 
-const ROWS = [ROW1_KEYS, ROW2_KEYS, ROW3_KEYS, ROW4_KEYS, ROW5_KEYS];
-const KEY_GAP = 0;
-const KEY_BORDER_RADIUS = 0;
-const KEYPAD_PADDING_HORIZONTAL = 0;
-const KEYPAD_PADDING_VERTICAL = 0;
-const KEY_FONT_SIZE = 24;
-const KEY_OPERATOR_FONT_SIZE = 26;
-const KEY_CONFIRM_FONT_SIZE = 19;
+const OP_BG = '#dbeafe';
+const OP_TEXT = '#1d4ed8';
+
+const UTIL_BG = '#e5e7eb';
+const UTIL_TEXT = '#374151';
+
+const CLEAR_BG = '#fee2e2';
+const CLEAR_TEXT = '#dc2626';
+
+const EVAL_BG = '#eff6ff';
+const EVAL_TEXT = '#2563eb';
+
+const OK_BG = '#2563eb';
+const OK_TEXT = '#ffffff';
+
+// ── 尺寸 ──────────────────────────────────────────────────────────────
+const GAP = 8;
+const RADIUS = 14;
+const PAD_H = 12;
+const PAD_V = 10;
+
+type KeyType = 'digit' | 'op' | 'clear' | 'toggleSign' | 'backspace' | 'equals' | 'confirm';
+
+interface Key {
+  id: string;
+  label: string;
+  type: KeyType;
+  value?: string;
+}
+
+const ROWS: Key[][] = [
+  [
+    { id: 'c',   label: 'C',   type: 'clear' },
+    { id: 'pm',  label: '+/-', type: 'toggleSign' },
+    { id: 'back',label: '⌫',  type: 'backspace' },
+    { id: 'div', label: '÷',   type: 'op', value: '÷' },
+  ],
+  [
+    { id: '7', label: '7', type: 'digit' },
+    { id: '8', label: '8', type: 'digit' },
+    { id: '9', label: '9', type: 'digit' },
+    { id: 'mul', label: '×', type: 'op', value: '×' },
+  ],
+  [
+    { id: '4', label: '4', type: 'digit' },
+    { id: '5', label: '5', type: 'digit' },
+    { id: '6', label: '6', type: 'digit' },
+    { id: 'sub', label: '−', type: 'op', value: '-' },
+  ],
+  [
+    { id: '1', label: '1', type: 'digit' },
+    { id: '2', label: '2', type: 'digit' },
+    { id: '3', label: '3', type: 'digit' },
+    { id: 'add', label: '+', type: 'op', value: '+' },
+  ],
+  [
+    { id: 'dot', label: '.', type: 'digit', value: '.' },
+    { id: '0',   label: '0', type: 'digit' },
+    { id: 'eq',  label: '=', type: 'equals' },
+    { id: 'ok',  label: 'OK', type: 'confirm' },
+  ],
+];
 
 export interface CalculatorKeypadProps {
   value: string;
@@ -68,14 +90,13 @@ export default function CalculatorKeypad({
     onValueChange(sanitizeAmountInput(value + char, value));
   };
 
-  type KeyItem = (typeof ROW1_KEYS)[number] | (typeof ROW2_KEYS)[number] | (typeof ROW5_KEYS)[number];
-  const handleKey = (key: KeyItem) => {
+  const handleKey = (key: Key) => {
     switch (key.type) {
       case 'digit':
         append(key.value ?? key.label);
         break;
       case 'op':
-        append(key.value);
+        append(key.value ?? key.label);
         break;
       case 'equals': {
         const parsed = parseAmountInput(value);
@@ -111,40 +132,46 @@ export default function CalculatorKeypad({
     }
   };
 
-  const isOperatorKey = (key: { type: string }) =>
-    key.type === 'op' || key.type === 'equals';
-  const isConfirmKey = (key: { type: string }) => key.type === 'confirm';
+  const keyStyle = (key: Key) => {
+    switch (key.type) {
+      case 'confirm':   return [styles.key, styles.keyOk];
+      case 'equals':    return [styles.key, styles.keyEval];
+      case 'op':        return [styles.key, styles.keyOp];
+      case 'clear':     return [styles.key, styles.keyClear];
+      case 'toggleSign':
+      case 'backspace': return [styles.key, styles.keyUtil];
+      default:          return [styles.key, styles.keyNum];
+    }
+  };
+
+  const textStyle = (key: Key) => {
+    switch (key.type) {
+      case 'confirm':   return [styles.keyText, styles.textOk];
+      case 'equals':    return [styles.keyText, styles.textEval];
+      case 'op':        return [styles.keyText, styles.textOp];
+      case 'clear':     return [styles.keyText, styles.textClear];
+      case 'toggleSign':
+      case 'backspace': return [styles.keyText, styles.textUtil];
+      default:          return [styles.keyText, styles.textNum];
+    }
+  };
 
   return (
     <View style={styles.container}>
-      {ROWS.map((row, rowIndex) => (
-        <View key={rowIndex} style={styles.row}>
-          {row.map((key) => {
-            const isOp = isOperatorKey(key);
-            const isOk = isConfirmKey(key);
-            return (
-              <TouchableOpacity
-                key={key.id}
-                style={[
-                  styles.key,
-                  isOp && !isOk && styles.keyOperator,
-                  isOk && styles.keyConfirm,
-                ]}
-                onPress={() => handleKey(key)}
-                activeOpacity={0.7}
-              >
-                <Text
-                  style={[
-                    styles.keyText,
-                    isOp && !isOk && styles.keyTextOperator,
-                    isOk && styles.keyTextConfirm,
-                  ]}
-                >
-                  {key.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+      {ROWS.map((row, ri) => (
+        <View key={ri} style={styles.row}>
+          {row.map((key) => (
+            <TouchableOpacity
+              key={key.id}
+              style={keyStyle(key)}
+              onPress={() => handleKey(key)}
+              activeOpacity={0.65}
+            >
+              <Text style={textStyle(key)} adjustsFontSizeToFit numberOfLines={1}>
+                {key.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
       ))}
     </View>
@@ -154,43 +181,48 @@ export default function CalculatorKeypad({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: KEYPAD_BG,
-    paddingHorizontal: KEYPAD_PADDING_HORIZONTAL,
-    paddingVertical: KEYPAD_PADDING_VERTICAL,
-    gap: KEY_GAP,
+    backgroundColor: BG,
+    paddingHorizontal: PAD_H,
+    paddingTop: PAD_V,
+    paddingBottom: PAD_V,
+    gap: GAP,
+    borderTopWidth: 1,
+    borderTopColor: '#d1d5db',
   },
   row: {
     flex: 1,
     flexDirection: 'row',
-    gap: KEY_GAP,
+    gap: GAP,
   },
+
+  // ── 各類按鍵底色 ────────────────────────────────────────────────────
   key: {
     flex: 1,
-    backgroundColor: KEY_BG,
-    borderRadius: KEY_BORDER_RADIUS,
+    borderRadius: RADIUS,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 2,
+    elevation: 1,
   },
-  keyOperator: {
-    backgroundColor: KEY_SPECIAL_BG,
-  },
-  keyConfirm: {
-    backgroundColor: '#0a84ff',
-    borderColor: '#0a84ff',
-  },
+  keyNum:   { backgroundColor: NUM_BG },
+  keyOp:    { backgroundColor: OP_BG },
+  keyUtil:  { backgroundColor: UTIL_BG },
+  keyClear: { backgroundColor: CLEAR_BG },
+  keyEval:  { backgroundColor: EVAL_BG },
+  keyOk:    { backgroundColor: OK_BG },
+
+  // ── 各類按鍵文字 ────────────────────────────────────────────────────
   keyText: {
-    fontSize: KEY_FONT_SIZE,
-    color: KEY_TEXT,
-    fontWeight: '400',
-  },
-  keyTextOperator: {
-    color: KEY_OPERATOR,
-    fontSize: KEY_OPERATOR_FONT_SIZE,
-    fontWeight: '400',
-  },
-  keyTextConfirm: {
-    color: '#ffffff',
+    fontSize: 22,
     fontWeight: '500',
-    fontSize: KEY_CONFIRM_FONT_SIZE,
   },
+  textNum:   { color: NUM_TEXT },
+  textOp:    { color: OP_TEXT,    fontSize: 24, fontWeight: '600' },
+  textUtil:  { color: UTIL_TEXT },
+  textClear: { color: CLEAR_TEXT, fontWeight: '600' },
+  textEval:  { color: EVAL_TEXT,  fontSize: 24, fontWeight: '600' },
+  textOk:    { color: OK_TEXT,    fontSize: 18, fontWeight: '700', letterSpacing: 0.5 },
 });

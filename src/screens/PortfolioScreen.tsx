@@ -5,7 +5,7 @@
  * - 未實現損益 + 報酬率
  * - 各持股卡片
  */
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -63,35 +63,42 @@ export default function PortfolioScreen(): React.JSX.Element {
     refreshPrices,
   } = useInvestment();
 
-  const posArray = Array.from(positions.values()).filter(p => p.shares > 0);
+  const posArray = useMemo(
+    () => Array.from(positions.values()).filter(p => p.shares > 0),
+    [positions]
+  );
 
-  // 計算總覽數字
-  let totalValueTWD = 0;
-  let totalCostTWD = 0;
-  for (const pos of posArray) {
-    const priceTWD = getPriceTWD(pos.ticker, prices, usdTwdRate);
-    totalValueTWD += pos.shares * priceTWD;
-    totalCostTWD += pos.totalCostTWD;
-  }
-  const totalGainTWD = totalValueTWD - totalCostTWD;
-  const totalGainPct = totalCostTWD > 0 ? totalGainTWD / totalCostTWD : 0;
-  const allSortedRows = posArray
-    .map(pos => {
+  const { totalValueTWD, totalCostTWD, totalGainTWD, totalGainPct, allocationRows } = useMemo(() => {
+    let valTWD = 0;
+    let costTWD = 0;
+    for (const pos of posArray) {
       const priceTWD = getPriceTWD(pos.ticker, prices, usdTwdRate);
-      const valueTWD = pos.shares * priceTWD;
-      const weightPct = totalValueTWD > 0 ? (valueTWD / totalValueTWD) * 100 : 0;
-      const displayName = pos.name.trim() !== '' ? pos.name : pos.ticker;
-      return { ticker: pos.ticker, displayName, valueTWD, weightPct };
-    })
-    .sort((a, b) => b.weightPct - a.weightPct);
+      valTWD += pos.shares * priceTWD;
+      costTWD += pos.totalCostTWD;
+    }
+    const gainTWD = valTWD - costTWD;
+    const gainPct = costTWD > 0 ? gainTWD / costTWD : 0;
 
-  const topRows = allSortedRows.slice(0, ALLOCATION_TOP_COUNT);
-  const otherRows = allSortedRows.slice(ALLOCATION_TOP_COUNT);
-  const otherPct = otherRows.reduce((sum, r) => sum + r.weightPct, 0);
-  const otherValueTWD = otherRows.reduce((sum, r) => sum + r.valueTWD, 0);
-  const allocationRows = otherRows.length > 0
-    ? [...topRows, { ticker: '__other__', displayName: '其他', valueTWD: otherValueTWD, weightPct: otherPct }]
-    : topRows;
+    const allSortedRows = posArray
+      .map(pos => {
+        const priceTWD = getPriceTWD(pos.ticker, prices, usdTwdRate);
+        const valueTWD = pos.shares * priceTWD;
+        const weightPct = valTWD > 0 ? (valueTWD / valTWD) * 100 : 0;
+        const displayName = pos.name.trim() !== '' ? pos.name : pos.ticker;
+        return { ticker: pos.ticker, displayName, valueTWD, weightPct };
+      })
+      .sort((a, b) => b.weightPct - a.weightPct);
+
+    const topRows = allSortedRows.slice(0, ALLOCATION_TOP_COUNT);
+    const otherRows = allSortedRows.slice(ALLOCATION_TOP_COUNT);
+    const otherPct = otherRows.reduce((sum, r) => sum + r.weightPct, 0);
+    const otherValueTWD = otherRows.reduce((sum, r) => sum + r.valueTWD, 0);
+    const rows = otherRows.length > 0
+      ? [...topRows, { ticker: '__other__', displayName: '其他', valueTWD: otherValueTWD, weightPct: otherPct }]
+      : topRows;
+
+    return { totalValueTWD: valTWD, totalCostTWD: costTWD, totalGainTWD: gainTWD, totalGainPct: gainPct, allocationRows: rows };
+  }, [posArray, prices, usdTwdRate]);
 
   const gainColor = totalGainTWD >= 0 ? '#16a34a' : '#dc2626';
 

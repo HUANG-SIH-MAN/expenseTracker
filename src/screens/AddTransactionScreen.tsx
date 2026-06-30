@@ -3,7 +3,9 @@
  */
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   StyleSheet,
   Switch,
   Text,
@@ -337,7 +339,10 @@ export default function AddTransactionScreen(): React.JSX.Element {
   }
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
       <ScrollView
         style={[styles.bodyScroll, { flex: bodyFlex }]}
         contentContainerStyle={[
@@ -596,7 +601,7 @@ export default function AddTransactionScreen(): React.JSX.Element {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

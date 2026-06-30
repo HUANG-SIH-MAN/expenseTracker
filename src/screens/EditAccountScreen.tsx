@@ -4,6 +4,7 @@
  */
 import React, { useState, useCallback, useEffect } from 'react';
 import {
+  KeyboardAvoidingView,
   StyleSheet,
   Text,
   View,
@@ -196,7 +197,10 @@ export default function EditAccountScreen(): React.JSX.Element {
   const isAmountPlaceholder = currentAmount.trim() === '';
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <KeyboardAvoidingView
+      style={[styles.container, { paddingTop: insets.top }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backBtn}
@@ -361,7 +365,7 @@ export default function EditAccountScreen(): React.JSX.Element {
           />
         </View>
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

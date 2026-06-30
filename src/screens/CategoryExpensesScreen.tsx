@@ -7,7 +7,7 @@ import {
   Text,
   View,
   TouchableOpacity,
-  ScrollView,
+  FlatList,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
@@ -100,6 +100,45 @@ export default function CategoryExpensesScreen(): React.JSX.Element {
 
   const isIncome = transactionType === 'income';
 
+  const renderRow = useCallback(({ item }: { item: Transaction }) => {
+    const costRate = !isIncome ? costBasisMap.get(item.accountId ?? '') : undefined;
+    const twdEquiv = costRate != null ? Math.round(item.amount * costRate) : null;
+    return (
+      <TouchableOpacity
+        style={styles.row}
+        onPress={() => navigation.navigate('AddTransaction', { selectedDate: item.date, transactionId: item.id })}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.rowDate} numberOfLines={1}>{formatDateShort(item.date)}</Text>
+        <Text style={styles.rowMiddle} numberOfLines={1}>
+          {item.note?.trim()
+            ? `${item.note.trim()} | ${getAccountName(item.accountId)}`
+            : getAccountName(item.accountId)}
+        </Text>
+        <View style={styles.rowAmountCol}>
+          <Text style={[styles.rowAmount, isIncome ? styles.amountIncome : styles.amountExpense]}>
+            {isIncome ? '+' : '-'}{formatAmount(item.amount)}
+          </Text>
+          {twdEquiv != null ? (
+            <Text style={styles.rowCostBasis}>≈ NT${twdEquiv.toLocaleString()}</Text>
+          ) : null}
+        </View>
+      </TouchableOpacity>
+    );
+  }, [isIncome, costBasisMap, getAccountName, navigation]);
+
+  const ListHeader = useMemo(() => (
+    <>
+      <View style={styles.totalCard}>
+        <Text style={styles.totalLabel}>合計</Text>
+        <Text style={[styles.totalAmount, isIncome ? styles.amountIncome : styles.amountExpense]}>
+          {formatAmount(total)}
+        </Text>
+      </View>
+      {sortedList.length > 0 ? <View style={styles.listCardTop} /> : null}
+    </>
+  ), [total, isIncome, sortedList.length]);
+
   return (
     <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <View style={styles.header}>
@@ -113,57 +152,19 @@ export default function CategoryExpensesScreen(): React.JSX.Element {
         </View>
       </View>
 
-      <ScrollView
-        style={styles.scroll}
+      <FlatList
+        data={sortedList}
+        keyExtractor={(item) => item.id}
+        renderItem={renderRow}
+        ListHeaderComponent={ListHeader}
+        ListEmptyComponent={<Text style={styles.emptyText}>{EMPTY_HINT}</Text>}
+        ListFooterComponent={sortedList.length > 0 ? <View style={styles.listCardBottom} /> : null}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.totalCard}>
-          <Text style={styles.totalLabel}>合計</Text>
-          <Text
-            style={[
-              styles.totalAmount,
-              isIncome ? styles.amountIncome : styles.amountExpense,
-            ]}
-          >
-            {formatAmount(total)}
-          </Text>
-        </View>
-
-        {sortedList.length === 0 ? (
-          <Text style={styles.emptyText}>{EMPTY_HINT}</Text>
-        ) : (
-          <View style={styles.listCard}>
-            {sortedList.map((item) => {
-              const costRate = !isIncome ? costBasisMap.get(item.accountId ?? '') : undefined;
-              const twdEquiv = costRate != null ? Math.round(item.amount * costRate) : null;
-              return (
-              <TouchableOpacity
-                key={item.id}
-                style={styles.row}
-                onPress={() => navigation.navigate('AddTransaction', { selectedDate: item.date, transactionId: item.id })}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.rowDate} numberOfLines={1}>{formatDateShort(item.date)}</Text>
-                <Text style={styles.rowMiddle} numberOfLines={1}>
-                  {item.note?.trim()
-                    ? `${item.note.trim()} | ${getAccountName(item.accountId)}`
-                    : getAccountName(item.accountId)}
-                </Text>
-                <View style={styles.rowAmountCol}>
-                  <Text style={[styles.rowAmount, isIncome ? styles.amountIncome : styles.amountExpense]}>
-                    {isIncome ? '+' : '-'}{formatAmount(item.amount)}
-                  </Text>
-                  {twdEquiv != null ? (
-                    <Text style={styles.rowCostBasis}>≈ NT${twdEquiv.toLocaleString()}</Text>
-                  ) : null}
-                </View>
-              </TouchableOpacity>
-              );
-            })}
-          </View>
-        )}
-      </ScrollView>
+        initialNumToRender={20}
+        maxToRenderPerBatch={20}
+        windowSize={10}
+      />
     </View>
   );
 }
@@ -200,9 +201,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1f2937',
   },
-  scroll: {
-    flex: 1,
-  },
   scrollContent: {
     paddingHorizontal: HEADER_PADDING_H,
     paddingTop: 20,
@@ -238,19 +236,34 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: 24,
   },
-  listCard: {
+  listCardTop: {
     backgroundColor: '#fff',
-    borderRadius: CARD_BORDER_RADIUS,
+    borderTopLeftRadius: CARD_BORDER_RADIUS,
+    borderTopRightRadius: CARD_BORDER_RADIUS,
     borderWidth: 1,
+    borderBottomWidth: 0,
     borderColor: '#e5e7eb',
-    paddingHorizontal: CARD_PADDING,
-    paddingVertical: 8,
+    height: 8,
+  },
+  listCardBottom: {
+    backgroundColor: '#fff',
+    borderBottomLeftRadius: CARD_BORDER_RADIUS,
+    borderBottomRightRadius: CARD_BORDER_RADIUS,
+    borderWidth: 1,
+    borderTopWidth: 0,
+    borderColor: '#e5e7eb',
+    height: 8,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 12,
+    paddingHorizontal: CARD_PADDING,
+    backgroundColor: '#fff',
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
     borderBottomWidth: 1,
+    borderColor: '#e5e7eb',
     borderBottomColor: '#f3f4f6',
   },
   rowDate: {

@@ -3,6 +3,8 @@
  */
 import React, { useState, useCallback, useEffect } from 'react';
 import {
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
   Text,
   View,
@@ -156,7 +158,10 @@ export default function RecurringEditScreen(): React.ReactElement | null {
   if (!loaded) return null;
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <KeyboardAvoidingView
+      style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backBtn}
@@ -345,7 +350,7 @@ export default function RecurringEditScreen(): React.ReactElement | null {
           </View>
         )}
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

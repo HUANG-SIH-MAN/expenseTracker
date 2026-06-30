@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(npx expo:*)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(git -C c:/Users/User/Desktop/expense-tracker log --oneline -30)",
+      "Bash(git -C c:/Users/User/Desktop/expense-tracker log --oneline -60)"
     ]
   }
 }

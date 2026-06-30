@@ -217,11 +217,11 @@ export default function HomeScreen(): React.JSX.Element {
     return { dailyIncomeTotal: income, dailyExpenseTotal: expense };
   }, [dayTransactions, costBasisMap]);
 
-  const getAccountName = (accountId?: string): string => {
+  const getAccountName = useCallback((accountId?: string): string => {
     if (!accountId) return DEFAULT_ACCOUNT_LABEL;
     const acc = accounts.find((a) => a.id === accountId);
     return acc?.name?.trim() ? acc.name : DEFAULT_ACCOUNT_LABEL;
-  };
+  }, [accounts]);
 
   const goPrevMonth = () => {
     const d = new Date(year, month - 1, 0);
@@ -275,7 +275,7 @@ export default function HomeScreen(): React.JSX.Element {
     setConfirmDeleteTransaction(null);
   }, [confirmDeleteTransaction, deleteTransaction]);
 
-  const renderItem = ({ item }: { item: Transaction }) => {
+  const renderItem = useCallback(({ item }: { item: Transaction }) => {
     const noteLine = item.note?.trim() ?? '';
     const isLockedAutopay = isLockedCreditCardAutopayTransaction(item);
     const expenseAccount = item.type === 'expense'
@@ -369,7 +369,7 @@ export default function HomeScreen(): React.JSX.Element {
       </View>
     </View>
     );
-  };
+  }, [accounts, primaryCurrency, costBasisMap, getCategoryIcon, getCategoryLabel, getAccountName, navigation, handleEditTransaction, askDeleteTransaction]);
 
   const bottomBarPadding = BOTTOM_BAR_HEIGHT + insets.bottom;
 
@@ -483,6 +483,10 @@ export default function HomeScreen(): React.JSX.Element {
               keyExtractor={(item) => item.id}
               renderItem={renderItem}
               scrollEnabled={false}
+              initialNumToRender={10}
+              maxToRenderPerBatch={10}
+              windowSize={5}
+              removeClippedSubviews={false}
             />
           )}
         </View>

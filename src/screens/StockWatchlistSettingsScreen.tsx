@@ -3,6 +3,7 @@
  */
 import React, { useState, useCallback } from 'react';
 import {
+  KeyboardAvoidingView,
   View,
   Text,
   TextInput,
@@ -153,7 +154,10 @@ export default function StockWatchlistSettingsScreen(): React.JSX.Element {
       {/* Add / Edit Modal */}
       <Modal visible={!!modal} transparent animationType="slide" onRequestClose={closeModal}>
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={closeModal} />
-        <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
+        <KeyboardAvoidingView
+          style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
           <Text style={styles.sheetTitle}>{modal?.mode === 'edit' ? '編輯股票' : '新增股票'}</Text>
 
           <Text style={styles.fieldLabel}>股票代號</Text>
@@ -205,7 +209,7 @@ export default function StockWatchlistSettingsScreen(): React.JSX.Element {
           <TouchableOpacity style={styles.cancelBtn} onPress={closeModal}>
             <Text style={styles.cancelBtnText}>取消</Text>
           </TouchableOpacity>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

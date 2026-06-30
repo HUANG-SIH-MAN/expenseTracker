@@ -4,6 +4,7 @@
  */
 import React, { useState, useCallback, useRef } from 'react';
 import {
+  KeyboardAvoidingView,
   StyleSheet,
   Text,
   View,
@@ -419,7 +420,10 @@ export default function CategorySettingsScreen(): React.JSX.Element {
         onRequestClose={() => setModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { paddingBottom: insets.bottom + 16 }]}>
+          <KeyboardAvoidingView
+            style={[styles.modalSheet, { paddingBottom: insets.bottom + 16 }]}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
             <Text style={styles.modalTitle}>
               {editingItem ? MODAL_TITLE_EDIT : MODAL_TITLE_ADD}
             </Text>
@@ -507,7 +511,7 @@ export default function CategorySettingsScreen(): React.JSX.Element {
                 <Text style={styles.modalBtnPrimaryText}>{BTN_SAVE}</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
     </View>

@@ -3,6 +3,7 @@
  */
 import React, { useState, useCallback, useEffect } from 'react';
 import {
+  KeyboardAvoidingView,
   StyleSheet,
   Text,
   View,
@@ -105,7 +106,10 @@ export default function AddAccountScreen(): React.JSX.Element {
   const amountDisplayText = isAmountPlaceholder ? '點此輸入金額' : initialAmountStr;
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <KeyboardAvoidingView
+      style={[styles.container, { paddingTop: insets.top }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backBtn}
@@ -227,7 +231,7 @@ export default function AddAccountScreen(): React.JSX.Element {
           />
         </View>
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
