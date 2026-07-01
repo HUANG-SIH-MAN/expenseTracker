@@ -78,6 +78,59 @@ expense-tracker/
 └── app.json
 ```
 
+## Feature Flags（功能開關）
+
+### 投資模組 `EXPO_PUBLIC_ENABLE_INVESTMENTS`
+
+投資相關功能（底部 Tab、導航路由、設定項目）由此旗標統一控制，關閉後整個投資模組從 UI 上隱藏。
+
+**控制點：** [`src/config/features.ts`](src/config/features.ts)
+
+```ts
+export const ENABLE_INVESTMENTS =
+  process.env.EXPO_PUBLIC_ENABLE_INVESTMENTS === 'true';
+```
+
+---
+
+#### 本機開發（`npm start`）
+
+在專案根目錄新增 `.env` 檔（預設無此檔案，等同 `false`）：
+
+```bash
+# .env
+EXPO_PUBLIC_ENABLE_INVESTMENTS=true   # 開啟
+# EXPO_PUBLIC_ENABLE_INVESTMENTS=false  # 關閉（預設）
+```
+
+修改後需重啟 dev server（`npm start`）才會生效。
+
+---
+
+#### EAS 打包（`eas.json`）
+
+各 build profile 分別設定，改 `"true"` / `"false"` 即可：
+
+```json
+{
+  "build": {
+    "preview":    { "env": { "EXPO_PUBLIC_ENABLE_INVESTMENTS": "true" } },
+    "production": { "env": { "EXPO_PUBLIC_ENABLE_INVESTMENTS": "false" } }
+  }
+}
+```
+
+---
+
+#### 影響範圍
+
+| 檔案 | 影響 |
+|------|------|
+| `src/components/BottomBar.tsx` | 底部導航「投資」Tab 的顯示/隱藏 |
+| `src/navigation/MainStack.tsx` | 投資相關路由的掛載/移除 |
+| `src/screens/SettingsScreen.tsx` | 設定頁中「投資設定」項目的顯示/隱藏 |
+| `App.tsx` | `InvestmentContext` Provider 的掛載/移除 |
+
 ## 開發指令
 
 ```bash

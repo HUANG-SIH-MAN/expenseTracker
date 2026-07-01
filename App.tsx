@@ -13,15 +13,19 @@ import OnboardingStack from './src/navigation/OnboardingStack';
 import MainStack from './src/navigation/MainStack';
 import { fetchRatesToPrimary } from './src/utils/exchangeRate';
 import { saveExchangeRates } from './src/utils/storage';
+import { getCachedTaiwanHolidays } from './src/utils/taiwanHolidays';
 import { ENABLE_INVESTMENTS } from './src/config/features';
 
 function RootNavigator(): React.JSX.Element {
   const { isLoading, hasCompletedOnboarding } = useOnboarding();
 
   React.useEffect(() => {
+    const currentYear = new Date().getFullYear();
+    // 背景預熱：匯率更新 + 當年假日快取（若無快取則抓 API，不阻塞任何畫面）
     fetchRatesToPrimary('TWD').then((rates) => {
       if (rates) saveExchangeRates(rates);
     });
+    void getCachedTaiwanHolidays(currentYear);
   }, []);
 
   if (isLoading) {

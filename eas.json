@@ -18,7 +18,7 @@
     },
     "production": {
       "env": {
-        "EXPO_PUBLIC_ENABLE_INVESTMENTS": "false"
+        "EXPO_PUBLIC_ENABLE_INVESTMENTS": "true"
       },
       "android": {
         "buildType": "apk"

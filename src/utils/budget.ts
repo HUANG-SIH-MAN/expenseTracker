@@ -352,31 +352,43 @@ export async function getBudgetSummary(
   const nationalHolidays = preloadedHolidays ?? await getCachedTaiwanHolidays(year);
   // 12月時非同步預抓次年假日（fire-and-forget）
   void prefetchNextYearIfDecember(year, month);
-  const monthIncome = getMonthIncome(
-    transactions,
-    year,
-    month,
-    recurringItems
+
+  // 當月 transactions 只過濾一次，下方子計算全部共用
+  const monthTransactions = filterTransactionsByPeriod(transactions, PERIOD_MONTH, year, month);
+
+  const recurringMap = new Map((recurringItems ?? []).map((r) => [r.id, r]));
+  const recurringIncomeTotal = (recurringItems ?? [])
+    .filter((r) => r.type === 'income' && r.repeat === 'monthly')
+    .reduce((sum, r) => sum + r.amount, 0);
+  const additionalIncomeTotal = monthTransactions
+    .filter((t) => t.type === 'income' && t.annualBudgetEntryId == null && t.recurringId == null)
+    .reduce((sum, t) => sum + t.amount, 0);
+  const monthIncome = recurringIncomeTotal + additionalIncomeTotal;
+
+  const fixedItemsTotal = monthlyFixedItems.reduce(
+    (sum, item) => sum + resolveFixedItemAmount(item, recurringMap, ratesToPrimary),
+    0,
   );
-  const fixedItemsTotal = getFixedEstimatedTotal(monthlyFixedItems, ratesToPrimary, recurringItems);
-  const amortizedTotal = getAmortizedExpenseForMonth(transactions, year, month);
+  let amortizedTotal = 0;
+  for (const t of transactions) {
+    if (t.type !== 'expense' || t.amortizationMonths == null) continue;
+    amortizedTotal += getAmortizedAmountForMonth(t, year, month);
+  }
   const fixedEstimatedTotal = fixedItemsTotal + amortizedTotal;
-  const monthlyDisposable = getMonthlyDisposable(
-    monthIncome,
-    fixedEstimatedTotal,
-    savingTarget
-  );
-  const dailyExpenseSoFar = getDailyExpenseSoFar(
-    transactions,
-    year,
-    month,
-    todayKey,
-    accountCostBasisMap,
-  );
-  const remainingDisposable = getRemainingDisposable(
-    monthlyDisposable,
-    dailyExpenseSoFar
-  );
+  const monthlyDisposable = getMonthlyDisposable(monthIncome, fixedEstimatedTotal, savingTarget);
+
+  let dailyExpenseSoFar = 0;
+  for (const t of monthTransactions) {
+    if (t.type !== 'expense') continue;
+    if (t.date > todayKey) continue;
+    if (t.annualBudgetEntryId != null) continue;
+    if (t.monthlyFixedItemId != null) continue;
+    if (t.amortizationMonths != null) continue;
+    const rate = accountCostBasisMap?.get(t.accountId ?? '') ?? 1;
+    dailyExpenseSoFar += t.amount * rate;
+  }
+
+  const remainingDisposable = getRemainingDisposable(monthlyDisposable, dailyExpenseSoFar);
   const overspentAmount = getOverspentAmount(remainingDisposable);
   const weighted = getRemainingWeightedDays(
     todayKey,

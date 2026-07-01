@@ -23,7 +23,7 @@ import {
   getCurrencyOptions,
 } from '../utils/storage';
 import { useTransactions } from '../contexts/TransactionsContext';
-import { getAccountBalancesWithPrimary, getTotalAssetsInPrimary, calculateForeignAccountCostBasis } from '../utils/balance';
+import { getAccountBalancesWithPrimary, getTotalAssetsInPrimary, buildForeignCostBasisMap } from '../utils/balance';
 import type { ForeignAccountCostBasis } from '../utils/balance';
 import { fetchRatesToPrimary } from '../utils/exchangeRate';
 import type { CurrencyOption } from '../types';
@@ -102,20 +102,10 @@ export default function LedgerBalanceScreen(): React.JSX.Element {
     setUpdatingRates(false);
   }, [primaryCurrency, currencyOptions]);
 
-  const costBasisItems = useMemo((): Map<string, ForeignAccountCostBasis> => {
-    const map = new Map<string, ForeignAccountCostBasis>();
-    for (const account of accounts) {
-      if (account.currency === primaryCurrency) continue;
-      const basis = calculateForeignAccountCostBasis(
-        account,
-        transactions,
-        accounts,
-        primaryCurrency as import('../types').CurrencyCode,
-      );
-      if (basis != null) map.set(account.id, basis);
-    }
-    return map;
-  }, [accounts, transactions, primaryCurrency]);
+  const costBasisItems = useMemo(
+    () => buildForeignCostBasisMap(accounts, transactions, primaryCurrency as import('../types').CurrencyCode),
+    [accounts, transactions, primaryCurrency],
+  );
 
   const balanceItems = getAccountBalancesWithPrimary(
     accounts,

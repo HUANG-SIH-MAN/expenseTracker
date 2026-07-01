@@ -33,6 +33,8 @@ interface LatestAutopaySyncEvent {
 
 interface TransactionsContextValue {
   transactions: Transaction[];
+  /** 首次從 DB 載入完畢後為 true，用於避免在空資料狀態下提早觸發依賴計算 */
+  isTransactionsReady: boolean;
   addTransaction: (t: Transaction) => Promise<RefreshTransactionsResult>;
   addTransactions: (txs: Transaction[]) => Promise<RefreshTransactionsResult>;
   deleteTransaction: (id: string) => Promise<RefreshTransactionsResult>;
@@ -48,6 +50,7 @@ const TransactionsContext = createContext<TransactionsContextValue | null>(null)
 
 export function TransactionsProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [isTransactionsReady, setIsTransactionsReady] = useState(false);
   const [latestAutopaySyncEvent, setLatestAutopaySyncEvent] = useState<LatestAutopaySyncEvent>({
     eventId: 0,
     createdCount: 0,
@@ -71,6 +74,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     });
     const next = await getStoredTransactions();
     setTransactions(next);
+    setIsTransactionsReady(true);
     // 檢查低餘額並重新排程自動繳款預警（非阻塞）
     getStoredAccounts().then(async (accounts) => {
       await checkLowBalanceNotifications(accounts, next);
@@ -147,6 +151,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
 
   const value: TransactionsContextValue = {
     transactions,
+    isTransactionsReady,
     addTransaction,
     addTransactions,
     deleteTransaction,

@@ -3,6 +3,7 @@
  */
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
+  ActivityIndicator,
   StyleSheet,
   Text,
   View,
@@ -80,6 +81,7 @@ export default function HomeScreen(): React.JSX.Element {
   const {
     getTransactionsByDate,
     transactions,
+    isTransactionsReady,
     refreshTransactions,
     deleteTransaction,
     latestAutopaySyncEvent,
@@ -109,12 +111,28 @@ export default function HomeScreen(): React.JSX.Element {
   );
   const { getCategoryLabel: getCategoryLabelFromContext, getCategoryIcon: getCategoryIconFromContext } = useCategories();
   const { monthlyFixedItems, budgetSettings, getMonthlySavingTargetAmount } = useBudget();
+
+  // 合併所有靜態資料的載入：一次 Promise.all，避免多次 setState 各自觸發預算重算
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [primaryCurrency, setPrimaryCurrency] = useState<string>('TWD');
   const [ratesToPrimary, setRatesToPrimary] = useState<Record<string, number>>({});
   const [recurringItems, setRecurringItems] = useState<RecurringItem[]>([]);
+  const [isInitDataLoaded, setIsInitDataLoaded] = useState(false);
   useEffect(() => {
-    getExchangeRates().then(({ rates }) => setRatesToPrimary(rates));
-    getStoredRecurring().then(setRecurringItems);
+    Promise.all([
+      getStoredAccounts(),
+      getStoredPrimaryCurrency(),
+      getExchangeRates(),
+      getStoredRecurring(),
+    ]).then(([accs, currency, { rates }, recurring]) => {
+      setAccounts(accs);
+      setPrimaryCurrency(currency);
+      setRatesToPrimary(rates);
+      setRecurringItems(recurring);
+      setIsInitDataLoaded(true);
+    });
   }, []);
+
   const { year, month } = useMemo(
     () => getYearMonthFromDateKey(selectedDate),
     [selectedDate]
@@ -138,22 +156,19 @@ export default function HomeScreen(): React.JSX.Element {
   const daysInMonth = new Date(year, month, 0).getDate();
   const [nationalHolidays, setNationalHolidays] = useState<Set<string>>(new Set());
   const [budgetSummary, setBudgetSummary] = useState<Awaited<ReturnType<typeof getBudgetSummary>>>(null);
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [primaryCurrency, setPrimaryCurrency] = useState<string>('TWD');
-  useEffect(() => {
-    getStoredAccounts().then(setAccounts);
-    getStoredPrimaryCurrency().then(setPrimaryCurrency);
-  }, []);
+  const [isBudgetLoading, setIsBudgetLoading] = useState(true);
 
   const costBasisMap = useMemo(
     () => buildAccountCostBasisMap(accounts, transactions, primaryCurrency),
     [accounts, transactions, primaryCurrency]
   );
 
-  // 先載入國定假日（有快取直接用，無快取則背景抓取一次；失敗就算了），
-  // 再計算預算，確保假日載入後預算能正確使用假日權重。
+  // 等 isInitDataLoaded（帳戶/匯率/固定項目）且 isTransactionsReady（DB 交易載入完）才計算
+  // 確保兩份資料都就緒後只算一次，不顯示 0 或中間過渡數字
   useEffect(() => {
+    if (!isInitDataLoaded || !isTransactionsReady) return;
     let cancelled = false;
+    setIsBudgetLoading(true);
     async function load() {
       const holidays = await getCachedTaiwanHolidays(year);
       if (cancelled) return;
@@ -172,10 +187,13 @@ export default function HomeScreen(): React.JSX.Element {
       );
       if (cancelled) return;
       setBudgetSummary(summary);
+      setIsBudgetLoading(false);
     }
     void load();
     return () => { cancelled = true; };
   }, [
+    isInitDataLoaded,
+    isTransactionsReady,
     year,
     referenceKey,
     transactions,
@@ -393,7 +411,11 @@ export default function HomeScreen(): React.JSX.Element {
           </TouchableOpacity>
         </View>
 
-        {budgetSummary != null && (() => {
+        {isBudgetLoading && budgetSummary == null ? (
+          <View style={styles.budgetCardLoading}>
+            <ActivityIndicator size="small" color="#2563eb" />
+          </View>
+        ) : budgetSummary != null && (() => {
           const selectedDay = parseInt(selectedDate.slice(8, 10), 10);
           const cardTitle =
             budgetMode === 'past' ? `${month}月結算` :
@@ -560,6 +582,17 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#1f2937',
+  },
+  budgetCardLoading: {
+    backgroundColor: '#eff6ff',
+    borderRadius: 12,
+    padding: 18,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 72,
   },
   budgetCard: {
     backgroundColor: '#eff6ff',
