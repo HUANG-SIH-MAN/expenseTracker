@@ -156,6 +156,18 @@ CREATE TABLE IF NOT EXISTS stock_watchlist (
   sort_order INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS captured_notifications (
+  id TEXT PRIMARY KEY,
+  app TEXT,
+  title TEXT,
+  text TEXT,
+  big_text TEXT,
+  raw_json TEXT NOT NULL,
+  captured_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_captured_notifications_captured_at ON captured_notifications(captured_at);
+
 CREATE INDEX IF NOT EXISTS idx_annual_budget_entries_year ON annual_budget_entries(year);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_transactions_annual_entry ON transactions(annual_budget_entry_id);

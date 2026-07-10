@@ -48,7 +48,8 @@ type SettingScreenName =
   | 'CreditCardAutoPaySettings'
   | 'CashTopUpSettings'
   | 'TransferTemplateSettings'
-  | 'InvestmentSettings';
+  | 'InvestmentSettings'
+  | 'NotificationCapture';
 
 const SETTING_ITEMS: { screen: SettingScreenName; title: string; subtitle?: string }[] = [
   { screen: 'LedgerBalance', title: '帳本餘額', subtitle: '各帳戶目前餘額（含初始金額與收支）' },
@@ -62,11 +63,15 @@ const SETTING_ITEMS: { screen: SettingScreenName; title: string; subtitle?: stri
   { screen: 'CashTopUpSettings', title: '現金自動補充', subtitle: '餘額低於門檻時自動記錄補充轉帳' },
   { screen: 'TransferTemplateSettings', title: '轉帳模板', subtitle: '儲值時自動帶入帳戶與附加收支' },
   { screen: 'InvestmentSettings', title: '投資設定', subtitle: '股票交易匯入與 ETF API Key 管理' },
+  { screen: 'NotificationCapture', title: '通知擷取（測試）', subtitle: '擷取 LINE／銀行通知以嘗試自動記帳' },
 ];
 
-const VISIBLE_SETTING_ITEMS = ENABLE_INVESTMENTS
-  ? SETTING_ITEMS
-  : SETTING_ITEMS.filter((item) => item.screen !== 'InvestmentSettings');
+const VISIBLE_SETTING_ITEMS = SETTING_ITEMS.filter((item) => {
+  if (item.screen === 'InvestmentSettings' && !ENABLE_INVESTMENTS) return false;
+  // 通知擷取僅 Android 支援
+  if (item.screen === 'NotificationCapture' && Platform.OS !== 'android') return false;
+  return true;
+});
 
 type NavProp = NativeStackNavigationProp<MainStackParamList, 'Settings'>;
 

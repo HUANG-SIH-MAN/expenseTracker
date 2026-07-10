@@ -36,6 +36,7 @@ import ETFExposureScreen from '../screens/ETFExposureScreen';
 import InvestmentSettingsScreen from '../screens/InvestmentSettingsScreen';
 import PortfolioYearlyScreen from '../screens/PortfolioYearlyScreen';
 import CompanyFundamentalsScreen from '../screens/CompanyFundamentalsScreen';
+import NotificationCaptureScreen from '../screens/NotificationCaptureScreen';
 import type { TransactionType, StockTransaction } from '../types';
 import { ENABLE_INVESTMENTS } from '../config/features';
 
@@ -80,6 +81,7 @@ export type MainStackParamList = {
   BudgetSettings: undefined;
   BudgetFixedEdit: { itemId?: string; linkedRecurringItemId?: string };
   ImportExport: undefined;
+  NotificationCapture: undefined;
   SelectTransactionCategory: {
     transactionType: 'expense' | 'income';
     selectedKey: string;
@@ -239,6 +241,11 @@ export default function MainStack(): React.JSX.Element {
       <Stack.Screen
         name="ImportExport"
         component={ImportExportScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="NotificationCapture"
+        component={NotificationCaptureScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen
