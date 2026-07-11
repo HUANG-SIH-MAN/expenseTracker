@@ -37,6 +37,7 @@ import InvestmentSettingsScreen from '../screens/InvestmentSettingsScreen';
 import PortfolioYearlyScreen from '../screens/PortfolioYearlyScreen';
 import CompanyFundamentalsScreen from '../screens/CompanyFundamentalsScreen';
 import NotificationCaptureScreen from '../screens/NotificationCaptureScreen';
+import PendingTransactionsScreen from '../screens/PendingTransactionsScreen';
 import type { TransactionType, StockTransaction } from '../types';
 import { ENABLE_INVESTMENTS } from '../config/features';
 
@@ -52,6 +53,12 @@ export type MainStackParamList = {
     /** 由連接預算頁返回時帶入，null 表示清除，套用後會清除 */
     pickedMonthlyFixedItemId?: string | null;
     pickedAnnualBudgetEntryId?: string | null;
+    /** 由「待確認消費」帶入的預填值（僅新增模式套用一次） */
+    prefillAmount?: number;
+    prefillNote?: string;
+    prefillCategoryKey?: string;
+    /** 對應的待確認項目 id，儲存後標記為已確認 */
+    pendingId?: string;
   };
   AddTransfer: { selectedDate?: string; transactionId?: string };
   LedgerBalance: undefined;
@@ -82,6 +89,7 @@ export type MainStackParamList = {
   BudgetFixedEdit: { itemId?: string; linkedRecurringItemId?: string };
   ImportExport: undefined;
   NotificationCapture: undefined;
+  PendingTransactions: undefined;
   SelectTransactionCategory: {
     transactionType: 'expense' | 'income';
     selectedKey: string;
@@ -246,6 +254,11 @@ export default function MainStack(): React.JSX.Element {
       <Stack.Screen
         name="NotificationCapture"
         component={NotificationCaptureScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="PendingTransactions"
+        component={PendingTransactionsScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen

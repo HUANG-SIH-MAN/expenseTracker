@@ -49,6 +49,7 @@ type SettingScreenName =
   | 'CashTopUpSettings'
   | 'TransferTemplateSettings'
   | 'InvestmentSettings'
+  | 'PendingTransactions'
   | 'NotificationCapture';
 
 const SETTING_ITEMS: { screen: SettingScreenName; title: string; subtitle?: string }[] = [
@@ -63,13 +64,16 @@ const SETTING_ITEMS: { screen: SettingScreenName; title: string; subtitle?: stri
   { screen: 'CashTopUpSettings', title: '現金自動補充', subtitle: '餘額低於門檻時自動記錄補充轉帳' },
   { screen: 'TransferTemplateSettings', title: '轉帳模板', subtitle: '儲值時自動帶入帳戶與附加收支' },
   { screen: 'InvestmentSettings', title: '投資設定', subtitle: '股票交易匯入與 ETF API Key 管理' },
-  { screen: 'NotificationCapture', title: '通知擷取（測試）', subtitle: '擷取 LINE／銀行通知以嘗試自動記帳' },
+  { screen: 'PendingTransactions', title: '待確認消費', subtitle: '刷卡通知自動解析，確認後記帳' },
+  { screen: 'NotificationCapture', title: '通知擷取（測試）', subtitle: '擷取 LINE／銀行通知的原始內容（除錯用）' },
 ];
+
+const ANDROID_ONLY_SCREENS: SettingScreenName[] = ['PendingTransactions', 'NotificationCapture'];
 
 const VISIBLE_SETTING_ITEMS = SETTING_ITEMS.filter((item) => {
   if (item.screen === 'InvestmentSettings' && !ENABLE_INVESTMENTS) return false;
-  // 通知擷取僅 Android 支援
-  if (item.screen === 'NotificationCapture' && Platform.OS !== 'android') return false;
+  // 通知相關功能僅 Android 支援
+  if (ANDROID_ONLY_SCREENS.includes(item.screen) && Platform.OS !== 'android') return false;
   return true;
 });
 

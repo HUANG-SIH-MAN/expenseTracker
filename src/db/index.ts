@@ -163,10 +163,29 @@ CREATE TABLE IF NOT EXISTS captured_notifications (
   text TEXT,
   big_text TEXT,
   raw_json TEXT NOT NULL,
-  captured_at TEXT NOT NULL
+  captured_at TEXT NOT NULL,
+  processed_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_captured_notifications_captured_at ON captured_notifications(captured_at);
+
+CREATE TABLE IF NOT EXISTS pending_transactions (
+  id TEXT PRIMARY KEY,
+  source_notification_id TEXT,
+  amount REAL NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'TWD',
+  merchant TEXT,
+  last4 TEXT,
+  bank TEXT NOT NULL,
+  source TEXT NOT NULL,
+  occurred_at TEXT NOT NULL,
+  default_category_key TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_transaction_id TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pending_transactions_status ON pending_transactions(status);
 
 CREATE INDEX IF NOT EXISTS idx_annual_budget_entries_year ON annual_budget_entries(year);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
@@ -491,6 +510,11 @@ async function initDb(): Promise<SQLite.SQLiteDatabase | null> {
     await db.runAsync("ALTER TABLE stock_fundamentals ADD COLUMN quarterly_financials TEXT");
   } catch {
     // Column already exists
+  }
+  try {
+    await db.runAsync("ALTER TABLE captured_notifications ADD COLUMN processed_at TEXT");
+  } catch {
+    // Column already exists on existing DBs
   }
   await db.execAsync(`
     CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category);
