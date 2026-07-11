@@ -1,8 +1,10 @@
 /**
- * Phase 3：把擷取到的通知解析並去重，存成「待確認」清單；使用者確認後才寫進 transactions。
+ * 把擷取到的通知解析並去重，直接自動記成一筆交易（寫進 transactions）。
  * 去重規則依使用者決定：
  *  - LINE 同則通知重複貼出 → 同管道、同金額、時間相近視為重複，丟棄。
  *  - 台新 App 通知 與 LINE Pay 通知為同一筆時 → 只留台新那筆（LINE Pay 丟棄）。
+ * pending_transactions 表在此作為「自動記帳紀錄」（status='auto'），連結所建立的交易，
+ * 供使用者檢視/編輯/刪除。
  */
 import { getDb } from "../db";
 import { generateId } from "./id";
@@ -16,6 +18,7 @@ import {
   defaultCategoryForBank,
   type DedupItem,
 } from "./pendingDedup";
+import { addTransaction, deleteTransaction } from "./storage";
 
 export { decidePendingInsert, defaultCategoryForBank };
 export type { DedupItem };
@@ -72,40 +75,33 @@ function rowToPending(r: PendingRow): PendingTransaction {
 
 // ---- DB 操作 ----
 
-async function insertPending(
-  db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
-  p: {
-    sourceNotificationId: string | null;
-    amount: number;
-    currency: string;
-    merchant: string | null;
-    last4: string | null;
-    bank: string;
-    source: NotificationSource;
-    occurredAt: string;
-    defaultCategoryKey: string;
-  },
-): Promise<void> {
-  await db.runAsync(
-    "INSERT INTO pending_transactions (id, source_notification_id, amount, currency, merchant, last4, bank, source, occurred_at, default_category_key, status, created_transaction_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, ?)",
-    generateId(),
-    p.sourceNotificationId,
-    p.amount,
-    p.currency,
-    p.merchant,
-    p.last4,
-    p.bank,
-    p.source,
-    p.occurredAt,
-    p.defaultCategoryKey,
-    new Date().toISOString(),
-  );
+/** ISO 時間 → 'YYYY-MM-DD'（本地時區） */
+function isoToDateKey(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/** 自動記帳交易的備註：銀行 + 商店 + 末四碼 */
+export function buildAutoNote(
+  bank: string,
+  merchant: string | null,
+  last4: string | null,
+): string {
+  const parts = [bank];
+  if (merchant) parts.push(merchant);
+  if (last4) parts.push(`(${last4})`);
+  return parts.join(" ");
+}
+
+type DedupItemWithTx = DedupItem & { txId: string | null };
+
 /**
- * 掃描尚未處理的通知，解析並去重後寫入待確認清單。回傳新增筆數。
+ * 掃描尚未處理的通知，解析並去重後「自動記成一筆交易」，並在 pending_transactions
+ * 留一筆 status='auto' 的紀錄連結該交易。回傳這次自動記帳的筆數。
  */
-export async function syncNotificationsToPending(): Promise<number> {
+export async function syncNotificationsToTransactions(): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
 
@@ -114,19 +110,19 @@ export async function syncNotificationsToPending(): Promise<number> {
   );
   if (unprocessed.length === 0) return 0;
 
-  // 取全部通知（含內容），只處理未處理的那些
   const unprocessedIds = new Set(unprocessed.map((r) => r.id));
   const all = await getCapturedNotifications(1000);
   const toProcess = all
     .filter((n) => unprocessedIds.has(n.id))
-    // 依擷取時間由舊到新處理，讓去重的「既有筆」順序正確
     .sort((a, b) => a.capturedAt.localeCompare(b.capturedAt));
 
-  // 目前仍 pending 的筆，作為去重基準
-  const pendingRows = await db.getAllAsync<PendingRow>(
-    "SELECT id, bank, source, amount, merchant, last4, occurred_at as occurred_at FROM pending_transactions WHERE status = 'pending'",
+  // 近兩天已自動記帳的紀錄作為去重基準（含跨批次的 LINE 重複貼出）
+  const since = new Date(Date.now() - 2 * 86400000).toISOString();
+  const recentRows = await db.getAllAsync<PendingRow>(
+    "SELECT id, source_notification_id, amount, currency, merchant, last4, bank, source, occurred_at, default_category_key, status, created_transaction_id, created_at FROM pending_transactions WHERE status = 'auto' AND occurred_at >= ? ORDER BY occurred_at",
+    since,
   );
-  const existing: DedupItem[] = pendingRows.map((r) => ({
+  const existing: DedupItemWithTx[] = recentRows.map((r) => ({
     id: r.id,
     bank: r.bank,
     source: r.source,
@@ -134,12 +130,12 @@ export async function syncNotificationsToPending(): Promise<number> {
     merchant: r.merchant,
     last4: r.last4,
     occurredAt: r.occurred_at,
+    txId: r.created_transaction_id,
   }));
 
-  let inserted = 0;
+  let recorded = 0;
   for (const n of toProcess) {
     const parsed = parseNotification(n as CapturedNotification);
-    // 無論是否解析成功，都標記已處理，避免重複掃描
     await db.runAsync(
       "UPDATE captured_notifications SET processed_at = ? WHERE id = ?",
       new Date().toISOString(),
@@ -159,92 +155,112 @@ export async function syncNotificationsToPending(): Promise<number> {
     const decision = decidePendingInsert(candidate, existing);
     if (!decision.insert) continue;
 
-    // 取代（刪除）被 supersede 的既有 LINE Pay 筆
+    // 台新取代 LINE Pay：刪掉先前自動建立的 LINE Pay 交易與紀錄
     for (const supId of decision.supersedeIds) {
-      await db.runAsync("DELETE FROM pending_transactions WHERE id = ?", supId);
+      const sup = existing.find((e) => e.id === supId);
+      if (sup?.txId) {
+        try {
+          await deleteTransaction(sup.txId);
+        } catch {
+          /* 交易可能已被使用者刪除 */
+        }
+      }
+      await db.runAsync(
+        "UPDATE pending_transactions SET status = 'superseded' WHERE id = ?",
+        supId,
+      );
     }
     const remaining = existing.filter((e) => !decision.supersedeIds.includes(e.id));
 
-    const newId = generateId();
-    await insertPending(db, {
-      sourceNotificationId: n.id,
+    // 自動記一筆交易（一般交易，不上鎖，可正常編輯/刪除）
+    const txId = generateId();
+    const category = defaultCategoryForBank(parsed.bank);
+    await addTransaction({
+      id: txId,
+      type: "expense",
       amount: parsed.amount,
-      currency: parsed.currency,
-      merchant: parsed.merchant,
-      last4: parsed.last4,
-      bank: parsed.bank,
-      source: parsed.source,
-      occurredAt: parsed.occurredAt,
-      defaultCategoryKey: defaultCategoryForBank(parsed.bank),
+      date: isoToDateKey(parsed.occurredAt),
+      category,
+      note: buildAutoNote(parsed.bank, parsed.merchant, parsed.last4),
+      createdAt: new Date().toISOString(),
     });
-    inserted += 1;
-    // 更新記憶體中的既有清單，讓同一批後續筆能正確去重
+
+    // 留一筆自動記帳紀錄
+    const logId = generateId();
+    await db.runAsync(
+      "INSERT INTO pending_transactions (id, source_notification_id, amount, currency, merchant, last4, bank, source, occurred_at, default_category_key, status, created_transaction_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'auto', ?, ?)",
+      logId,
+      n.id,
+      parsed.amount,
+      parsed.currency,
+      parsed.merchant,
+      parsed.last4,
+      parsed.bank,
+      parsed.source,
+      parsed.occurredAt,
+      category,
+      txId,
+      new Date().toISOString(),
+    );
+    recorded += 1;
     existing.length = 0;
-    existing.push(...remaining, { ...candidate, id: newId });
+    existing.push(...remaining, { ...candidate, id: logId, txId });
   }
 
-  return inserted;
+  return recorded;
 }
 
-export async function getPendingTransactions(): Promise<PendingTransaction[]> {
+/** 自動記帳紀錄（status='auto'），供檢視/編輯/刪除。 */
+export async function getAutoRecords(limit = 100): Promise<PendingTransaction[]> {
   const db = await getDb();
   if (!db) return [];
   const rows = await db.getAllAsync<PendingRow>(
-    "SELECT id, source_notification_id, amount, currency, merchant, last4, bank, source, occurred_at, default_category_key, status, created_transaction_id, created_at FROM pending_transactions WHERE status = 'pending' ORDER BY occurred_at DESC",
+    "SELECT id, source_notification_id, amount, currency, merchant, last4, bank, source, occurred_at, default_category_key, status, created_transaction_id, created_at FROM pending_transactions WHERE status = 'auto' ORDER BY occurred_at DESC LIMIT ?",
+    limit,
   );
   return rows.map(rowToPending);
 }
 
-export async function getPendingCount(): Promise<number> {
+/** 刪除一筆自動記帳：連同它建立的交易一起刪掉，紀錄標記為 deleted。 */
+export async function deleteAutoRecord(id: string): Promise<void> {
   const db = await getDb();
-  if (!db) return 0;
-  const row = await db.getFirstAsync<{ count: number }>(
-    "SELECT COUNT(*) as count FROM pending_transactions WHERE status = 'pending'",
-  );
-  return row?.count ?? 0;
-}
-
-export async function getPendingById(id: string): Promise<PendingTransaction | null> {
-  const db = await getDb();
-  if (!db) return null;
+  if (!db) return;
   const row = await db.getFirstAsync<PendingRow>(
     "SELECT id, source_notification_id, amount, currency, merchant, last4, bank, source, occurred_at, default_category_key, status, created_transaction_id, created_at FROM pending_transactions WHERE id = ?",
     id,
   );
-  return row ? rowToPending(row) : null;
-}
-
-export async function confirmPending(
-  id: string,
-  createdTransactionId: string,
-): Promise<void> {
-  const db = await getDb();
-  if (!db) return;
+  if (row?.created_transaction_id) {
+    try {
+      await deleteTransaction(row.created_transaction_id);
+    } catch {
+      /* 交易可能已被使用者手動刪除 */
+    }
+  }
   await db.runAsync(
-    "UPDATE pending_transactions SET status = 'confirmed', created_transaction_id = ? WHERE id = ?",
-    createdTransactionId,
-    id,
-  );
-}
-
-export async function dismissPending(id: string): Promise<void> {
-  const db = await getDb();
-  if (!db) return;
-  await db.runAsync(
-    "UPDATE pending_transactions SET status = 'dismissed' WHERE id = ?",
+    "UPDATE pending_transactions SET status = 'deleted' WHERE id = ?",
     id,
   );
 }
 
 /**
- * 測試/修復用：清掉尚未確認的待確認筆、重置所有通知的已處理標記，
- * 再重新解析一次全部通知。回傳這次新增的待確認筆數。
- * （用於解析器改版後，把之前已擷取的通知重新跑一遍。）
+ * 測試/修復用：刪掉所有自動記帳（含其建立的交易），重置通知已處理標記，重跑一次自動記帳。
  */
 export async function reprocessAllNotifications(): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
-  await db.runAsync("DELETE FROM pending_transactions WHERE status = 'pending'");
+  const autos = await db.getAllAsync<{ created_transaction_id: string | null }>(
+    "SELECT created_transaction_id FROM pending_transactions WHERE status = 'auto'",
+  );
+  for (const a of autos) {
+    if (a.created_transaction_id) {
+      try {
+        await deleteTransaction(a.created_transaction_id);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  await db.runAsync("DELETE FROM pending_transactions");
   await db.runAsync("UPDATE captured_notifications SET processed_at = NULL");
-  return syncNotificationsToPending();
+  return syncNotificationsToTransactions();
 }

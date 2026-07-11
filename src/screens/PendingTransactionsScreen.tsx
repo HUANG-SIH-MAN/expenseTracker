@@ -1,6 +1,6 @@
 /**
- * Phase 3：待確認消費清單。
- * 進頁時掃描新通知 → 解析去重 → 顯示；使用者可「確認」（帶到記一筆畫面）或「忽略」。
+ * 自動記帳紀錄：顯示由刷卡通知自動記下的交易，可編輯（調整分類/帳戶）或刪除（退款/記錯）。
+ * 進頁時先掃一次新通知，確保最新消費也被記進來。
  */
 import React, { useCallback, useState } from 'react';
 import {
@@ -18,14 +18,15 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { MainStackParamList } from '../navigation/MainStack';
+import { useTransactions } from '../contexts/TransactionsContext';
 import {
-  syncNotificationsToPending,
-  getPendingTransactions,
-  dismissPending,
+  syncNotificationsToTransactions,
+  getAutoRecords,
+  deleteAutoRecord,
   type PendingTransaction,
 } from '../utils/pendingTransactions';
 
-const TITLE = '待確認消費';
+const TITLE = '自動記帳紀錄';
 const IS_ANDROID = Platform.OS === 'android';
 
 type NavProp = NativeStackNavigationProp<MainStackParamList, 'PendingTransactions'>;
@@ -44,24 +45,18 @@ function formatWhen(iso: string): string {
   return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function buildNote(p: PendingTransaction): string {
-  const parts = [p.bank];
-  if (p.merchant) parts.push(p.merchant);
-  if (p.last4) parts.push(`(${p.last4})`);
-  return parts.join(' ');
-}
-
 export default function PendingTransactionsScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavProp>();
+  const { refreshTransactions } = useTransactions();
   const [items, setItems] = useState<PendingTransaction[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     setRefreshing(true);
     try {
-      await syncNotificationsToPending();
-      setItems(await getPendingTransactions());
+      await syncNotificationsToTransactions();
+      setItems(await getAutoRecords(200));
     } finally {
       setRefreshing(false);
     }
@@ -73,35 +68,35 @@ export default function PendingTransactionsScreen(): React.JSX.Element {
     }, [load]),
   );
 
-  const handleConfirm = useCallback(
+  const handleEdit = useCallback(
     (p: PendingTransaction) => {
+      if (!p.createdTransactionId) return;
       navigation.navigate('AddTransaction', {
         selectedDate: toDateKey(p.occurredAt),
-        prefillAmount: p.amount,
-        prefillNote: buildNote(p),
-        prefillCategoryKey: p.defaultCategoryKey ?? undefined,
-        pendingId: p.id,
+        transactionId: p.createdTransactionId,
       });
     },
     [navigation],
   );
 
-  const handleDismiss = useCallback(
+  const handleDelete = useCallback(
     (p: PendingTransaction) => {
-      const doDismiss = async () => {
-        await dismissPending(p.id);
+      const doDelete = async () => {
+        await deleteAutoRecord(p.id);
+        await refreshTransactions();
         await load();
       };
+      const label = `${p.bank}${p.merchant ? ' ' + p.merchant : ''} $${p.amount}`;
       if (Platform.OS === 'web') {
-        if (window.confirm('忽略這筆消費？')) doDismiss();
+        if (window.confirm(`刪除「${label}」這筆帳？`)) doDelete();
         return;
       }
-      Alert.alert('忽略消費', `忽略「${buildNote(p)} $${p.amount}」？`, [
+      Alert.alert('刪除這筆帳', `刪除「${label}」？此筆記帳會一併移除。`, [
         { text: '取消', style: 'cancel' },
-        { text: '忽略', style: 'destructive', onPress: doDismiss },
+        { text: '刪除', style: 'destructive', onPress: doDelete },
       ]);
     },
-    [load],
+    [load, refreshTransactions],
   );
 
   return (
@@ -125,12 +120,12 @@ export default function PendingTransactionsScreen(): React.JSX.Element {
           </View>
         )}
 
-        <Text style={styles.countText}>共 {items.length} 筆待確認</Text>
+        <Text style={styles.countText}>刷卡通知已自動記帳 {items.length} 筆</Text>
 
         {items.length === 0 && (
           <View style={styles.card}>
             <Text style={styles.cardText}>
-              目前沒有待確認的消費。刷卡後銀行/LINE 通知進來，會自動出現在這裡。
+              目前沒有自動記帳紀錄。刷卡後銀行/LINE 通知進來，會自動記成一筆，並顯示在這裡。
             </Text>
           </View>
         )}
@@ -145,23 +140,23 @@ export default function PendingTransactionsScreen(): React.JSX.Element {
               ${p.amount.toLocaleString()} <Text style={styles.itemCurrency}>{p.currency}</Text>
             </Text>
             <Text style={styles.itemMerchant}>
-              {p.merchant ?? '（無商店名，確認時可自行補）'}
+              {p.merchant ?? '（無商店名）'}
               {p.last4 ? `　末四碼 ${p.last4}` : ''}
             </Text>
             <View style={styles.itemActions}>
               <TouchableOpacity
-                style={[styles.actionBtn, styles.dismissBtn]}
-                onPress={() => handleDismiss(p)}
+                style={[styles.actionBtn, styles.deleteBtn]}
+                onPress={() => handleDelete(p)}
                 activeOpacity={0.8}
               >
-                <Text style={styles.dismissText}>忽略</Text>
+                <Text style={styles.deleteText}>刪除</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.actionBtn, styles.confirmBtn]}
-                onPress={() => handleConfirm(p)}
+                style={[styles.actionBtn, styles.editBtn]}
+                onPress={() => handleEdit(p)}
                 activeOpacity={0.8}
               >
-                <Text style={styles.confirmText}>確認記帳</Text>
+                <Text style={styles.editText}>編輯分類</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -226,12 +221,16 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
   },
-  dismissBtn: {
+  deleteBtn: {
     backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: '#fecaca',
   },
-  dismissText: { fontSize: 15, color: '#6b7280', fontWeight: '600' },
-  confirmBtn: { backgroundColor: '#2563eb' },
-  confirmText: { fontSize: 15, color: '#fff', fontWeight: '600' },
+  deleteText: { fontSize: 15, color: '#dc2626', fontWeight: '600' },
+  editBtn: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#2563eb',
+  },
+  editText: { fontSize: 15, color: '#2563eb', fontWeight: '600' },
 });

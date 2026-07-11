@@ -21,6 +21,7 @@ import {
   checkLowBalanceNotifications,
   rescheduleAutopayWarningNotifications,
 } from '../utils/notifications';
+import { syncNotificationsToTransactions } from '../utils/pendingTransactions';
 
 interface RefreshTransactionsResult {
   autopayCreatedCount: number;
@@ -57,6 +58,12 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   });
 
   const runRefreshFlow = useCallback(async (): Promise<RefreshTransactionsResult> => {
+    // 掃描新的刷卡通知，自動記成交易（僅 Android 有通知來源）
+    try {
+      await syncNotificationsToTransactions();
+    } catch {
+      /* 自動記帳失敗不影響主流程 */
+    }
     await syncRecurringToTransactions();
     const autopayResult = await syncCreditCardAutopayToTransactions();
     await syncCashTopUpToTransactions();

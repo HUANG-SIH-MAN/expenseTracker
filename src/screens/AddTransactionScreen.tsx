@@ -27,7 +27,6 @@ import { useCategories } from '../contexts/CategoriesContext';
 import { useBudget } from '../contexts/BudgetContext';
 import { getStoredAccounts, addRecurringSkip, getAnnualBudgetEntries } from '../utils/storage';
 import { resolveEffectiveDefaultAccountId } from '../utils/categoryDefaultAccount';
-import { confirmPending } from '../utils/pendingTransactions';
 import { CalculatorKeypad } from '../components';
 import Calendar from '../components/Calendar';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -308,10 +307,6 @@ export default function AddTransactionScreen(): React.JSX.Element {
         amortizationMonths: amortizationMonthsValue,
         createdAt: new Date().toISOString(),
       });
-      // 若此筆來自「待確認消費」，標記該待確認項目為已確認
-      if (route.params.pendingId) {
-        await confirmPending(route.params.pendingId, newId);
-      }
     }
     navigation.popToTop();
   };

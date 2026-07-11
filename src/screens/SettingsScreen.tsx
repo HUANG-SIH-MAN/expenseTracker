@@ -64,7 +64,7 @@ const SETTING_ITEMS: { screen: SettingScreenName; title: string; subtitle?: stri
   { screen: 'CashTopUpSettings', title: '現金自動補充', subtitle: '餘額低於門檻時自動記錄補充轉帳' },
   { screen: 'TransferTemplateSettings', title: '轉帳模板', subtitle: '儲值時自動帶入帳戶與附加收支' },
   { screen: 'InvestmentSettings', title: '投資設定', subtitle: '股票交易匯入與 ETF API Key 管理' },
-  { screen: 'PendingTransactions', title: '待確認消費', subtitle: '刷卡通知自動解析，確認後記帳' },
+  { screen: 'PendingTransactions', title: '自動記帳紀錄', subtitle: '刷卡通知自動記帳，可檢視／編輯／刪除' },
   { screen: 'NotificationCapture', title: '通知擷取（測試）', subtitle: '擷取 LINE／銀行通知的原始內容（除錯用）' },
 ];
 

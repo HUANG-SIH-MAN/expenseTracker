@@ -111,7 +111,7 @@ export default function NotificationCaptureScreen(): React.JSX.Element {
     await refresh();
     Alert.alert(
       '已注入測試通知',
-      '已加入 3 筆假通知（永豐/台新/LINE Pay）。按下方「重新解析全部」後，到「待確認消費」查看結果。',
+      '已加入 3 筆假通知（永豐/台新/LINE Pay）。按下方「清除並重跑自動記帳」後，到「設定 → 自動記帳紀錄」或首頁查看結果。',
     );
   }, [refresh]);
 
@@ -119,8 +119,8 @@ export default function NotificationCaptureScreen(): React.JSX.Element {
     const count = await reprocessAllNotifications();
     await refresh();
     Alert.alert(
-      '重新解析完成',
-      `重新解析所有通知，產生 ${count} 筆待確認。請到「設定 → 待確認消費」查看。`,
+      '重跑完成',
+      `已清除舊的自動記帳並重跑，本次自動記帳 ${count} 筆。請到「設定 → 自動記帳紀錄」或首頁查看。`,
     );
   }, [refresh]);
 
@@ -171,14 +171,14 @@ export default function NotificationCaptureScreen(): React.JSX.Element {
         <View style={styles.card}>
           <Text style={styles.cardLabel}>測試工具</Text>
           <Text style={styles.hint}>
-            不用真的刷卡：按「注入測試通知」放入 3 筆假通知，再按「重新解析全部」，
-            然後到「設定 → 待確認消費」看結果。下方每則通知也會顯示解析結果。
+            不用真的刷卡：按「注入測試通知」放入 3 筆假通知，再按「清除並重跑自動記帳」，
+            然後到首頁或「設定 → 自動記帳紀錄」看結果。下方每則通知也會顯示解析結果。
           </Text>
           <TouchableOpacity style={styles.secondaryBtn} onPress={handleInjectSamples} activeOpacity={0.8}>
             <Text style={styles.secondaryBtnText}>注入測試通知（3 筆）</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.primaryBtn} onPress={handleReprocess} activeOpacity={0.8}>
-            <Text style={styles.primaryBtnText}>重新解析全部 → 更新待確認</Text>
+            <Text style={styles.primaryBtnText}>清除並重跑自動記帳</Text>
           </TouchableOpacity>
         </View>
 
