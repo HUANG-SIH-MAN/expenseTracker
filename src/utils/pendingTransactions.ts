@@ -235,3 +235,16 @@ export async function dismissPending(id: string): Promise<void> {
     id,
   );
 }
+
+/**
+ * 測試/修復用：清掉尚未確認的待確認筆、重置所有通知的已處理標記，
+ * 再重新解析一次全部通知。回傳這次新增的待確認筆數。
+ * （用於解析器改版後，把之前已擷取的通知重新跑一遍。）
+ */
+export async function reprocessAllNotifications(): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  await db.runAsync("DELETE FROM pending_transactions WHERE status = 'pending'");
+  await db.runAsync("UPDATE captured_notifications SET processed_at = NULL");
+  return syncNotificationsToPending();
+}

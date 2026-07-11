@@ -29,8 +29,11 @@ import {
 import {
   getCapturedNotifications,
   clearCapturedNotifications,
+  insertSampleNotifications,
   type CapturedNotification,
 } from '../utils/notificationCapture';
+import { reprocessAllNotifications } from '../utils/pendingTransactions';
+import { parseNotification } from '../utils/notificationParser';
 
 const TITLE = '通知擷取（測試）';
 const IS_ANDROID = Platform.OS === 'android';
@@ -103,6 +106,24 @@ export default function NotificationCaptureScreen(): React.JSX.Element {
     ]);
   }, [refresh]);
 
+  const handleInjectSamples = useCallback(async () => {
+    await insertSampleNotifications();
+    await refresh();
+    Alert.alert(
+      '已注入測試通知',
+      '已加入 3 筆假通知（永豐/台新/LINE Pay）。按下方「重新解析全部」後，到「待確認消費」查看結果。',
+    );
+  }, [refresh]);
+
+  const handleReprocess = useCallback(async () => {
+    const count = await reprocessAllNotifications();
+    await refresh();
+    Alert.alert(
+      '重新解析完成',
+      `重新解析所有通知，產生 ${count} 筆待確認。請到「設定 → 待確認消費」查看。`,
+    );
+  }, [refresh]);
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
@@ -147,6 +168,20 @@ export default function NotificationCaptureScreen(): React.JSX.Element {
           </View>
         )}
 
+        <View style={styles.card}>
+          <Text style={styles.cardLabel}>測試工具</Text>
+          <Text style={styles.hint}>
+            不用真的刷卡：按「注入測試通知」放入 3 筆假通知，再按「重新解析全部」，
+            然後到「設定 → 待確認消費」看結果。下方每則通知也會顯示解析結果。
+          </Text>
+          <TouchableOpacity style={styles.secondaryBtn} onPress={handleInjectSamples} activeOpacity={0.8}>
+            <Text style={styles.secondaryBtnText}>注入測試通知（3 筆）</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.primaryBtn} onPress={handleReprocess} activeOpacity={0.8}>
+            <Text style={styles.primaryBtnText}>重新解析全部 → 更新待確認</Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.listHeader}>
           <Text style={styles.listHeaderText}>已擷取 {items.length} 則</Text>
           <Text style={styles.listHeaderHint}>下拉重新整理</Text>
@@ -177,6 +212,18 @@ export default function NotificationCaptureScreen(): React.JSX.Element {
             {n.bigText != null && n.bigText !== '' && n.bigText !== n.text && (
               <Text style={styles.notifBig}>{n.bigText}</Text>
             )}
+            {(() => {
+              const parsed = parseNotification(n);
+              return parsed ? (
+                <Text style={styles.parseOk}>
+                  解析 ✅ {parsed.bank} ${parsed.amount}
+                  {parsed.merchant ? ` · ${parsed.merchant}` : ''}
+                  {parsed.last4 ? ` · ${parsed.last4}` : ''}
+                </Text>
+              ) : (
+                <Text style={styles.parseFail}>解析 ❌ 無法解析（非消費通知或格式不符）</Text>
+              );
+            })()}
           </View>
         ))}
       </ScrollView>
@@ -224,6 +271,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   primaryBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  secondaryBtn: {
+    marginTop: 14,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#2563eb',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  secondaryBtnText: { color: '#2563eb', fontSize: 15, fontWeight: '600' },
+  parseOk: { fontSize: 13, color: '#16a34a', fontWeight: '600', marginTop: 8 },
+  parseFail: { fontSize: 13, color: '#dc2626', fontWeight: '600', marginTop: 8 },
   listHeader: {
     flexDirection: 'row',
     alignItems: 'center',

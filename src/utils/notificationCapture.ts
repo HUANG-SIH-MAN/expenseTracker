@@ -88,3 +88,28 @@ export async function clearCapturedNotifications(): Promise<void> {
   if (!db) return;
   await db.runAsync("DELETE FROM captured_notifications");
 }
+
+/** 測試用：注入幾筆已知格式的假通知，方便驗證解析→去重→待確認流程，不用真的刷卡。 */
+const SAMPLE_NOTIFICATIONS: Record<string, unknown>[] = [
+  {
+    app: "jp.naver.line.android",
+    title: "永豐銀行",
+    text: "永豐貴賓您好，末四碼6908感謝07/11 12:10刷卡台幣65元，商店名稱:大全聯，實際商店名稱",
+  },
+  {
+    app: "tw.com.taishinbank.ccapp",
+    title: "信用卡消費通知",
+    text: "【信用卡消費通知】您的Richart卡(末四碼7509)於07/11-11:40刷卡消費約新臺幣79元，實際消費資訊以帳單為準，如有疑問請洽客服",
+  },
+  {
+    app: "jp.naver.line.android",
+    title: "LINE錢包",
+    text: "LINE Pay 付款 NT$ 128 付款完成。\n商店名稱: 星巴克",
+  },
+];
+
+export async function insertSampleNotifications(): Promise<void> {
+  for (const s of SAMPLE_NOTIFICATIONS) {
+    await saveCapturedNotification(s);
+  }
+}

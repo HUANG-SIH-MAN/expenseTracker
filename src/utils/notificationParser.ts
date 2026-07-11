@@ -37,9 +37,16 @@ export interface ParsableNotification {
 const LINE_APP = "jp.naver.line.android";
 const TAISHIN_APP = "tw.com.taishinbank.ccapp";
 
-/** 取通知的主要內文（優先 bigText，較完整） */
+/**
+ * 取通知可解析的文字內容：合併 bigText / text / title（去除重複），
+ * 讓「消費內容放在標題」或「只在 bigText」的情況都能解析到。
+ */
 function contentOf(n: ParsableNotification): string {
-  return (n.bigText && n.bigText.trim().length > 0 ? n.bigText : n.text) ?? "";
+  const parts = [n.bigText, n.text, n.title]
+    .map((s) => (s ?? "").trim())
+    .filter((s) => s.length > 0);
+  const unique = parts.filter((s, i) => parts.indexOf(s) === i);
+  return unique.join("\n");
 }
 
 /** "1,234" -> 1234；解析失敗回傳 null */
@@ -105,7 +112,7 @@ function parseSinoPacLine(n: ParsableNotification): ParsedTransaction | null {
   const occurredAt = dt
     ? buildOccurredAt(Number(dt[1]), Number(dt[2]), Number(dt[3]), Number(dt[4]), n.capturedAt)
     : n.capturedAt;
-  const merchantRaw = text.match(/商店名稱[:：]\s*(.+?)(?:，實際商店名稱|，|。|$)/)?.[1]?.trim();
+  const merchantRaw = text.match(/商店名稱[:：]\s*([^\n，。]+)/)?.[1]?.trim();
   return {
     amount,
     currency: "TWD",
@@ -122,7 +129,7 @@ function parseLinePay(n: ParsableNotification): ParsedTransaction | null {
   const text = contentOf(n);
   const amount = parseAmount(text.match(/NT\$\s*([\d,]+)/)?.[1]);
   if (amount == null) return null;
-  const merchantRaw = text.match(/商店名稱[:：]\s*(.+?)(?:。|，|$)/)?.[1]?.trim();
+  const merchantRaw = text.match(/商店名稱[:：]\s*([^\n，。]+)/)?.[1]?.trim();
   return {
     amount,
     currency: "TWD",
