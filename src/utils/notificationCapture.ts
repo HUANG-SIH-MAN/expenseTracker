@@ -5,6 +5,9 @@
 import { getDb } from "../db";
 import { generateId } from "./id";
 
+/** 原始通知紀錄只保留最新這麼多筆，避免無限增長佔空間 */
+const MAX_CAPTURED_NOTIFICATIONS = 100;
+
 export interface CapturedNotification {
   id: string;
   app: string | null;
@@ -43,6 +46,13 @@ export async function saveCapturedNotification(
     (payload.bigText as string) ?? null,
     JSON.stringify(rest),
     new Date().toISOString(),
+  );
+  // 只保留最新 N 筆（依擷取時間），清掉超出的舊紀錄
+  await db.runAsync(
+    `DELETE FROM captured_notifications WHERE id NOT IN (
+       SELECT id FROM captured_notifications ORDER BY captured_at DESC LIMIT ?
+     )`,
+    MAX_CAPTURED_NOTIFICATIONS,
   );
 }
 
