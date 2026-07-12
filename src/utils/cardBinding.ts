@@ -20,12 +20,12 @@ export interface BindingResult {
   label: string | null;
 }
 
-/** 預設規則（首次啟用時建立，帳戶留空由使用者設定）。 */
+/** 預設規則（首次啟用時建立，帳戶留空由使用者設定）。以銀行 App 為主要比對。 */
 export const DEFAULT_CARD_RULES: Omit<CardRule, "id">[] = [
   {
     label: "台新",
     matchLast4: null,
-    matchKeyword: "台新",
+    matchKeyword: null,
     matchApp: "tw.com.taishinbank.ccapp",
     accountId: null,
     categoryKey: "food",
@@ -34,20 +34,11 @@ export const DEFAULT_CARD_RULES: Omit<CardRule, "id">[] = [
   {
     label: "永豐",
     matchLast4: null,
-    matchKeyword: "永豐",
-    matchApp: null,
+    matchKeyword: null,
+    matchApp: "com.sinopac.dawho",
     accountId: null,
     categoryKey: "entertainment",
     sortOrder: 1,
-  },
-  {
-    label: "LINE Pay",
-    matchLast4: null,
-    matchKeyword: "LINE錢包",
-    matchApp: null,
-    accountId: null,
-    categoryKey: "food",
-    sortOrder: 2,
   },
 ];
 

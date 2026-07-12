@@ -18,11 +18,17 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { MainStackParamList } from '../navigation/MainStack';
 import { useCategories } from '../contexts/CategoriesContext';
 import { getStoredAccounts } from '../utils/storage';
+import { getDetectedApps, type DetectedApp } from '../utils/notificationCapture';
 import type { Account } from '../types';
 import { ensureCardRulesSeeded, getCardRules, type CardRule } from '../utils/cardRules';
 
 const TITLE = '刷卡自動記帳設定';
 const IS_ANDROID = Platform.OS === 'android';
+
+const KNOWN_APP_NAMES: Record<string, string> = {
+  'tw.com.taishinbank.ccapp': '台新 Richart',
+  'com.sinopac.dawho': '永豐大戶',
+};
 
 type NavProp = NativeStackNavigationProp<MainStackParamList, 'CardRules'>;
 
@@ -32,11 +38,13 @@ export default function CardRulesScreen(): React.JSX.Element {
   const { expenseCategories } = useCategories();
   const [rules, setRules] = useState<CardRule[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [detectedApps, setDetectedApps] = useState<DetectedApp[]>([]);
 
   const load = useCallback(async () => {
     await ensureCardRulesSeeded();
     setRules(await getCardRules());
     setAccounts(await getStoredAccounts());
+    setDetectedApps(await getDetectedApps());
   }, []);
 
   useFocusEffect(
@@ -45,10 +53,18 @@ export default function CardRulesScreen(): React.JSX.Element {
     }, [load]),
   );
 
+  const appName = (pkg: string | null): string | null => {
+    if (!pkg) return null;
+    const d = detectedApps.find((a) => a.package === pkg);
+    if (d && d.title) return d.title;
+    return KNOWN_APP_NAMES[pkg] ?? pkg;
+  };
+
   const detailOf = (r: CardRule): string => {
     const parts: string[] = [];
-    if (r.matchLast4) parts.push(`末四碼 ${r.matchLast4}`);
-    else if (r.matchKeyword) parts.push(`關鍵字「${r.matchKeyword}」`);
+    const src = appName(r.matchApp) ?? (r.matchLast4 ? `末四碼 ${r.matchLast4}` : r.matchKeyword ? `關鍵字「${r.matchKeyword}」` : '未設來源');
+    parts.push(src);
+    if (r.matchApp && r.matchLast4) parts.push(`末四碼 ${r.matchLast4}`);
     const acc = accounts.find((a) => a.id === r.accountId);
     parts.push(acc ? acc.name : '未綁定帳戶');
     const cat = expenseCategories.find((c) => c.key === r.categoryKey);
@@ -77,8 +93,8 @@ export default function CardRulesScreen(): React.JSX.Element {
 
         <View style={styles.card}>
           <Text style={styles.cardText}>
-            每張卡設一條規則：刷卡通知進來時，依「末四碼 → App → 關鍵字」對應到帳戶與預設類別，
-            自動記帳。新的銀行卡在這裡加一條就好，不用改程式。
+            每張卡設一條規則：刷卡通知進來時，依「銀行 App（可再用末四碼細分）」對應到帳戶與預設類別，
+            自動記帳。目前只聽銀行 App、忽略 LINE。新的銀行卡在這裡加一條就好，不用改程式。
           </Text>
         </View>
 

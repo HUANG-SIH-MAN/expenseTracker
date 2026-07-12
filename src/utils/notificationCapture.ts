@@ -8,6 +8,35 @@ import { generateId } from "./id";
 /** 原始通知紀錄只保留最新這麼多筆，避免無限增長佔空間 */
 const MAX_CAPTURED_NOTIFICATIONS = 100;
 
+/** LINE App 套件名；自動記帳會忽略它（只聽銀行 App），但仍會擷取供偵錯。 */
+export const LINE_PACKAGE = "jp.naver.line.android";
+
+export interface DetectedApp {
+  /** App 套件名，如 com.sinopac.dawho */
+  package: string;
+  /** 最近一次該 App 通知的標題，當作友善名稱提示 */
+  title: string;
+}
+
+/**
+ * 從已擷取的通知中，取出出現過的 App 清單（排除 LINE），供設定頁選「要監聽的 App」。
+ */
+export async function getDetectedApps(): Promise<DetectedApp[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.getAllAsync<{ app: string | null; title: string | null }>(
+    `SELECT app, title FROM captured_notifications c
+     WHERE app IS NOT NULL AND app != ?
+       AND captured_at = (SELECT MAX(captured_at) FROM captured_notifications c2 WHERE c2.app = c.app)
+     GROUP BY app
+     ORDER BY captured_at DESC`,
+    LINE_PACKAGE,
+  );
+  return rows
+    .filter((r) => r.app)
+    .map((r) => ({ package: r.app as string, title: (r.title ?? "").trim() }));
+}
+
 export interface CapturedNotification {
   id: string;
   app: string | null;
