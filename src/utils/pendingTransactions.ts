@@ -19,6 +19,7 @@ import {
   type DedupItem,
 } from "./pendingDedup";
 import { addTransaction, deleteTransaction } from "./storage";
+import { ensureCardRulesSeeded, getCardRules, resolveBinding } from "./cardRules";
 
 export { decidePendingInsert, defaultCategoryForBank };
 export type { DedupItem };
@@ -110,6 +111,9 @@ export async function syncNotificationsToTransactions(): Promise<number> {
   );
   if (unprocessed.length === 0) return 0;
 
+  await ensureCardRulesSeeded();
+  const cardRules = await getCardRules();
+
   const unprocessedIds = new Set(unprocessed.map((r) => r.id));
   const all = await getCapturedNotifications(1000);
   const toProcess = all
@@ -172,16 +176,23 @@ export async function syncNotificationsToTransactions(): Promise<number> {
     }
     const remaining = existing.filter((e) => !decision.supersedeIds.includes(e.id));
 
+    // 依卡片設定綁定帳戶/類別/顯示名稱（末四碼優先，其次 App/關鍵字）
+    const content = [n.title, n.text, n.bigText].filter(Boolean).join(" ");
+    const binding = resolveBinding(cardRules, parsed.last4, n.app, content);
+    const bankLabel = binding.label ?? parsed.bank;
+    const category = binding.categoryKey ?? defaultCategoryForBank(parsed.bank);
+    const accountId = binding.accountId ?? undefined;
+
     // 自動記一筆交易（一般交易，不上鎖，可正常編輯/刪除）
     const txId = generateId();
-    const category = defaultCategoryForBank(parsed.bank);
     await addTransaction({
       id: txId,
       type: "expense",
       amount: parsed.amount,
       date: isoToDateKey(parsed.occurredAt),
       category,
-      note: buildAutoNote(parsed.bank, parsed.merchant, parsed.last4),
+      note: buildAutoNote(bankLabel, parsed.merchant, parsed.last4),
+      accountId,
       createdAt: new Date().toISOString(),
     });
 
@@ -195,7 +206,7 @@ export async function syncNotificationsToTransactions(): Promise<number> {
       parsed.currency,
       parsed.merchant,
       parsed.last4,
-      parsed.bank,
+      bankLabel,
       parsed.source,
       parsed.occurredAt,
       category,

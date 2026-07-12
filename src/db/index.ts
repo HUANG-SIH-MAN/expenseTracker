@@ -187,6 +187,18 @@ CREATE TABLE IF NOT EXISTS pending_transactions (
 
 CREATE INDEX IF NOT EXISTS idx_pending_transactions_status ON pending_transactions(status);
 
+CREATE TABLE IF NOT EXISTS card_binding_rules (
+  id TEXT PRIMARY KEY,
+  label TEXT NOT NULL,
+  match_last4 TEXT,
+  match_keyword TEXT,
+  match_app TEXT,
+  account_id TEXT,
+  category_key TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_annual_budget_entries_year ON annual_budget_entries(year);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_transactions_annual_entry ON transactions(annual_budget_entry_id);

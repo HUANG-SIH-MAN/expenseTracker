@@ -38,6 +38,8 @@ import PortfolioYearlyScreen from '../screens/PortfolioYearlyScreen';
 import CompanyFundamentalsScreen from '../screens/CompanyFundamentalsScreen';
 import NotificationCaptureScreen from '../screens/NotificationCaptureScreen';
 import PendingTransactionsScreen from '../screens/PendingTransactionsScreen';
+import CardRulesScreen from '../screens/CardRulesScreen';
+import CardRuleEditScreen from '../screens/CardRuleEditScreen';
 import type { TransactionType, StockTransaction } from '../types';
 import { ENABLE_INVESTMENTS } from '../config/features';
 
@@ -90,6 +92,8 @@ export type MainStackParamList = {
   ImportExport: undefined;
   NotificationCapture: undefined;
   PendingTransactions: undefined;
+  CardRules: undefined;
+  CardRuleEdit: { ruleId?: string };
   SelectTransactionCategory: {
     transactionType: 'expense' | 'income';
     selectedKey: string;
@@ -259,6 +263,16 @@ export default function MainStack(): React.JSX.Element {
       <Stack.Screen
         name="PendingTransactions"
         component={PendingTransactionsScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="CardRules"
+        component={CardRulesScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="CardRuleEdit"
+        component={CardRuleEditScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen

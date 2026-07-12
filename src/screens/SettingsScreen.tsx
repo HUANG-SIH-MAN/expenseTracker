@@ -49,6 +49,7 @@ type SettingScreenName =
   | 'CashTopUpSettings'
   | 'TransferTemplateSettings'
   | 'InvestmentSettings'
+  | 'CardRules'
   | 'PendingTransactions'
   | 'NotificationCapture';
 
@@ -64,11 +65,12 @@ const SETTING_ITEMS: { screen: SettingScreenName; title: string; subtitle?: stri
   { screen: 'CashTopUpSettings', title: '現金自動補充', subtitle: '餘額低於門檻時自動記錄補充轉帳' },
   { screen: 'TransferTemplateSettings', title: '轉帳模板', subtitle: '儲值時自動帶入帳戶與附加收支' },
   { screen: 'InvestmentSettings', title: '投資設定', subtitle: '股票交易匯入與 ETF API Key 管理' },
+  { screen: 'CardRules', title: '刷卡自動記帳設定', subtitle: '每張卡對應帳戶與預設類別，新銀行自己加' },
   { screen: 'PendingTransactions', title: '自動記帳紀錄', subtitle: '刷卡通知自動記帳，可檢視／編輯／刪除' },
   { screen: 'NotificationCapture', title: '通知擷取（測試）', subtitle: '擷取 LINE／銀行通知的原始內容（除錯用）' },
 ];
 
-const ANDROID_ONLY_SCREENS: SettingScreenName[] = ['PendingTransactions', 'NotificationCapture'];
+const ANDROID_ONLY_SCREENS: SettingScreenName[] = ['CardRules', 'PendingTransactions', 'NotificationCapture'];
 
 const VISIBLE_SETTING_ITEMS = SETTING_ITEMS.filter((item) => {
   if (item.screen === 'InvestmentSettings' && !ENABLE_INVESTMENTS) return false;
