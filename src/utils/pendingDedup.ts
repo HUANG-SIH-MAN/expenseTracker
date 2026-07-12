@@ -32,8 +32,10 @@ function timeDiffSec(a: string, b: string): number {
   return Math.abs(new Date(a).getTime() - new Date(b).getTime()) / 1000;
 }
 
-const isTaishinApp = (x: DedupItem) => x.bank === "台新" && x.source === "app";
-const isLinePay = (x: DedupItem) => x.bank === "LINE Pay" && x.source === "line";
+/** LINE Pay 付款通知（會與該卡的銀行 App 通知重複） */
+const isLinePay = (x: DedupItem) => /LINE\s*Pay|LINE錢包|錢包/i.test(x.bank);
+/** 來自銀行自己的 App（比 LINE Pay 權威，含末四碼） */
+const isBankApp = (x: DedupItem) => x.source === "app";
 
 /**
  * 決定一筆解析結果要不要加入待確認清單，以及要不要取代（刪除）既有的哪些筆。
@@ -59,12 +61,12 @@ export function decidePendingInsert(
       return { insert: false, supersedeIds: [] };
     }
 
-    // 台新 App 與 LINE Pay 為同一筆 → 只留台新
+    // 銀行 App 通知 與 LINE Pay 為同一筆 → 只留銀行 App 那筆
     if (timeDiffSec(e.occurredAt, candidate.occurredAt) <= 150) {
-      if (isLinePay(candidate) && isTaishinApp(e)) {
+      if (isLinePay(candidate) && isBankApp(e)) {
         return { insert: false, supersedeIds: [] };
       }
-      if (isTaishinApp(candidate) && isLinePay(e)) {
+      if (isBankApp(candidate) && isLinePay(e)) {
         supersedeIds.push(e.id);
       }
     }

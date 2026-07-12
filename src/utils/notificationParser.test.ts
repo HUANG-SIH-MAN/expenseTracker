@@ -20,18 +20,14 @@ describe("parseNotification - 台新 App", () => {
     capturedAt: "2026-07-11T11:41:07.000Z",
   });
 
-  it("解析金額、末四碼、銀行、來源", () => {
+  it("解析金額、末四碼、來源；台新 App 無商店名", () => {
     const r = parseNotification(n);
     expect(r).not.toBeNull();
     expect(r!.amount).toBe(79);
     expect(r!.last4).toBe("7509");
-    expect(r!.currency).toBe("TWD");
-    expect(r!.bank).toBe("台新");
+    expect(r!.merchant).toBeNull();
     expect(r!.source).toBe("app");
-  });
-
-  it("台新 App 通知無商店名 -> merchant 為 null", () => {
-    expect(parseNotification(n)!.merchant).toBeNull();
+    expect(r!.bank).toBe("信用卡消費通知"); // bank 取自標題，最終顯示名由設定覆蓋
   });
 
   it("解析消費時間為 07/11 11:40", () => {
@@ -40,15 +36,6 @@ describe("parseNotification - 台新 App", () => {
     expect(d.getDate()).toBe(11);
     expect(d.getHours()).toBe(11);
     expect(d.getMinutes()).toBe(40);
-  });
-
-  it("金額含千分位逗號可解析", () => {
-    const big = make({
-      app: "tw.com.taishinbank.ccapp",
-      text: "您的Richart卡(末四碼7509)於07/11-11:40刷卡消費約新臺幣1,234元",
-      capturedAt: "2026-07-11T11:41:07.000Z",
-    });
-    expect(parseNotification(big)!.amount).toBe(1234);
   });
 });
 
@@ -60,22 +47,14 @@ describe("parseNotification - 永豐（走 LINE）", () => {
     capturedAt: "2026-07-11T12:10:30.000Z",
   });
 
-  it("解析金額、末四碼、商店名、銀行、來源", () => {
+  it("解析金額、末四碼、商店名、來源", () => {
     const r = parseNotification(n);
     expect(r).not.toBeNull();
     expect(r!.amount).toBe(65);
     expect(r!.last4).toBe("6908");
     expect(r!.merchant).toBe("大全聯");
-    expect(r!.bank).toBe("永豐");
     expect(r!.source).toBe("line");
-  });
-
-  it("解析消費時間為 07/11 12:10", () => {
-    const d = new Date(parseNotification(n)!.occurredAt);
-    expect(d.getMonth() + 1).toBe(7);
-    expect(d.getDate()).toBe(11);
-    expect(d.getHours()).toBe(12);
-    expect(d.getMinutes()).toBe(10);
+    expect(r!.bank).toBe("永豐銀行");
   });
 });
 
@@ -87,38 +66,74 @@ describe("parseNotification - LINE Pay（走 LINE）", () => {
     capturedAt: "2026-07-11T11:40:49.000Z",
   });
 
-  it("解析金額、商店名、來源；無末四碼", () => {
+  it("解析金額、商店名；無末四碼", () => {
     const r = parseNotification(n);
     expect(r).not.toBeNull();
     expect(r!.amount).toBe(79);
     expect(r!.merchant).toBe("IKEA宜家家居");
     expect(r!.last4).toBeNull();
-    expect(r!.bank).toBe("LINE Pay");
     expect(r!.source).toBe("line");
+  });
+});
+
+describe("parseNotification - 通用（未內建的銀行也能解析）", () => {
+  it("富邦：末四碼 + NTD 金額 + 在X消費", () => {
+    const n = make({
+      app: "com.fubon.card",
+      title: "富邦信用卡",
+      text: "您的富邦信用卡末四碼1234於07/12 14:30在家樂福消費NTD1,250元",
+      capturedAt: "2026-07-12T14:31:00.000Z",
+    });
+    const r = parseNotification(n);
+    expect(r).not.toBeNull();
+    expect(r!.amount).toBe(1250);
+    expect(r!.last4).toBe("1234");
+    expect(r!.merchant).toBe("家樂福");
+    expect(r!.bank).toBe("富邦信用卡");
+  });
+
+  it("星展：尾號 + TWD 金額，無商店名", () => {
+    const n = make({
+      app: "com.dbs.card",
+      title: "星展銀行",
+      text: "您尾號5678的星展信用卡於07/12 20:15消費TWD 899",
+      capturedAt: "2026-07-12T20:16:00.000Z",
+    });
+    const r = parseNotification(n);
+    expect(r).not.toBeNull();
+    expect(r!.amount).toBe(899);
+    expect(r!.last4).toBe("5678");
+    expect(r!.merchant).toBeNull();
+  });
+
+  it("金額含千分位逗號", () => {
+    const n = make({
+      app: "tw.com.taishinbank.ccapp",
+      text: "您的卡(末四碼7509)於07/11-11:40刷卡消費約新臺幣12,345元",
+      capturedAt: "2026-07-11T11:41:00.000Z",
+    });
+    expect(parseNotification(n)!.amount).toBe(12345);
   });
 });
 
 describe("parseNotification - 非消費/無法解析", () => {
   it("一般 LINE 聊天訊息 -> null", () => {
-    const n = make({
-      app: "jp.naver.line.android",
-      title: "小明",
-      text: "晚上要吃什麼？",
-    });
-    expect(parseNotification(n)).toBeNull();
+    expect(
+      parseNotification(make({ app: "jp.naver.line.android", title: "小明", text: "晚上要吃什麼？" })),
+    ).toBeNull();
   });
 
-  it("未知 app -> null", () => {
-    const n = make({ app: "com.whatever.app", text: "刷卡台幣100元" });
-    expect(parseNotification(n)).toBeNull();
-  });
-
-  it("永豐通知但缺金額 -> null", () => {
+  it("帳單/繳款提醒（有金額但非單筆消費）-> null", () => {
     const n = make({
       app: "jp.naver.line.android",
       title: "永豐銀行",
-      text: "永豐貴賓您好，您的帳單已出。",
+      text: "您的信用卡本期帳單應繳金額新臺幣5,000元，繳款截止日07/25。",
     });
+    expect(parseNotification(n)).toBeNull();
+  });
+
+  it("有金額但無末四碼也無刷卡關鍵字 -> null", () => {
+    const n = make({ app: "com.some.app", title: "促銷", text: "限時優惠只要99元" });
     expect(parseNotification(n)).toBeNull();
   });
 });

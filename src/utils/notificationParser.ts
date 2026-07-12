@@ -1,7 +1,8 @@
 /**
- * Phase 2：把擷取到的銀行/LINE 通知文字，解析成一筆消費資訊。
- * 目前支援：永豐（走 LINE）、台新（走台新 App）、LINE Pay（走 LINE）。
- * 純函式、無副作用，方便單元測試。解析不出來回傳 null。
+ * 通用刷卡通知解析器（不綁特定銀行）。
+ * 台灣的信用卡消費通知格式相近（末四碼、金額…元/NT$、商店名稱），
+ * 所以用一組通用規則抽取「金額、末四碼、商店、時間」，多數銀行（含未來新卡）免改即可。
+ * 純函式、無副作用，方便單元測試。解析不出來或非消費通知回傳 null。
  */
 
 /** 通知來源管道 */
@@ -12,15 +13,15 @@ export interface ParsedTransaction {
   amount: number;
   /** 幣別，目前一律 TWD */
   currency: string;
-  /** 商店名稱，解析不到為 null（例如台新 App 通知不含商店名） */
+  /** 商店名稱，解析不到為 null */
   merchant: string | null;
-  /** 卡號末四碼，解析不到為 null（例如 LINE Pay 不含末四碼） */
+  /** 卡號末四碼，解析不到為 null（綁定帳戶的主要依據） */
   last4: string | null;
   /** 消費發生時間 ISO 字串；通知只給到分鐘、年份沿用擷取時間 */
   occurredAt: string;
-  /** 銀行/管道名稱，如 '永豐'、'台新'、'LINE Pay' */
+  /** 銀行/來源的最佳猜測（取自通知標題），最終顯示名稱由設定覆蓋 */
   bank: string;
-  /** 來源管道 */
+  /** 來源管道：LINE 或 銀行 App */
   source: NotificationSource;
 }
 
@@ -35,12 +36,8 @@ export interface ParsableNotification {
 }
 
 const LINE_APP = "jp.naver.line.android";
-const TAISHIN_APP = "tw.com.taishinbank.ccapp";
 
-/**
- * 取通知可解析的文字內容：合併 bigText / text / title（去除重複），
- * 讓「消費內容放在標題」或「只在 bigText」的情況都能解析到。
- */
+/** 合併 bigText / text / title（去重）作為可解析內容 */
 function contentOf(n: ParsableNotification): string {
   const parts = [n.bigText, n.text, n.title]
     .map((s) => (s ?? "").trim())
@@ -49,17 +46,13 @@ function contentOf(n: ParsableNotification): string {
   return unique.join("\n");
 }
 
-/** "1,234" -> 1234；解析失敗回傳 null */
-function parseAmount(raw: string | undefined): number | null {
+/** "1,234" -> 1234；失敗回傳 null */
+function toNumber(raw: string | undefined): number | null {
   if (!raw) return null;
   const n = Number(raw.replace(/,/g, ""));
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-/**
- * 通知只給 MM/DD HH:MM，用擷取時間補年份。
- * 若補完後日期落在擷取時間之後超過 2 天（跨年通知），退回前一年。
- */
 function buildOccurredAt(
   month: number,
   day: number,
@@ -78,91 +71,71 @@ function buildOccurredAt(
   return d.toISOString();
 }
 
+/** 末四碼：末四碼 / 末4碼 / 尾號 / 卡號末四碼 等 */
 function extractLast4(text: string): string | null {
-  const m = text.match(/末四碼\s*(\d{4})/);
+  const m = text.match(/(?:末四碼|末4碼|末碼|尾[數號]|卡號末四碼)\s*[:：]?\s*(\d{4})/);
   return m ? m[1] : null;
 }
 
-/** 台新 App：「您的Richart卡(末四碼7509)於07/11-11:40刷卡消費約新臺幣79元…」 */
-function parseTaishinApp(n: ParsableNotification): ParsedTransaction | null {
-  const text = contentOf(n);
-  const amount = parseAmount(text.match(/新臺幣\s*([\d,]+)\s*元/)?.[1]);
-  if (amount == null) return null;
-  const dt = text.match(/於\s*(\d{1,2})\/(\d{1,2})[-\s]+(\d{1,2}):(\d{2})/);
-  const occurredAt = dt
-    ? buildOccurredAt(Number(dt[1]), Number(dt[2]), Number(dt[3]), Number(dt[4]), n.capturedAt)
-    : n.capturedAt;
-  return {
-    amount,
-    currency: "TWD",
-    merchant: null, // 台新 App 通知不含商店名
-    last4: extractLast4(text),
-    occurredAt,
-    bank: "台新",
-    source: "app",
-  };
+/** 金額：優先抓有幣別標記的（台幣/新臺幣/NT$/NTD/TWD/金額），退而求其次抓「…元」 */
+function extractAmount(text: string): number | null {
+  const withCurrency = text.match(
+    /(?:台幣|新臺幣|新台幣|NT\$|NTD|TWD|金額)\s*[:：]?\s*([\d,]+)/i,
+  );
+  const byCurrency = toNumber(withCurrency?.[1]);
+  if (byCurrency != null) return byCurrency;
+  const withYuan = text.match(/([\d,]+)\s*元/);
+  return toNumber(withYuan?.[1]);
 }
 
-/** 永豐（走 LINE）：「末四碼6908感謝07/11 12:10刷卡台幣65元，商店名稱:大全聯，實際商店名稱」 */
-function parseSinoPacLine(n: ParsableNotification): ParsedTransaction | null {
-  const text = contentOf(n);
-  const amount = parseAmount(text.match(/台幣\s*([\d,]+)\s*元/)?.[1]);
-  if (amount == null) return null;
-  const dt = text.match(/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})/);
-  const occurredAt = dt
-    ? buildOccurredAt(Number(dt[1]), Number(dt[2]), Number(dt[3]), Number(dt[4]), n.capturedAt)
-    : n.capturedAt;
-  const merchantRaw = text.match(/商店名稱[:：]\s*([^\n，。]+)/)?.[1]?.trim();
-  return {
-    amount,
-    currency: "TWD",
-    merchant: merchantRaw && merchantRaw.length > 0 ? merchantRaw : null,
-    last4: extractLast4(text),
-    occurredAt,
-    bank: "永豐",
-    source: "line",
-  };
+/** 商店：商店名稱：X ；或「在X消費/刷卡」 */
+function extractMerchant(text: string): string | null {
+  const byLabel = text.match(/商店名稱[:：]\s*([^\n，。]+)/)?.[1]?.trim();
+  if (byLabel) return byLabel;
+  // 「在[商店]消費/刷卡」：商店名不以數字開頭，避免抓到日期
+  const byAt = text.match(/在\s*([^\n，。\d][^\n，。]*?)\s*(?:消費|刷卡)/)?.[1]?.trim();
+  if (byAt) return byAt;
+  return null;
 }
 
-/** LINE Pay（走 LINE，title=LINE錢包）：「LINE Pay 付款 NT$ 79 付款完成。商店名稱: IKEA宜家家居」 */
-function parseLinePay(n: ParsableNotification): ParsedTransaction | null {
-  const text = contentOf(n);
-  const amount = parseAmount(text.match(/NT\$\s*([\d,]+)/)?.[1]);
-  if (amount == null) return null;
-  const merchantRaw = text.match(/商店名稱[:：]\s*([^\n，。]+)/)?.[1]?.trim();
-  return {
-    amount,
-    currency: "TWD",
-    merchant: merchantRaw && merchantRaw.length > 0 ? merchantRaw : null,
-    last4: null,
-    occurredAt: n.capturedAt,
-    bank: "LINE Pay",
-    source: "line",
-  };
+function extractOccurredAt(text: string, capturedAt: string): string {
+  const m = text.match(/(\d{1,2})\/(\d{1,2})[\s\-]+(\d{1,2}):(\d{2})/);
+  if (!m) return capturedAt;
+  return buildOccurredAt(Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4]), capturedAt);
 }
+
+const CONSUMPTION_WORDS = /刷卡|消費|付款|交易|授權|扣款/;
+// 帳單/繳款提醒等「非單筆消費」的通知，排除（用精準片語，避免誤擋含「以帳單為準」的消費通知）
+const NON_PURCHASE_WORDS = /本期帳單|帳單金額|應繳|待繳|繳款截止|循環利息|紅利點數/;
 
 /**
  * 解析單一通知為消費資訊；非消費通知或無法解析回傳 null。
+ * 判定為消費的條件：有金額，且（有末四碼 或 含刷卡/消費等關鍵字），且非帳單/繳款提醒。
  */
 export function parseNotification(n: ParsableNotification): ParsedTransaction | null {
   const app = n.app ?? "";
-  const title = n.title ?? "";
-  const text = contentOf(n);
+  const content = contentOf(n);
+  if (content.length === 0) return null;
+  if (NON_PURCHASE_WORDS.test(content)) return null;
 
-  // 台新 App
-  if (app === TAISHIN_APP) {
-    return parseTaishinApp(n);
-  }
+  const amount = extractAmount(content);
+  if (amount == null) return null;
 
-  // 走 LINE 的通知，依標題/內容再細分
-  if (app === LINE_APP) {
-    if (title.includes("LINE錢包") || text.includes("LINE Pay")) {
-      return parseLinePay(n);
-    }
-    if (title.includes("永豐") || text.includes("永豐")) {
-      return parseSinoPacLine(n);
-    }
-  }
+  const last4 = extractLast4(content);
+  const hasConsumptionWord = CONSUMPTION_WORDS.test(content);
+  if (last4 == null && !hasConsumptionWord) return null;
 
-  return null;
+  const source: NotificationSource = app === LINE_APP ? "line" : "app";
+  const bank =
+    n.title && n.title.trim().length > 0 ? n.title.trim() : app || "未知來源";
+
+  return {
+    amount,
+    currency: "TWD",
+    merchant: extractMerchant(content),
+    last4,
+    occurredAt: extractOccurredAt(content, n.capturedAt),
+    bank,
+    source,
+  };
 }
