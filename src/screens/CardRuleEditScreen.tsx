@@ -12,6 +12,7 @@ import {
   Modal,
   Alert,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -275,47 +276,56 @@ export default function CardRuleEditScreen(): React.JSX.Element {
 
       {/* 手動輸入 App */}
       <Modal visible={manualOpen} transparent animationType="fade" onRequestClose={() => setManualOpen(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.manualCard}>
-            <Text style={styles.modalTitle}>手動輸入 App</Text>
-            <View style={styles.tipBox}>
-              <Text style={styles.tipText}>
-                不知道套件名稱？去「設定 → 通知擷取（測試）」，看該 App 通知上方那行
-                com.xxx.yyy 就是，貼進來即可。
-              </Text>
+        <KeyboardAvoidingView
+          style={styles.manualOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <ScrollView
+            contentContainerStyle={styles.modalScroll}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.manualCard}>
+              <Text style={styles.modalTitle}>手動輸入 App</Text>
+              <View style={styles.tipBox}>
+                <Text style={styles.tipText}>
+                  不知道套件名稱？去「設定 → 通知擷取（測試）」，看該 App 通知上方那行
+                  com.xxx.yyy 就是，貼進來即可。
+                </Text>
+              </View>
+              <Text style={styles.fieldLabel}>App 套件名稱</Text>
+              <TextInput
+                style={[styles.input, styles.mono]}
+                value={manualPkg}
+                onChangeText={setManualPkg}
+                placeholder="com.xxx.yyy"
+                placeholderTextColor="#9ca3af"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <Text style={styles.fieldLabel}>顯示名稱</Text>
+              <TextInput
+                style={styles.input}
+                value={manualName}
+                onChangeText={setManualName}
+                placeholder="例如 中信、玉山"
+                placeholderTextColor="#9ca3af"
+              />
+              <View style={styles.manualBtns}>
+                <TouchableOpacity style={[styles.manualBtn, styles.manualCancel]} onPress={() => setManualOpen(false)}>
+                  <Text style={styles.manualCancelText}>取消</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.manualBtn, styles.manualConfirm, (manualPkg.indexOf('.') <= 0 || !manualName.trim()) && styles.manualDisabled]}
+                  onPress={confirmManual}
+                  disabled={manualPkg.indexOf('.') <= 0 || !manualName.trim()}
+                >
+                  <Text style={styles.manualConfirmText}>加入並選用</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-            <Text style={styles.fieldLabel}>App 套件名稱</Text>
-            <TextInput
-              style={[styles.input, styles.mono]}
-              value={manualPkg}
-              onChangeText={setManualPkg}
-              placeholder="com.xxx.yyy"
-              placeholderTextColor="#9ca3af"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <Text style={styles.fieldLabel}>顯示名稱</Text>
-            <TextInput
-              style={styles.input}
-              value={manualName}
-              onChangeText={setManualName}
-              placeholder="例如 中信、玉山"
-              placeholderTextColor="#9ca3af"
-            />
-            <View style={styles.manualBtns}>
-              <TouchableOpacity style={[styles.manualBtn, styles.manualCancel]} onPress={() => setManualOpen(false)}>
-                <Text style={styles.manualCancelText}>取消</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.manualBtn, styles.manualConfirm, (manualPkg.indexOf('.') <= 0 || !manualName.trim()) && styles.manualDisabled]}
-                onPress={confirmManual}
-                disabled={manualPkg.indexOf('.') <= 0 || !manualName.trim()}
-              >
-                <Text style={styles.manualConfirmText}>加入並選用</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -437,6 +447,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
+  // 有輸入框的 modal：用 KeyboardAvoidingView + ScrollView，鍵盤跳出時把卡片往上推、
+  // 並可捲動，避免輸入框被鍵盤蓋住（置中與內距移到 ScrollView 的 contentContainer）。
+  manualOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
+  modalScroll: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   sheetCard: { backgroundColor: '#fff', borderRadius: 16, padding: 16, width: '100%', maxWidth: 360 },
   modalTitle: { fontSize: 16, fontWeight: '600', color: '#1f2937', marginBottom: 8 },
   optRow: {
