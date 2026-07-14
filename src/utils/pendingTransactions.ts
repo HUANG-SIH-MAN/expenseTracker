@@ -10,7 +10,6 @@ import { getDb } from "../db";
 import { generateId } from "./id";
 import {
   getCapturedNotifications,
-  LINE_PACKAGE,
   type CapturedNotification,
 } from "./notificationCapture";
 import { parseNotification, type NotificationSource } from "./notificationParser";
@@ -21,6 +20,7 @@ import {
 } from "./pendingDedup";
 import { addTransaction, deleteTransaction } from "./storage";
 import { ensureCardRulesSeeded, getCardRules, resolveBinding } from "./cardRules";
+import { isMonitoredApp } from "./cardBinding";
 
 export { decidePendingInsert, defaultCategoryForBank };
 export type { DedupItem };
@@ -145,8 +145,9 @@ export async function syncNotificationsToTransactions(): Promise<number> {
       new Date().toISOString(),
       n.id,
     );
-    // 只聽銀行 App，忽略 LINE（避免重複記帳；LINE 仍會擷取供偵錯）
-    if (n.app === LINE_PACKAGE) continue;
+    // 只自動記帳「有在卡片規則設定的銀行 App」的通知（白名單）。
+    // 其他 App（含 LINE、各種推播）一律不記，避免非刷卡通知被誤記。
+    if (!isMonitoredApp(n.app, cardRules)) continue;
     const parsed = parseNotification(n as CapturedNotification);
     if (!parsed) continue;
 

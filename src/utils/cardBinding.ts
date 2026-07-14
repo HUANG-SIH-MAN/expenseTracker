@@ -42,6 +42,24 @@ export const DEFAULT_CARD_RULES: Omit<CardRule, "id">[] = [
   },
 ];
 
+/** 卡片規則裡設定過的「銀行 App」套件名集合（自動記帳的白名單）。 */
+export function monitoredApps(rules: CardRule[]): Set<string> {
+  return new Set(
+    rules
+      .map((r) => r.matchApp)
+      .filter((a): a is string => !!a && a.trim().length > 0),
+  );
+}
+
+/**
+ * 這個 App 是否在白名單內（＝卡片規則有設定它）。自動記帳只認白名單的 App，
+ * 其他 App 的通知一律不記，避免非刷卡通知被誤記。
+ */
+export function isMonitoredApp(app: string | null, rules: CardRule[]): boolean {
+  if (!app) return false;
+  return monitoredApps(rules).has(app);
+}
+
 /**
  * 依規則決定綁定：末四碼 > App 套件 > 關鍵字。找不到回傳全 null。
  */

@@ -164,7 +164,8 @@ CREATE TABLE IF NOT EXISTS captured_notifications (
   big_text TEXT,
   raw_json TEXT NOT NULL,
   captured_at TEXT NOT NULL,
-  processed_at TEXT
+  processed_at TEXT,
+  post_time TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_captured_notifications_captured_at ON captured_notifications(captured_at);
@@ -525,6 +526,12 @@ async function initDb(): Promise<SQLite.SQLiteDatabase | null> {
   }
   try {
     await db.runAsync("ALTER TABLE captured_notifications ADD COLUMN processed_at TEXT");
+  } catch {
+    // Column already exists on existing DBs
+  }
+  try {
+    // 通知的發布時間戳（Android postTime），同一則被重放時不變，用來去重
+    await db.runAsync("ALTER TABLE captured_notifications ADD COLUMN post_time TEXT");
   } catch {
     // Column already exists on existing DBs
   }

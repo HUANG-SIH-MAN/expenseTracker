@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { resolveBinding, type CardRule } from "./cardBinding";
+import {
+  resolveBinding,
+  isMonitoredApp,
+  monitoredApps,
+  DEFAULT_CARD_RULES,
+  type CardRule,
+} from "./cardBinding";
 
 function rule(p: Partial<CardRule>): CardRule {
   return {
@@ -49,5 +55,44 @@ describe("resolveBinding", () => {
     expect(r.accountId).toBeNull();
     expect(r.categoryKey).toBeNull();
     expect(r.label).toBeNull();
+  });
+});
+
+describe("monitoredApps / isMonitoredApp（自動記帳白名單）", () => {
+  const seeded: CardRule[] = DEFAULT_CARD_RULES.map((r, i) => ({ id: `s${i}`, ...r }));
+
+  it("白名單＝規則裡設定過的 match_app", () => {
+    expect(monitoredApps(seeded)).toEqual(
+      new Set(["tw.com.taishinbank.ccapp", "com.sinopac.dawho"]),
+    );
+  });
+
+  it("有設定的銀行 App → 監聽", () => {
+    expect(isMonitoredApp("tw.com.taishinbank.ccapp", seeded)).toBe(true);
+    expect(isMonitoredApp("com.sinopac.dawho", seeded)).toBe(true);
+  });
+
+  it("沒設定的 App（含 LINE、隨機推播）→ 不監聽", () => {
+    expect(isMonitoredApp("jp.naver.line.android", seeded)).toBe(false);
+    expect(isMonitoredApp("com.some.random.app", seeded)).toBe(false);
+  });
+
+  it("app 為 null / 空字串 → 不監聽", () => {
+    expect(isMonitoredApp(null, seeded)).toBe(false);
+    expect(isMonitoredApp("", seeded)).toBe(false);
+  });
+
+  it("只用末四碼/關鍵字（沒填 App）的規則不會進白名單", () => {
+    const rules = [
+      rule({ matchLast4: "7509" }),
+      rule({ matchKeyword: "刷卡" }),
+      rule({ matchApp: "  " }),
+    ];
+    expect(monitoredApps(rules).size).toBe(0);
+    expect(isMonitoredApp("tw.com.taishinbank.ccapp", rules)).toBe(false);
+  });
+
+  it("沒有任何規則 → 白名單為空，全部不監聽", () => {
+    expect(isMonitoredApp("tw.com.taishinbank.ccapp", [])).toBe(false);
   });
 });

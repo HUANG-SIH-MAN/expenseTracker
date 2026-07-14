@@ -111,7 +111,7 @@ export default function NotificationCaptureScreen(): React.JSX.Element {
     await refresh();
     Alert.alert(
       '已注入測試通知',
-      '已加入 3 筆假通知（永豐/台新/LINE Pay）。按下方「清除並重跑自動記帳」後，到「設定 → 自動記帳紀錄」或首頁查看結果。',
+      '已加入 3 筆假通知（永豐/台新/LINE Pay）。按下方「清除並重跑自動記帳」後，到首頁查看記帳結果。',
     );
   }, [refresh]);
 
@@ -120,7 +120,7 @@ export default function NotificationCaptureScreen(): React.JSX.Element {
     await refresh();
     Alert.alert(
       '重跑完成',
-      `已清除舊的自動記帳並重跑，本次自動記帳 ${count} 筆。請到「設定 → 自動記帳紀錄」或首頁查看。`,
+      `已清除舊的自動記帳並重跑，本次自動記帳 ${count} 筆。請到首頁查看。`,
     );
   }, [refresh]);
 
@@ -172,7 +172,7 @@ export default function NotificationCaptureScreen(): React.JSX.Element {
           <Text style={styles.cardLabel}>測試工具</Text>
           <Text style={styles.hint}>
             不用真的刷卡：按「注入測試通知」放入 3 筆假通知，再按「清除並重跑自動記帳」，
-            然後到首頁或「設定 → 自動記帳紀錄」看結果。下方每則通知也會顯示解析結果。
+            然後到首頁看記帳結果。下方每則通知也會顯示解析結果與 postTime。
           </Text>
           <TouchableOpacity style={styles.secondaryBtn} onPress={handleInjectSamples} activeOpacity={0.8}>
             <Text style={styles.secondaryBtnText}>注入測試通知（3 筆）</Text>
@@ -212,6 +212,11 @@ export default function NotificationCaptureScreen(): React.JSX.Element {
             {n.bigText != null && n.bigText !== '' && n.bigText !== n.text && (
               <Text style={styles.notifBig}>{n.bigText}</Text>
             )}
+            <Text style={n.postTime ? styles.postTimeOk : styles.postTimeMissing}>
+              {n.postTime
+                ? `postTime ✅ ${n.postTime}`
+                : 'postTime ⚠️ 無（此則走內容+時間窗去重）'}
+            </Text>
             {(() => {
               const parsed = parseNotification(n);
               return parsed ? (
@@ -283,6 +288,8 @@ const styles = StyleSheet.create({
   secondaryBtnText: { color: '#2563eb', fontSize: 15, fontWeight: '600' },
   parseOk: { fontSize: 13, color: '#16a34a', fontWeight: '600', marginTop: 8 },
   parseFail: { fontSize: 13, color: '#dc2626', fontWeight: '600', marginTop: 8 },
+  postTimeOk: { fontSize: 11, color: '#6b7280', marginTop: 6, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
+  postTimeMissing: { fontSize: 11, color: '#d97706', marginTop: 6 },
   listHeader: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -46,6 +46,8 @@ export interface CapturedNotification {
   /** 移除 base64 圖示後的完整 payload JSON，方便日後觀察全部欄位 */
   rawJson: string;
   capturedAt: string;
+  /** 通知發布時間戳（Android postTime），抓不到為 null；用來去重 */
+  postTime: string | null;
 }
 
 interface CapturedNotificationRow {
@@ -56,6 +58,47 @@ interface CapturedNotificationRow {
   big_text: string | null;
   raw_json: string;
   captured_at: string;
+  post_time: string | null;
+}
+
+/** payload 裡代表「通知發布時間戳」的可能欄位（不同版本命名不一）。 */
+function extractPostTime(payload: Record<string, unknown>): string | null {
+  const raw = payload.time ?? payload.postTime ?? payload.post_time;
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  return s.length > 0 ? s : null;
+}
+
+/**
+ * 判斷這則通知是不是「同一則被系統重放」（例如關 App 再開，監聽服務重連會把
+ * 通知欄裡的舊通知重丟一次）。是的話就別再存，避免同一筆刷卡被記兩次。
+ *  - 首選：同 app + 同 postTime（postTime 對同一則通知是穩定的）。
+ *  - 退而求其次（抓不到 postTime）：同 app + 同 title + 同 text，且 90 秒內已擷取過。
+ */
+async function isDuplicateCapture(
+  db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
+  app: string | null,
+  title: string | null,
+  text: string | null,
+  postTime: string | null,
+): Promise<boolean> {
+  if (postTime != null) {
+    const hit = await db.getFirstAsync<{ id: string }>(
+      "SELECT id FROM captured_notifications WHERE app IS ? AND post_time = ? LIMIT 1",
+      app,
+      postTime,
+    );
+    return hit != null;
+  }
+  const since = new Date(Date.now() - 90 * 1000).toISOString();
+  const hit = await db.getFirstAsync<{ id: string }>(
+    "SELECT id FROM captured_notifications WHERE app IS ? AND title IS ? AND text IS ? AND captured_at >= ? LIMIT 1",
+    app,
+    title,
+    text,
+    since,
+  );
+  return hit != null;
 }
 
 /** 由 headless task 呼叫：存下一則通知的原始內容。 */
@@ -66,15 +109,24 @@ export async function saveCapturedNotification(
   if (!db || !payload) return;
   // 移除 base64 的 icon/image，避免 raw_json 過大
   const { icon: _icon, image: _image, ...rest } = payload as Record<string, unknown>;
+  const app = (payload.app as string) ?? null;
+  const title = (payload.title as string) ?? null;
+  const text = (payload.text as string) ?? null;
+  const postTime = extractPostTime(payload);
+
+  // 同一則通知被重放 → 不重複存（治本的去重）
+  if (await isDuplicateCapture(db, app, title, text, postTime)) return;
+
   await db.runAsync(
-    "INSERT INTO captured_notifications (id, app, title, text, big_text, raw_json, captured_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO captured_notifications (id, app, title, text, big_text, raw_json, captured_at, post_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     generateId(),
-    (payload.app as string) ?? null,
-    (payload.title as string) ?? null,
-    (payload.text as string) ?? null,
+    app,
+    title,
+    text,
     (payload.bigText as string) ?? null,
     JSON.stringify(rest),
     new Date().toISOString(),
+    postTime,
   );
   // 只保留最新 N 筆（依擷取時間），清掉超出的舊紀錄
   await db.runAsync(
@@ -89,7 +141,7 @@ export async function getCapturedNotifications(limit = 200): Promise<CapturedNot
   const db = await getDb();
   if (!db) return [];
   const rows = await db.getAllAsync<CapturedNotificationRow>(
-    "SELECT id, app, title, text, big_text, raw_json, captured_at FROM captured_notifications ORDER BY captured_at DESC LIMIT ?",
+    "SELECT id, app, title, text, big_text, raw_json, captured_at, post_time FROM captured_notifications ORDER BY captured_at DESC LIMIT ?",
     limit,
   );
   return rows.map((r) => ({
@@ -100,6 +152,7 @@ export async function getCapturedNotifications(limit = 200): Promise<CapturedNot
     bigText: r.big_text,
     rawJson: r.raw_json,
     capturedAt: r.captured_at,
+    postTime: r.post_time,
   }));
 }
 
@@ -124,16 +177,19 @@ const SAMPLE_NOTIFICATIONS: Record<string, unknown>[] = [
     app: "jp.naver.line.android",
     title: "永豐銀行",
     text: "永豐貴賓您好，末四碼6908感謝07/11 12:10刷卡台幣65元，商店名稱:大全聯，實際商店名稱",
+    time: "1752206400000",
   },
   {
     app: "tw.com.taishinbank.ccapp",
     title: "信用卡消費通知",
     text: "【信用卡消費通知】您的Richart卡(末四碼7509)於07/11-11:40刷卡消費約新臺幣79元，實際消費資訊以帳單為準，如有疑問請洽客服",
+    time: "1752205200000",
   },
   {
     app: "jp.naver.line.android",
     title: "LINE錢包",
     text: "LINE Pay 付款 NT$ 128 付款完成。\n商店名稱: 星巴克",
+    time: "1752205260000",
   },
 ];
 
