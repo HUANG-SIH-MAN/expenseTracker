@@ -4,6 +4,7 @@
  */
 import { getDb } from "../db";
 import { generateId } from "./id";
+import { parseNotification } from "./notificationParser";
 
 /** 原始通知紀錄只保留最新這麼多筆，避免無限增長佔空間 */
 const MAX_CAPTURED_NOTIFICATIONS = 100;
@@ -19,22 +20,24 @@ export interface DetectedApp {
 }
 
 /**
- * 從已擷取的通知中，取出出現過的 App 清單（排除 LINE），供設定頁選「要監聽的 App」。
+ * 從已擷取的通知中，取出「真的發過刷卡消費通知」的 App 清單（排除 LINE），
+ * 供設定頁選「要監聽的 App」。用 parseNotification 過濾，把 YouTube/釘釘/促銷
+ * 這類雜訊自動擋掉，只留能解析出金額+刷卡/末四碼的 App。
+ * title 取自該 App「最近一則可解析的刷卡通知」，避免拿到促銷標題。
  */
 export async function getDetectedApps(): Promise<DetectedApp[]> {
   const db = await getDb();
   if (!db) return [];
-  const rows = await db.getAllAsync<{ app: string | null; title: string | null }>(
-    `SELECT app, title FROM captured_notifications c
-     WHERE app IS NOT NULL AND app != ?
-       AND captured_at = (SELECT MAX(captured_at) FROM captured_notifications c2 WHERE c2.app = c.app)
-     GROUP BY app
-     ORDER BY captured_at DESC`,
-    LINE_PACKAGE,
-  );
-  return rows
-    .filter((r) => r.app)
-    .map((r) => ({ package: r.app as string, title: (r.title ?? "").trim() }));
+  // 依 captured_at DESC，先遇到的是最新一筆
+  const notifs = await getCapturedNotifications(1000);
+  const map = new Map<string, DetectedApp>();
+  for (const n of notifs) {
+    if (!n.app || n.app === LINE_PACKAGE) continue;
+    if (map.has(n.app)) continue;
+    if (!parseNotification(n)) continue; // 只列發過刷卡通知的 App
+    map.set(n.app, { package: n.app, title: (n.title ?? "").trim() });
+  }
+  return Array.from(map.values());
 }
 
 export interface CapturedNotification {

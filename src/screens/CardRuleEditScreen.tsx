@@ -78,9 +78,11 @@ export default function CardRuleEditScreen(): React.JSX.Element {
   const appName = useCallback(
     (pkg: string | null): string | null => {
       if (!pkg) return null;
+      // 友善名優先，其次才是偵測到的刷卡通知標題，最後退回套件名
+      if (KNOWN_APP_NAMES[pkg]) return KNOWN_APP_NAMES[pkg];
       const d = detectedApps.find((a) => a.package === pkg);
       if (d && d.title) return d.title;
-      return KNOWN_APP_NAMES[pkg] ?? pkg;
+      return pkg;
     },
     [detectedApps],
   );
@@ -98,7 +100,7 @@ export default function CardRuleEditScreen(): React.JSX.Element {
   const appOptions = useMemo<Option[]>(() => {
     const map = new Map<string, Option>();
     detectedApps.forEach((a) =>
-      map.set(a.package, { key: a.package, label: a.title || KNOWN_APP_NAMES[a.package] || a.package, sub: a.package }),
+      map.set(a.package, { key: a.package, label: KNOWN_APP_NAMES[a.package] || a.title || a.package, sub: a.package }),
     );
     Object.entries(KNOWN_APP_NAMES).forEach(([pkg, name]) => {
       if (!map.has(pkg)) map.set(pkg, { key: pkg, label: name, sub: pkg });
